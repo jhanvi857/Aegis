@@ -1,0 +1,166 @@
+version: '3.8'
+
+networks:
+  aegis-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+
+services:
+  # ─────────────────────────────────────────────────────────────
+  # Infrastructure Services
+  # ─────────────────────────────────────────────────────────────
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: aegis-zookeeper
+    networks:
+      - aegis-net
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: aegis-kafka
+    networks:
+      - aegis-net
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: aegis-redis
+    networks:
+      - aegis-net
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: aegis-postgres
+    networks:
+      - aegis-net
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: aegis
+      POSTGRES_PASSWORD: aegissecretpassword
+      POSTGRES_DB: aegis_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # ─────────────────────────────────────────────────────────────
+  # Playground Distributed Services
+  # ─────────────────────────────────────────────────────────────
+
+  gateway:
+    build:
+      context: ./go-services
+      dockerfile: playground/Dockerfile
+      args:
+        SERVICE_DIR: playground/gateway
+    container_name: aegis-gateway
+    networks:
+      - aegis-net
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      TOPOLOGY_PATH: /etc/aegis/topology.yaml
+      ENABLE_SYNTHETIC_LOAD: "false"
+    volumes:
+      - ./configs/topology.yaml:/etc/aegis/topology.yaml:ro
+    depends_on:
+      - node-a
+      - node-b
+      - node-c
+      - node-d
+
+  node-a:
+    build:
+      context: ./go-services
+      dockerfile: playground/Dockerfile
+      args:
+        SERVICE_DIR: playground/node-a
+    container_name: aegis-node-a
+    networks:
+      - aegis-net
+    ports:
+      - "8081:8081"
+    environment:
+      NODE_ID: "node-a"
+      PORT: "8081"
+      TOPOLOGY_PATH: /etc/aegis/topology.yaml
+    volumes:
+      - ./configs/topology.yaml:/etc/aegis/topology.yaml:ro
+
+  node-b:
+    build:
+      context: ./go-services
+      dockerfile: playground/Dockerfile
+      args:
+        SERVICE_DIR: playground/node-b
+    container_name: aegis-node-b
+    networks:
+      - aegis-net
+    ports:
+      - "8082:8082"
+    environment:
+      NODE_ID: "node-b"
+      PORT: "8082"
+      TOPOLOGY_PATH: /etc/aegis/topology.yaml
+    volumes:
+      - ./configs/topology.yaml:/etc/aegis/topology.yaml:ro
+
+  node-c:
+    build:
+      context: ./go-services
+      dockerfile: playground/Dockerfile
+      args:
+        SERVICE_DIR: playground/node-c
+    container_name: aegis-node-c
+    networks:
+      - aegis-net
+    ports:
+      - "8083:8083"
+    environment:
+      NODE_ID: "node-c"
+      PORT: "8083"
+      TOPOLOGY_PATH: /etc/aegis/topology.yaml
+    volumes:
+      - ./configs/topology.yaml:/etc/aegis/topology.yaml:ro
+
+  node-d:
+    build:
+      context: ./go-services
+      dockerfile: playground/Dockerfile
+      args:
+        SERVICE_DIR: playground/node-d
+    container_name: aegis-node-d
+    networks:
+      - aegis-net
+    ports:
+      - "8084:8084"
+    environment:
+      NODE_ID: "node-d"
+      PORT: "8084"
+      TOPOLOGY_PATH: /etc/aegis/topology.yaml
+    volumes:
+      - ./configs/topology.yaml:/etc/aegis/topology.yaml:ro
