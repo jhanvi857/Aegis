@@ -1,0 +1,28 @@
+# Aegis TGNN & Baseline Model Configurations
+
+tgnn:
+  embedding_dim: 64
+  hidden_dim: 128
+  num_layers: 2
+  temporal_window_sec: 60
+  learning_rate: 0.001
+  batch_size: 32
+  heads:
+    failure_prediction:
+      threshold: 0.75
+    root_cause:
+      top_k: 3
+    propagation:
+      max_hops: 4
+
+log_transformer:
+  model_name: "sentence-transformers/all-MiniLM-L6-v2"
+  max_length: 128
+
+baselines:
+  isolation_forest:
+    contamination: 0.05
+    n_estimators: 100
+  lstm:
+    hidden_dim: 64
+    num_layers: 2
