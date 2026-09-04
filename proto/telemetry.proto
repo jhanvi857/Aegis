@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package aegis.telemetry;
+
+option go_package = "github.com/aegis/go-services/shared/pb/telemetry;telemetrypb";
+
+message LogEntry {
+  int64 timestamp_unix_nano = 1;
+  string service_id = 2;
+  string level = 3;
+  string message = 4;
+  string trace_id = 5;
+  map<string, string> attributes = 6;
+}
+
+message MetricPoint {
+  int64 timestamp_unix_nano = 1;
+  string service_id = 2;
+  string metric_name = 3;
+  double value = 4;
+  string unit = 5;
+  map<string, string> labels = 6;
+}
+
+message TraceSpan {
+  string trace_id = 1;
+  string span_id = 2;
+  string parent_span_id = 3;
+  string service_id = 4;
+  string operation_name = 5;
+  int64 start_time_unix_nano = 6;
+  int64 end_time_unix_nano = 7;
+  int32 status_code = 8;
+  map<string, string> attributes = 9;
+}
+
+message TelemetryBatch {
+  repeated LogEntry logs = 1;
+  repeated MetricPoint metrics = 2;
+  repeated TraceSpan traces = 3;
+}

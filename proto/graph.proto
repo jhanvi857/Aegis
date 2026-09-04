@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package aegis.graph;
+
+option go_package = "github.com/aegis/go-services/shared/pb/graph;graphpb";
+
+message Node {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  string status = 4;
+  map<string, string> metadata = 5;
+  map<string, double> metrics = 6;
+}
+
+message Edge {
+  string source = 1;
+  string target = 2;
+  string relationship = 3;
+  double latency_ms = 4;
+  double error_rate = 5;
+  double throughput = 6;
+}
+
+message GraphSnapshot {
+  int64 timestamp_unix_nano = 1;
+  repeated Node nodes = 2;
+  repeated Edge edges = 3;
+}
+
+message StronglyConnectedComponent {
+  string component_id = 1;
+  repeated string node_ids = 2;
+}
+
+message GraphRepresentation {
+  GraphSnapshot snapshot = 1;
+  repeated string topological_order = 2;
+  map<string, double> centrality_scores = 3;
+  repeated StronglyConnectedComponent scc_components = 4;
+  bytes feature_tensor = 5;
+}

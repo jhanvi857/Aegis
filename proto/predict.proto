@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package aegis.predict;
+
+import "graph.proto";
+import "telemetry.proto";
+
+option go_package = "github.com/aegis/go-services/shared/pb/predict;predictpb";
+
+message FailurePrediction {
+  string node_id = 1;
+  double failure_probability = 2;
+  double confidence = 3;
+  int64 estimated_time_to_failure_sec = 4;
+}
+
+message RootCause {
+  string node_id = 1;
+  double probability = 2;
+  string explanation = 3;
+  repeated string contributing_metrics = 4;
+}
+
+message PropagationPath {
+  repeated string path_nodes = 1;
+  double propagation_risk = 2;
+}
+
+message PredictRequest {
+  aegis.graph.GraphRepresentation graph = 1;
+  aegis.telemetry.TelemetryBatch recent_telemetry = 2;
+  string target_node_id = 3;
+}
+
+message PredictResponse {
+  repeated FailurePrediction failure_predictions = 1;
+  repeated RootCause root_causes = 2;
+  repeated PropagationPath propagation_paths = 3;
+  int64 timestamp_unix_nano = 4;
+}
+
+service PredictionService {
+  rpc Predict (PredictRequest) returns (PredictResponse);
+}

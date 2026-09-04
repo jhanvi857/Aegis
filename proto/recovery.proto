@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package aegis.recovery;
+
+import "predict.proto";
+
+option go_package = "github.com/aegis/go-services/shared/pb/recovery;recoverypb";
+
+enum ActionType {
+  ACTION_TYPE_UNSPECIFIED = 0;
+  RESTART = 1;
+  SCALE_UP = 2;
+  SCALE_DOWN = 3;
+  REROUTE_TRAFFIC = 4;
+  FLUSH_CACHE = 5;
+  INCREASE_POOL = 6;
+  ISOLATE = 7;
+}
+
+message RecoveryAction {
+  string action_id = 1;
+  ActionType action_type = 2;
+  string target_node_id = 3;
+  map<string, string> parameters = 4;
+  int32 execution_order = 5;
+}
+
+message RiskAssessment {
+  string risk_level = 1;
+  double risk_score = 2;
+  bool requires_approval = 3;
+  string justification = 4;
+}
+
+message RecoveryPlan {
+  string plan_id = 1;
+  repeated RecoveryAction actions = 2;
+  RiskAssessment risk = 3;
+  int64 created_at_unix_nano = 4;
+}
+
+message RecoveryResult {
+  string plan_id = 1;
+  bool success = 2;
+  repeated string executed_action_ids = 3;
+  string details = 4;
+  int64 completed_at_unix_nano = 5;
+}
+
+service RecoveryService {
+  rpc GeneratePlan (aegis.predict.PredictResponse) returns (RecoveryPlan);
+  rpc ExecutePlan (RecoveryPlan) returns (RecoveryResult);
+}
