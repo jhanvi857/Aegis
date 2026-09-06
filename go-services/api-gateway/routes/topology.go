@@ -3,30 +3,47 @@ package routes
 import (
 	"encoding/json"
 	"net/http"
-	"os"
 )
 
 func TopologyHandler(w http.ResponseWriter, r *http.Request) {
-	topoPath := os.Getenv("TOPOLOGY_PATH")
-	if topoPath == "" {
-		topoPath = "/etc/aegis/topology.yaml"
-		if _, err := os.Stat(topoPath); os.IsNotExist(err) {
-			topoPath = "../../configs/topology.yaml"
-		}
-	}
+	State.mu.RLock()
+	defer State.mu.RUnlock()
 
-	data, err := os.ReadFile(topoPath)
-	if err != nil {
+	if len(State.RawTopologyYAML) == 0 {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(http.StatusServiceUnavailable)
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"status": "NOT_LOADED",
-			"info":   "Topology file not found",
+			"info":   "Topology configuration is not available",
 		})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/x-yaml")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data)
+	// Check if client asks for json or yaml
+	accept := r.Header.Get("Accept")
+	if accept == "application/x-yaml" || accept == "text/yaml" {
+		w.Header().Set("Content-Type", "application/x-yaml")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(State.RawTopologyYAML)
+		return
+	}
+
+	// Return parsed JSON nodes and relationships
+	nodes := make([]map[string]interface{}, 0, len(State.ServiceOrder))
+	for _, id := range State.ServiceOrder {
+		svc := State.Services[id]
+		nodes = append(nodes, map[string]interface{}{
+			"id":           svc.ID,
+			"name":         svc.Name,
+			"type":         svc.Type,
+			"status":       svc.Status,
+			"dependencies": svc.Dependencies,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"system_name": "aegis-mesh",
+		"nodes":       nodes,
+	})
 }
