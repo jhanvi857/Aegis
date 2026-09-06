@@ -1,0 +1,14 @@
+torch>=2.2.0
+torch-geometric>=2.5.0
+networkx>=3.2.1
+kafka-python>=2.0.2
+grpcio>=1.62.0
+grpcio-tools>=1.62.0
+protobuf>=4.25.3
+pyyaml>=6.0.1
+pydantic>=2.6.0
+scikit-learn>=1.4.0
+numpy>=1.26.0
+pandas>=2.2.0
+matplotlib>=3.8.0
+tqdm>=4.66.0

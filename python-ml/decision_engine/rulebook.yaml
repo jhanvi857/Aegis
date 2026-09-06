@@ -1,0 +1,40 @@
+# Decision Engine Rulebook (Phase 4)
+rules:
+  - id: "RULE_OOM_LEAK"
+    condition:
+      metric: "memory_usage_percent"
+      operator: ">="
+      threshold: 90.0
+      duration_sec: 15
+    action:
+      type: "RESTART"
+      risk: "LOW"
+      approval_required: false
+      parameters:
+        grace_period_sec: "5"
+
+  - id: "RULE_HIGH_CPU_CASCADE"
+    condition:
+      metric: "cpu_usage_percent"
+      operator: ">="
+      threshold: 85.0
+      duration_sec: 30
+    action:
+      type: "SCALE_UP"
+      risk: "MEDIUM"
+      approval_required: false
+      parameters:
+        scale_increment: "1"
+
+  - id: "RULE_HIGH_LATENCY_DEADLOCK"
+    condition:
+      metric: "latency_p99_ms"
+      operator: ">="
+      threshold: 1000.0
+      duration_sec: 20
+    action:
+      type: "REROUTE_TRAFFIC"
+      risk: "HIGH"
+      approval_required: true
+      parameters:
+        drain_timeout_sec: "10"
