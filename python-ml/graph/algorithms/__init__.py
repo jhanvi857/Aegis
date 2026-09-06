@@ -1,0 +1,3 @@
+"""
+Graph algorithms package
+"""
