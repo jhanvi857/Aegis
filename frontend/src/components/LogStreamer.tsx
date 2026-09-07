@@ -23,8 +23,8 @@ export const LogStreamer: React.FC<LogStreamerProps> = ({
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       return (
-        log.message.toLowerCase().includes(q) ||
-        log.serviceName.toLowerCase().includes(q)
+        (log.message || '').toLowerCase().includes(q) ||
+        (log.serviceName || '').toLowerCase().includes(q)
       );
     }
     return true;

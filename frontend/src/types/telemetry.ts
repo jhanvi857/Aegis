@@ -58,12 +58,7 @@ export type FaultType =
   | 'cache_down'
   | 'db_lock'
   | 'slow_query'
-  | 'thread_exhaustion'
-  | 'slow_db'
-  | 'high_cpu'
-  | 'kill_redis'
-  | 'kafka_lag'
-  | 'network_delay';
+  | 'thread_exhaustion';
 
 export interface ChaosInjection {
   id: string;
@@ -95,7 +90,7 @@ export interface RecoveryAction {
   title: string;
   description: string;
   targetServiceId: string;
-  actionType: 'scale' | 'restart' | 'flush_cache' | 'pool_expand';
+  actionType: 'scale' | 'restart' | 'flush_cache' | 'pool_expand' | 'increase_pool' | 'reroute_traffic';
   confidence: number;
   status: 'idle' | 'executing' | 'completed' | 'failed';
   executedAt?: string;

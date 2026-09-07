@@ -21,7 +21,7 @@ export const IncidentReportModal: React.FC<IncidentReportModalProps> = ({ onClos
 
   const reportMarkdown = `# INCIDENT POST-MORTEM REPORT
 Generated: ${reportDate} ${reportTime}
-Environment: Production Cluster (us-east-k8s-01)
+Environment: Production Cluster (aegis-mesh-01)
 Incident Status: ${activeFault ? 'ACTIVE INCIDENT' : 'RESOLVED / STABLE'}
 
 ## 1. INCIDENT SUMMARY
@@ -45,7 +45,7 @@ ${lastRecovery ? `- Action Taken: ${lastRecovery.actionTitle}\n- Target: ${lastR
 
 ## 5. LESSONS LEARNED & ACTION ITEMS
 - [ ] Auto-scaling threshold adjusted for ${prediction.rootCauseServiceName}.
-- [ ] Redis Sentinel failover health check interval reduced to 2 seconds.
+- [ ] Failover health check interval reduced to 2 seconds for affected tier.
 - [ ] ML failure prediction rule set updated with high accuracy weight.
 `;
 

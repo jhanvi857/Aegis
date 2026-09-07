@@ -29,7 +29,7 @@ export const TopologyNode = memo(({ data }: { data: TopologyNodeData }) => {
 
   const Icon = typeIconMap[data.type] || Server;
 
-  const stateLabel = isCritical ? 'Critical' : isDegraded ? 'Degraded' : 'Healthy';
+  const stateLabel = isCritical ? 'Critical' : isDegraded ? 'Warning' : 'Healthy';
 
   return (
     <div

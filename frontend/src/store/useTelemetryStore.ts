@@ -72,7 +72,7 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
   latestPrediction: DEFAULT_PREDICTION,
 
   isTimeTravelActive: false,
-  timeTravelIndex: 20,
+  timeTravelIndex: 0,
   historySnapshots: [],
 
   refreshIntervalMs: 1000,
@@ -81,7 +81,14 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
 
   setSelectedServiceId: (id) => set({ selectedServiceId: id }),
 
-  setTimeTravelActive: (active) => set({ isTimeTravelActive: active }),
+  setTimeTravelActive: (active) =>
+    set((state) => {
+      const maxIndex = Math.max(0, state.historySnapshots.length - 1);
+      return {
+        isTimeTravelActive: active,
+        timeTravelIndex: active ? maxIndex : state.timeTravelIndex,
+      };
+    }),
 
   setTimeTravelIndex: (index) => set({ timeTravelIndex: index }),
 
@@ -169,7 +176,7 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
         isConnectedToBackend: true,
         lastBackendSync: nowTime,
       });
-    } catch (err) {
+    } catch {
       // Backend temporarily offline; mark connection status
       set({ isConnectedToBackend: false });
     }
@@ -199,7 +206,7 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
     for (const fault of activeFaults) {
       try {
         await chaosApi.stopFault(fault.id);
-      } catch (e) {
+      } catch {
         // continue clearing
       }
     }

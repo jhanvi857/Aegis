@@ -170,7 +170,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab: _activeTab, setActive
               <div className="absolute right-0 mt-2 w-80 bg-[#151517] border border-[#26262B] rounded-lg shadow-2xl z-50 p-4 font-sans text-xs">
                 <div className="flex items-center justify-between border-b border-[#26262B] pb-2.5 mb-3">
                   <span className="font-bold text-white uppercase tracking-wide">
-                    Live Alerts ({safeAlerts.length})
+                    Live Alerts ({activeAlertsCount} Active)
                   </span>
                   <button
                     onClick={() => setShowAlertsDropdown(false)}
@@ -181,24 +181,28 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab: _activeTab, setActive
                 </div>
 
                 <div className="max-h-60 overflow-y-auto space-y-2">
-                  {safeAlerts.map((alert) => (
-                    <div
-                      key={alert.id}
-                      className={`p-2.5 rounded-lg border ${
-                        alert.severity === 'critical'
-                          ? 'bg-[#AD2831]/20 border-[#AD2831]/60 text-[#fca5a5]'
-                          : alert.severity === 'warning'
-                          ? 'bg-[#D4A017]/15 border-[#D4A017]/60 text-[#fde047]'
-                          : 'bg-[#3F8E4F]/15 border-[#3F8E4F]/60 text-[#86efac]'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center text-[10px] text-gray-400 mb-1">
-                        <span className="font-bold text-white">{alert.serviceName}</span>
-                        <span>{alert.timestamp}</span>
+                  {safeAlerts.length === 0 ? (
+                    <div className="text-gray-500 text-center py-4">No active system alerts</div>
+                  ) : (
+                    safeAlerts.map((alert) => (
+                      <div
+                        key={alert.id}
+                        className={`p-2.5 rounded-lg border ${
+                          alert.severity === 'critical'
+                            ? 'bg-[#AD2831]/20 border-[#AD2831]/60 text-[#fca5a5]'
+                            : alert.severity === 'warning'
+                            ? 'bg-[#D4A017]/15 border-[#D4A017]/60 text-[#fde047]'
+                            : 'bg-[#3F8E4F]/15 border-[#3F8E4F]/60 text-[#86efac]'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center text-[10px] text-gray-400 mb-1">
+                          <span className="font-bold text-white">{alert.serviceName}</span>
+                          <span>{alert.timestamp}</span>
+                        </div>
+                        <p>{alert.message}</p>
                       </div>
-                      <p>{alert.message}</p>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
             )}

@@ -41,15 +41,15 @@ export const Services: React.FC = () => {
         {/* Filters and Search */}
         <div className="flex items-center space-x-3">
           <div className="flex bg-[#151517] border border-[#26262B] rounded-md p-0.5 space-x-0.5 text-xs">
-            {['ALL', 'HEALTHY', 'WARNING', 'CRITICAL'].map((st) => (
+            {['ALL', 'HEALTHY', 'DEGRADED', 'CRITICAL'].map((st) => (
               <button
                 key={st}
-                onClick={() => setFilterStatus(st === 'WARNING' ? 'DEGRADED' : st)}
+                onClick={() => setFilterStatus(st)}
                 className={`px-2.5 py-1 rounded text-[10px] font-semibold tracking-[0.04em] uppercase transition-colors ${
-                  (filterStatus === st || (st === 'WARNING' && filterStatus === 'DEGRADED'))
+                  filterStatus === st
                     ? st === 'CRITICAL'
                       ? 'bg-[#AD2831]/20 text-[#f87171] border border-[#AD2831]/60'
-                      : st === 'WARNING'
+                      : st === 'DEGRADED'
                       ? 'bg-[#D4A017]/15 text-[#e5b533] border border-[#D4A017]/60'
                       : st === 'HEALTHY'
                       ? 'bg-[#3F8E4F]/15 text-[#52b767] border border-[#3F8E4F]/60'
@@ -57,7 +57,7 @@ export const Services: React.FC = () => {
                     : 'text-gray-400 hover:text-gray-200'
                 }`}
               >
-                {st}
+                {st === 'DEGRADED' ? 'WARNING' : st}
               </button>
             ))}
           </div>

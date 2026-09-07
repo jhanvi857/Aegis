@@ -228,12 +228,12 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
 
             <button
               onClick={() => {
-                executeRecoveryAction('scale', service.id, `Scaled ${service.name} Replicas +3`);
+                executeRecoveryAction('scale', service.id, `Scaled ${service.name} Replicas +2`);
               }}
               className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#840032] hover:bg-[#9b053d] text-white border border-[#840032] rounded-md text-xs font-semibold transition-colors shadow-sm"
             >
               <PlusCircle className="w-3.5 h-3.5" />
-              <span>SCALE REPLICAS (+3)</span>
+              <span>SCALE REPLICAS (+2)</span>
             </button>
           </div>
         </div>

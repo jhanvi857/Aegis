@@ -221,7 +221,10 @@ export const DependencyGraph: React.FC = () => {
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
-            onNodeClick={(_, node) => setActiveSideNodeId(node.id)}
+            onNodeClick={(_, node) => {
+              setActiveSideNodeId(node.id);
+              setSelectedServiceId(node.id);
+            }}
             fitView
             attributionPosition="bottom-right"
           >

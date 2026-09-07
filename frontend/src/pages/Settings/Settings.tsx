@@ -4,8 +4,8 @@ import { Settings as SettingsIcon, RotateCcw, CheckCircle2 } from 'lucide-react'
 
 export const Settings: React.FC = () => {
   const { resetDemoState } = useTelemetryStore();
-  const [wsUrl, setWsUrl] = useState('ws://localhost:8080/ws');
-  const [apiUrl, setApiUrl] = useState('http://localhost:8080/api');
+  const [wsUrl, setWsUrl] = useState(import.meta.env.VITE_WS_URL || 'ws://localhost:8080/ws');
+  const [apiUrl, setApiUrl] = useState(import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api');
   const [saved, setSaved] = useState(false);
 
   const handleSave = () => {
