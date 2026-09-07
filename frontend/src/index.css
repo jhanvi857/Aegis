@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --color-base: #0B0B0C;
+  --color-surface: #151517;
+  --color-surface-hover: #1E1E22;
+  --color-surface-border: #26262B;
+  --color-surface-subtle: #19191C;
+
+  --color-healthy: #3F8E4F;
+  --color-warning: #D4A017;
+  --color-critical: #AD2831;
+  --color-failure: #AD2831;
+  --color-intervention: #840032;
+  --color-execution: #89023E;
+  --color-recovered: #3F8E4F;
+
+  --color-approval-amber: #D4A017;
+  --color-approval-oxblood: #840032;
+}
+
+:root {
+  --bg-base: #0B0B0C;
+  --bg-surface: #151517;
+  --border-surface: #26262B;
+  --color-healthy: #3F8E4F;
+  --color-warning: #D4A017;
+  --color-critical: #AD2831;
+  --color-intervention: #840032;
+  --color-execution: #89023E;
+  --color-recovered: #3F8E4F;
+}
+
+@layer base {
+  body {
+    background-color: #0B0B0C;
+    color: #EDEDED;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    letter-spacing: -0.01em;
+    overflow-x: hidden;
+  }
+}
+
+/* Custom scrollbars for telemetry panels and log streamer */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0B0B0C;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #26262B;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #383840;
+}
+
+/* React Flow custom Aegis Dark / Oxblood Theme overrides */
+.react-flow__node {
+  border-radius: 10px;
+}
+
+.react-flow__controls {
+  background: #151517 !important;
+  border: 1px solid #26262B !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7) !important;
+}
+
+.react-flow__controls-button {
+  background: #151517 !important;
+  border-bottom: 1px solid #26262B !important;
+  color: #9CA3AF !important;
+}
+
+.react-flow__controls-button:hover {
+  background: #1E1E22 !important;
+  color: #FFFFFF !important;
+}
+
+.react-flow__attribution {
+  display: none;
+}
+
+/* Animations for pulsing status indicators */
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(137, 2, 62, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(137, 2, 62, 0.8);
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
+
