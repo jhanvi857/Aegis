@@ -150,11 +150,24 @@ class MultiTopologyGenerator:
         all_ttf = []
         topo_tags = []
 
+        # Stratified schedule for chaos episodes
+        combos = [(nid, ft) for nid in node_ids for ft in FAULT_TYPES]
+        quotient = chaos_count // len(combos)
+        remainder = chaos_count % len(combos)
+        scheduled_combos = combos * quotient + combos[:remainder]
+        rng = random.Random(seed)
+        rng.shuffle(scheduled_combos)
+        lead_times = [15.0, 20.0, 25.0, 30.0]
+
         for i in range(episodes_per_topo):
             is_failure = i >= nominal_count
-            fault_node = random.choice(node_ids) if is_failure else None
-            fault_type = random.choice(FAULT_TYPES) if is_failure else None
-            lead_sec = random.choice([15.0, 20.0, 25.0, 30.0]) if is_failure else 600.0
+            if is_failure:
+                fault_node, fault_type = scheduled_combos[i - nominal_count]
+                lead_sec = lead_times[(i - nominal_count) % len(lead_times)]
+            else:
+                fault_node = None
+                fault_type = None
+                lead_sec = 600.0
 
             # Reachability for propagation
             latest_rep = service.get_latest_representation()

@@ -255,11 +255,19 @@ class DatasetGenerator:
             all_ttf.append(ep["time_to_failure"])
             metadata.append({"id": f"ep-nom-{i}", "type": "nominal", "fault_node": "none"})
 
-        # 2. Chaos episodes across all fault types and nodes (strict pre-injection)
-        for i in range(chaos_count):
-            target_node = random.choice(self.node_ids)
-            fault_type = random.choice(self.FAULT_TYPES)
-            lead_sec = random.choice([15.0, 20.0, 25.0, 30.0])
+        # 2. Chaos episodes with deterministic stratification across (node, fault_type)
+        combos = [(nid, ft) for nid in self.node_ids for ft in self.FAULT_TYPES]
+        quotient = chaos_count // len(combos)
+        remainder = chaos_count % len(combos)
+        # Deterministic allocation ensuring uniform coverage
+        scheduled_combos = combos * quotient + combos[:remainder]
+        rng = random.Random(seed)
+        rng.shuffle(scheduled_combos)
+
+        lead_times = [15.0, 20.0, 25.0, 30.0]
+
+        for i, (target_node, fault_type) in enumerate(scheduled_combos):
+            lead_sec = lead_times[i % len(lead_times)]
 
             ep = self.generate_episode(
                 fault_node=target_node,
@@ -292,15 +300,24 @@ class DatasetGenerator:
             "node_ids": self.node_ids,
         }
 
-        # Shuffle indices
-        indices = list(range(num_episodes))
-        random.shuffle(indices)
+        # Stratified train/val/test splits preserving class balance
+        from collections import defaultdict
+        type_to_indices = defaultdict(list)
+        for idx, meta in enumerate(metadata):
+            type_to_indices[meta["type"]].append(idx)
 
-        n_train = int(num_episodes * train_ratio)
-        n_val = int(num_episodes * val_ratio)
-        train_indices = indices[:n_train]
-        val_indices = indices[n_train : n_train + n_val]
-        test_indices = indices[n_train + n_val :]
+        train_indices, val_indices, test_indices = [], [], []
+        for ftype, idx_list in type_to_indices.items():
+            rng.shuffle(idx_list)
+            n_t = int(len(idx_list) * train_ratio)
+            n_v = int(len(idx_list) * val_ratio)
+            train_indices.extend(idx_list[:n_t])
+            val_indices.extend(idx_list[n_t : n_t + n_v])
+            test_indices.extend(idx_list[n_t + n_v :])
+
+        rng.shuffle(train_indices)
+        rng.shuffle(val_indices)
+        rng.shuffle(test_indices)
 
         # Save splits
         with open(os.path.join(self.splits_dir, "train_idx.json"), "w") as f:
@@ -319,7 +336,7 @@ class DatasetGenerator:
             json.dump(metadata[:50], f, indent=2)
 
         logger.info(
-            f"Dataset generated successfully: {num_episodes} episodes "
+            f"Stratified dataset generated successfully: {num_episodes} episodes "
             f"(Train: {len(train_indices)}, Val: {len(val_indices)}, Test: {len(test_indices)}) "
             f"saved to {processed_path}"
         )
