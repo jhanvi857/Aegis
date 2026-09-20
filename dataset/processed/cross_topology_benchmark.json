@@ -6,10 +6,10 @@
   "models": {
     "tgnn_unseen_generalization": {
       "model": "TGNN (Zero-Shot on Unseen Topology)",
-      "failure_f1": 0.831353919239905,
+      "failure_f1": 0.8333333333333334,
       "root_cause_top1_acc": 0.3,
-      "root_cause_top3_acc": 0.488,
-      "propagation_iou": 0.488
+      "root_cause_top3_acc": 0.52,
+      "propagation_iou": 0.5
     },
     "heuristic_threshold_baseline": {
       "model": "Heuristic Threshold Rule (Baseline)",

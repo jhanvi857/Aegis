@@ -15,32 +15,32 @@ In academic evaluation and production machine learning, a **100% score across al
 ├───────────────────────────────────────────────────────────────────────────────────────────┤
 │ The strongest evidence that Aegis is domain-agnostic is its zero-shot transfer onto an   │
 │ UNSEEN 7-node cross-coupled diamond graph (Topology D, never seen during training):       │
-│ • TGNN Failure Prediction F1:     83.1% (High inductive zero-shot generalization)         │
-│ • TGNN Blast Radius Prop IoU:     48.8% (All non-graph baselines score 0.0% blind)        │
-│ • TGNN Root Cause Top-1 Accuracy: 30.0% (Top-3: 48.8%, vs 12.5% random chance 1/8)        │
+│ • TGNN Failure Prediction F1:     83.3% (High inductive zero-shot generalization)         │
+│ • TGNN Blast Radius Prop IoU:     50.0% (All non-graph baselines score 0.0% blind)        │
+│ • TGNN Root Cause Top-1 Accuracy: 30.0% (Top-3: 52.0%, vs 14.3% random chance 1/7)        │
 ├───────────────────────────────────────────────────────────────────────────────────────────┤
 │                                 POST-FIX AUDIT SUMMARY                                    │
 ├───────────────────────────────────────────────────────────────────────────────────────────┤
-│ PRE-FIX ISSUES IDENTIFIED:                                                                │
-│ 1. Feature Proxy Leakage: Feature #8 in `representation.py` encoded `status`             │
-│    (0=healthy, 0.5=degraded, 1.0=critical) from the rulebook preprocessor.               │
-│ 2. Window Overlap: Input sequences (T=10) contained timesteps after injection (t >= inj), │
-│    turning predictive forecasting into active disaster classification.                   │
+│ PRE-FIX ISSUES IDENTIFIED & REMEDIATED:                                                   │
+│ 1. Plain GCN Mislabeled as GATv2: Fixed by implementing authentic Brody et al. (2021)    │
+│    dynamic attention with learned W_src, W_dst, vector a, masked softmax, and extractable  │
+│    attention weights (`model.get_attention_weights()`). 56,039 trainable parameters.      │
+│ 2. One-line Library Wrappers: Replaced with first-principles pure Python implementations  │
+│    of Tarjan's SCC (dfs_index, lowlink, stack), Kahn's Topo Sort (in-degree queue), and   │
+│    Brandes' Centrality (BFS path counting + reverse accumulation stack).                  │
+│ 3. Fabricated Recovery Planner Telemetry: Stripped hardcoded dummy metrics (95.0, 92.0);  │
+│    recovery planner now strictly evaluates observed telemetry or honest defaults.         │
+│ 4. Deterministic Stratified Sampling: Implemented balanced Cartesian scheduling across     │
+│    all (node, fault_type) tuples and stratified splits.                                   │
+│ 5. Loss Weight & Class Imbalance Alignment: Unified LOSS_WEIGHTS across train and val,    │
+│    added positive class weighting (pos_weight=4.0) to address 1-2 positive nodes per graph.│
 │                                                                                           │
-│ ARCHITECTURAL FIXES IMPLEMENTED & EXECUTED:                                               │
-│ 1. Stripped the discrete rule-based `status` proxy entirely; replaced with continuous     │
-│    normalized `queue_depth` telemetry (Feature #8).                                      │
-│ 2. Enforced strict pre-injection observation windows (t < t_inj): Telemetry is sampled   │
-│    strictly BEFORE threshold breach; labels evaluate a 15–30s forward-looking horizon.   │
-│ 3. Introduced realistic precursor drift and stochastic variance across nominal traffic.   │
-│                                                                                           │
-│ MEASURED BENCHMARK (dataset/processed/benchmark_results.json):                            │
-│ • TGNN (Ours, Canonical Seed 42): 100.0% Fail F1 | 100.0% RC Top-1 | 70.5% Prop IoU       │
-│   ↳ Multi-Seed (5 Fixed Seeds):    99.6% ± 0.9%  |  99.3% ± 1.3%  | 75.1% ± 10.3% Prop IoU│
-│ • LSTM (Temporal Only):            81.0% Fail F1 |  30.0% RC Top-1 |  0.0% Prop IoU       │
-│ • Isolation Forest (Tabular):      53.2% Fail F1 |  17.8% RC Top-1 |  0.0% Prop IoU       │
-│ • Heuristic Threshold (Baseline):  43.2% Fail F1 |  44.4% RC Top-1 |  0.0% Prop IoU       │
-│ • Majority Class (Baseline):       86.8% Fail F1 |  23.3% RC Top-1 |  0.0% Prop IoU       │
+│ MEASURED BENCHMARK (dataset/processed/benchmark_results.json, 98 Test Episodes):          │
+│ • TGNN (GATv2 + GRU, Ours):        99.3% Fail F1 | 98.0% RC Top-1 | 47.3% Prop IoU       │
+│ • LSTM (Temporal Only):            83.3% Fail F1 | 60.2% RC Top-1 |  0.0% Prop IoU       │
+│ • Isolation Forest (Tabular):      37.2% Fail F1 | 16.3% RC Top-1 |  0.0% Prop IoU       │
+│ • Heuristic Threshold (Baseline):  25.0% Fail F1 | 38.8% RC Top-1 |  0.0% Prop IoU       │
+│ • Majority Class (Baseline):       83.3% Fail F1 | 28.6% RC Top-1 |  0.0% Prop IoU       │
 └───────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 

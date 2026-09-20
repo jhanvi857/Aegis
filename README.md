@@ -20,27 +20,28 @@ Aegis observes a live microservice mesh, predicts impending failures **15–30 s
 ## Key Highlights & Innovations
 
 1. **Strictly Industry-Agnostic:** Operates entirely on an abstract dependency graph (`topology.yaml`). Swap the topology configuration to point Aegis at any arbitrary microservice mesh with zero code changes.
-2. **Zero-Shot Inductive Topology Generalization:** Trained across 4-, 5-, and 6-node graphs; evaluates zero-shot on an **unseen 7-node diamond graph** (Topology D) with **83.1% Failure F1** and **48.8% Blast-Radius IoU** (non-graph baselines score 0.0%).
+2. **Zero-Shot Inductive Topology Generalization:** Trained across 4-, 5-, and 6-node graphs; evaluates zero-shot on an **unseen 7-node diamond graph** (Topology D) with **83.3% Failure F1** and **50.0% Blast-Radius IoU** (non-graph baselines score 0.0%).
 3. **Pre-Injection Windowing ($t < t_{\text{inj}}$):** Telemetry is sampled strictly before catastrophic failure threshold breach. The model learns subtle precursor drift rather than performing trivial post-crash disaster detection.
-4. **Sequential Graph Preprocessing:** Tarjan's Strongly Connected Components (SCC) condensation and Brandes' Betweenness Centrality complete *before* the TGNN runs, transforming cyclic service dependencies into a strict DAG.
-5. **Multi-Task Spatio-Temporal GNN:** Dense batched GATv2 layers (spatial message passing) coupled with GRU recurrence (temporal slope tracking) predicting failure probability, root cause attribution, propagation blast radius, and time-to-failure (TTF).
-6. **Closed-Loop Ordered Recovery:** Emits typed `RecoveryPlan` messages over gRPC. Actions are executed by the Go recovery engine in strict topological dependency order with safety approval gating.
+4. **First-Principles Graph Preprocessing:** Authentic pure-Python implementations of Tarjan's Strongly Connected Components (SCC) condensation, Kahn's Topological Sort, and Brandes' Betweenness Centrality complete *before* the TGNN runs, transforming cyclic service dependencies into a strict DAG (formally verified against NetworkX).
+5. **Multi-Task Dense GATv2 + GRU:** Brody et al. (2021) dynamic graph attention ($e_{ij} = \mathbf{a}^T \text{LeakyReLU}(W_{src} h_i + W_{dst} h_j)$) with learned attention weight inspection (`model.get_attention_weights()`) and GRU temporal recurrence within a conservative 56K parameter budget.
+6. **Dual Data Methodology:** Uses a stratified parametric precursor simulator for reproducible multi-topology pretraining, paired with `LiveKafkaEpisodeCollector` to validate against physical Go chaos-engine cluster telemetry.
+7. **Closed-Loop Ordered Recovery:** Emits typed `RecoveryPlan` messages over gRPC. Actions are executed by the Go recovery engine in strict topological dependency order with safety approval gating.
 
 ---
 
 ## Empirical Benchmark Results
 
-Evaluated on 90 held-out test episodes under strictly pre-injection observation windows ($t < t_{\text{inj}}$) with zero discrete status shortcut proxies:
+Evaluated on 98 stratified test episodes under strictly pre-injection observation windows ($t < t_{\text{inj}}$) with zero discrete status shortcut proxies:
 
 ### 1. Standard Benchmark (5 Model Tiers)
 
 | Model Tier | Model Architecture | Failure F1 | Root Cause Top-1 | Root Cause Top-3 | Propagation Blast Radius IoU |
 |---|---|:---:|:---:|:---:|:---:|
-| **Model 3 (Ours)** | **TGNN (Canonical Seed 42)** | **100.0%** | **100.0%** | **100.0%** | **70.5%** *(5-Seed Mean: 75.1% ± 10.3%)* |
-| **Model 2** | **LSTM (Temporal Only Sequence)** | 81.0% | 30.0% | 68.9% | 0.0% *(no graph awareness)* |
-| **Model 1** | **Isolation Forest (Tabular ML)** | 53.2% | 17.8% | 23.1% | 0.0% *(no graph awareness)* |
-| **Baseline A** | **Heuristic Threshold Rule (Static Alerting)** | 43.2% | 44.4% | 44.4% | 0.0% *(no graph awareness)* |
-| **Baseline B** | **Majority Class Baseline (Naive Mode)** | 86.8% | 23.3% | 23.3% | 0.0% *(no graph awareness)* |
+| **Model 3 (Ours)** | **TGNN (GATv2 + GRU, Canonical Seed 42)** | **99.3%** | **98.0%** | **100.0%** | **47.3%** |
+| **Model 2** | **LSTM (Temporal Only Sequence)** | 83.3% | 60.2% | 91.8% | 0.0% *(no graph awareness)* |
+| **Model 1** | **Isolation Forest (Tabular ML)** | 37.2% | 16.3% | 21.2% | 0.0% *(no graph awareness)* |
+| **Baseline A** | **Heuristic Threshold Rule (Static Alerting)** | 25.0% | 38.8% | 38.8% | 0.0% *(no graph awareness)* |
+| **Baseline B** | **Majority Class Baseline (Naive Mode)** | 83.3% | 28.6% | 28.6% | 0.0% *(no graph awareness)* |
 
 #### Multi-Seed Reproducibility Verification (5 Fixed Seeds: `[42, 101, 202, 303, 404]`):
 - **Failure F1:** $99.6\% \pm 0.9\%$ (Range: $97.8\% - 100.0\%$)
