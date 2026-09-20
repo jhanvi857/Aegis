@@ -86,51 +86,228 @@ Aegis includes publication-grade forensic audits documented in [`docs/LEAKAGE_AU
 
 ---
 
-## End-to-End System Architecture
+## System Architecture & Dataflow Diagrams
 
+### 1. End-to-End Multi-Tier Runtime Architecture
 ```
-[ Playground Microservices ] ──(Traffic & Heartbeats)──> [ Telemetry Agent (Go) ]
-           │                                                       │
-   [ Chaos Engine (Go) ]                                   [ Kafka Topic ]
-   (Injects 10 Fault Types)                            (aegis.telemetry via Protobuf)
-           │                                                       │
-           ▼                                                       ▼
-[ Injected Disturbance ]                             [ Python Ingestion Layer ]
-(Latency, CPU, Leaks, etc.)                        (Kafka Consumer deserializes pb)
-                                                                   │
-                                                                   ▼
-                                                     [ Phase 2: Graph Preprocessing ]
-                                                     • topology.yaml structure
-                                                     • BFS/DFS (reachability)
-                                                     • Betweenness & Degree Centrality
-                                                     • Tarjan's SCC Condensation
-                                                                   │
-                                                                   ▼
-                                                     [ Phase 3: Spatio-Temporal TGNN ]
-                                                     • Input: Graph Rep + Metric History
-                                                     • GATv2 (spatial) + GRU (temporal)
-                                                     • Heads: Fail F1, RCA, Blast Radius
-                                                                   │
-                                                                   ▼
-                                                     [ Phase 4: Decision Engine ]
-                                                     • Risk Assessment (Low/Medium/High)
-                                                     • Rulebook Action Mapping
-                                                                   │
-                                                                   ▼
-                                                     [ Recovery Planner (Python) ]
-                                                     • Topo-sort on SCC-condensed DAG
-                                                     • Emits ordered RecoveryPlan (gRPC)
-                                                                   │
-                                                                   ▼
-                                                     [ Recovery Engine (Go) ]
-                                                     • Approval Gate (blocks high risk)
-                                                     • Orchestrator Adapter (Docker/K8s)
-                                                     • Executes Actions in DAG Order
-                                                                   │
-                                                                   ▼
-                                                     [ Playground Self-Heals ]
-                                                     • Post-recovery telemetry verifies SLA
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                 AEGIS LAYERED ARCHITECTURE                                       │
+├──────────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                                  │
+│  [ TIER 1: DISTRIBUTED SERVICES RUNTIME (Go) ]                                                   │
+│   ┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐                │
+│   │   gateway    │ ──> │    node-a    │ ──> │    node-b    │ ──> │    node-d    │  (Playground)  │
+│   └──────────────┘     └──────┬───────┘     └──────────────┘     └──────────────┘                │
+│                               └───> ┌──────────────┐                                            │
+│                                     │    node-c    │                                            │
+│                                     └──────────────┘                                            │
+│          ▲                                                                                       │
+│          │ Heartbeats & Metrics Polling                                                          │
+│   ┌──────────────┐         [ CHAOS ENGINE (Go) ]                                                 │
+│   │  Telemetry   │         ┌────────────────────────────────────────────────────────┐            │
+│   │  Agent (Go)  │ <────── │ 10 Injectors: CPU, Latency, Leak, PacketLoss, DB Lock │            │
+│   └──────┬───────┘         └────────────────────────────────────────────────────────┘            │
+│          │ Protobuf Serialized Snapshots                                                         │
+│          ▼                                                                                       │
+│  [ TIER 2: STREAMING TELEMETRY (Kafka) ]                                                         │
+│   ┌─────────────────────────────────────────────────────────────────────────┐                    │
+│   │ Kafka Topic: aegis.telemetry (MetricSnapshot, ServiceLog, TraceSpan)    │                    │
+│   └────────────────────────────────────┬────────────────────────────────────┘                    │
+│                                        │ Consumer Deserialization                                │
+│                                        ▼                                                         │
+│  [ TIER 3: GRAPH PREPROCESSING & CONDENSATION (Python) ]                                         │
+│   ┌────────────────────────┐   ┌────────────────────────┐   ┌────────────────────────┐           │
+│   │   System Graph Build   │   │ Classical Centrality   │   │ Tarjan's SCC Algorithm │           │
+│   │   (topology.yaml + A)  │ ─>│ Degree & Betweenness   │ ─>│ Cycle Collapse to DAG  │           │
+│   └────────────────────────┘   └────────────────────────┘   └───────────┬────────────┘           │
+│                                                                         │                        │
+│                                                                         ▼                        │
+│  [ TIER 4: DEEP GRAPH INTELLIGENCE (PyTorch TGNN) ]                                              │
+│   ┌─────────────────────────────────────────────────────────────────────────┐                    │
+│   │ Input Tensor: [Batch, T=10, Nodes=N, Features=8] + Adjacency + Masks    │                    │
+│   │ 2x Dense GATv2 Layers (Spatial) + GRU Recurrence (Temporal Slopes)     │                    │
+│   ├───────────────────┬───────────────────┬───────────────────┬─────────────┴────────┐           │
+│   │ Failure Risk Head │  Root Cause Head  │ Propagation Head  │ Time-to-Failure Head │           │
+│   │   P(fail) in 30s  │   Softmax(N+1)    │ Blast Radius Mask │      Huber Loss      │           │
+│   └─────────┬─────────┴─────────┬─────────┴─────────┬─────────┴──────────────────────┘           │
+│             └───────────────────┼───────────────────┘                                            │
+│                                 ▼                                                                │
+│  [ TIER 5: DECISION & RECOVERY PLANNING (Python) ]                                               │
+│   ┌─────────────────────────────────────────────────────────────────────────┐                    │
+│   │ Risk Assessment Scoring: Score = P(fail) * (1 - TTF/600) * Centrality   │                    │
+│   │ Rulebook Policy: Map fault type -> [RESTART, SCALE, REROUTE, POOL, FLUSH│                    │
+│   │ Dependency Ordering: Topological Sort on SCC-Condensed Subgraph         │                    │
+│   └────────────────────────────────────┬────────────────────────────────────┘                    │
+│                                        │ recovery.proto over gRPC (Port 50051)                   │
+│                                        ▼                                                         │
+│  [ TIER 6: RECOVERY EXECUTION (Go) ]                                                             │
+│   ┌────────────────────────────────────┬────────────────────────────────────┐                    │
+│   │ Approval Gate (Hold if Risk==HIGH) │ Orchestrator Adapter (Docker/K8s)  │                    │
+│   └────────────────────────────────────┴────────────────┬───────────────────┘                    │
+│                                                         │                                        │
+│                                                         ▼                                        │
+│  [ TIER 7: WEB CONTROL PLANE (React + Vite) ] <─── [ Self-Healed Playground ]                    │
+│   Real-time topology, live alerts, and approval buttons                                          │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+### 2. Tarjan's SCC Condensation & Topological Ordering Principle
+```
+RAW SERVICE GRAPH WITH CYCLIC RETRY LOOP:
+       ┌───────────┐
+       │  gateway  │
+       └─────┬─────┘
+             │
+             ▼
+       ┌───────────┐
+       │  node-a   │
+       └─────┬─────┘
+             │
+             ▼
+       ┌───────────┐   Mutual Retry Loop   ┌───────────┐
+       │  node-b   │ <═══════════════════> │  node-c   │   <-- CYCLIC DEADLOCK FOR NAIVE TOPO SORT
+       └─────┬─────┘                       └───────────┘
+             │
+             ▼
+       ┌───────────┐
+       │  node-d   │
+       └───────────┘
+
+STEP 1: TARJAN'S SCC CONDENSATION ALGORITHM
+Collapse strongly connected components {node-b, node-c} into a single unified SuperNode [SC_1]:
+
+       ┌───────────┐
+       │  gateway  │
+       └─────┬─────┘
+             │
+             ▼
+       ┌───────────┐
+       │  node-a   │
+       └─────┬─────┘
+             │
+             ▼
+       ┌───────────┐
+       │   SC_1    │  <-- SuperNode {node-b, node-c}
+       └─────┬─────┘
+             │
+             ▼
+       ┌───────────┐
+       │  node-d   │
+       └───────────┘
+       (GUARANTEED DIRECTED ACYCLIC GRAPH - ZERO CYCLES)
+
+STEP 2: TOPOLOGICAL SORT & DEPENDENCY-SAFE EXECUTION ORDER
+Sequence recovery actions from deepest causal dependency upward to callers:
+  1. Action 1: Repair node-d (Database / leaf sink)
+  2. Action 2: Repair component SC_1 (Resolve shared contention in node-b / node-c)
+  3. Action 3: Clear upstream backpressure at node-a
+  4. Action 4: Unblock ingress gateway
+```
+
+### 3. Spatio-Temporal Neural Tensor Architecture (TGNN)
+```
+Input Telemetry Tensor: [Batch, Time=10, Nodes=N, Features=8]
+Adjacency Tensor:       [Batch, Nodes=N, Nodes=N]
+Dynamic Node Mask:      [Batch, Nodes=N]  (Masks dummy padded nodes to zero)
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────────────┐
+│ SPATIAL BLOCK: 2-Layer Dense Batched GATv2                   │
+│                                                              │
+│  Layer 1: H1 = LeakyReLU( a^T [W·Hi || W·Hj] ) · (A ⊙ M M^T) │
+│           Skip Residual Connection + LayerNorm(64)           │
+│                                                              │
+│  Layer 2: H2 = GraphConv(H1, A_norm) + LayerNorm(64)         │
+│           Extracts directed structural message passing       │
+└──────────────────────────────┬───────────────────────────────┘
+                               │ Spatial Embeddings: [B, T, N, 64]
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│ TEMPORAL BLOCK: Recurrent Gated Unit (GRU)                   │
+│                                                              │
+│  Unrolls over T=10 timesteps per node:                       │
+│  h_t = GRU( h_(t-1), x_t )                                   │
+│  Detects subtle precursor drift slopes (0.10 -> 0.60 ramp)  │
+│  Ignores nominal stochastic Gaussian jitter                  │
+└──────────────────────────────┬───────────────────────────────┘
+                               │ Node Representation: [B, N, 64]
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│ POOLING & AGGREGATION BLOCK                                  │
+│  Spatial Mean Pool + Max Pool across active masked nodes:    │
+│  Graph Context = [ MeanPool(H_N) || MaxPool(H_N) ] in R^128  │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+         ┌─────────────────────┼─────────────────────┬─────────────────────┐
+         ▼                     ▼                     ▼                     ▼
+┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐
+│ CLUSTER FAILURE │   │   ROOT CAUSE    │   │   PROPAGATION   │   │ TIME-TO-FAILURE │
+│      HEAD       │   │      HEAD       │   │   BLAST RADIUS  │   │      HEAD       │
+├─────────────────┤   ├─────────────────┤   ├─────────────────┤   ├─────────────────┤
+│ MLP(128 -> 1)   │   │ MLP(64 -> N+1)  │   │ MLP(64 -> 1)    │   │ MLP(128 -> 1)   │
+│ Sigmoid         │   │ Softmax         │   │ Sigmoid / Node  │   │ Huber Regression│
+│ P(fail in 30s)  │   │ Faulty Node ID  │   │ Cascade Subgraph│   │ Seconds to SLA  │
+└─────────────────┘   └─────────────────┘   └─────────────────┘   └─────────────────┘
+```
+
+### 4. Closed-Loop Self-Healing Control Cycle
+```
+         ┌────────────────────────────────────────────────────────────────┐
+         │                                                                │
+         ▼                                                                │
+    ┌──────────┐      Continuous Metric Streaming (CPU, Lat, Err, Queue)  │
+    │ OBSERVE  │ ─────────────────────────────────────────────────────────┤
+    └────┬─────┘                                                          │
+         │                                                                │
+         ▼                                                                │
+    ┌──────────┐      Precursor drift detection 15-30s in advance         │
+    │ FORECAST │ ─────────────────────────────────────────────────────────┤
+    └────┬─────┘      TGNN: P(failure) >= 0.85, Time-to-Failure estimate  │
+         │                                                                │
+         ▼                                                                │
+    ┌──────────┐      Causal localization & blast-radius projection       │
+    │ EXPLAIN  │ ─────────────────────────────────────────────────────────┤
+    └────┬─────┘      Identifies root cause node & downstream propagation │
+         │                                                                │
+         ▼                                                                │
+    ┌──────────┐      Tarjan's SCC condensation + Topological Sort        │
+    │   PLAN   │ ─────────────────────────────────────────────────────────┤
+    └────┬─────┘      Builds ordered, non-deadlocking RecoveryPlan        │
+         │                                                                │
+         ▼                                                                │
+    ┌──────────┐      Dynamic Risk Score Assessment                       │
+    │   GATE   │ ─────────────────────────────────────────────────────────┤
+    └────┬─────┘      Low/Med: Auto-approved | High: Human Review in UI   │
+         │                                                                │
+         ▼                                                                │
+    ┌──────────┐      Docker / Kubernetes Orchestrator Adapters           │
+    │ EXECUTE  │ ─────────────────────────────────────────────────────────┤
+    └────┬─────┘      Rolling restart, auto-scaling, pool expansion       │
+         │                                                                │
+         ▼                                                                │
+    ┌──────────┐      Telemetry re-check over subsequent 30 seconds       │
+    │  VERIFY  │ ─────────────────────────────────────────────────────────┘
+    └──────────┘      Cluster returns to nominal SLA baseline -> Incident Resolved
+```
+
+---
+
+## Architectural Decision Records (ADRs)
+
+The core architectural decisions governing Aegis are documented as formal ADRs:
+
+| Decision ID | Context & Challenge | Decision Taken | Rationale & Trade-offs |
+|---|---|---|---|
+| **ADR-001** | High concurrency microservice mesh vs. deep graph ML requirements | **Split Language Architecture:** Go for distributed runtime & agents; Python for graph ML | Go delivers lightweight concurrency and minimal memory overhead for telemetry collection; Python provides native PyTorch Geometric and NetworkX ecosystems. |
+| **ADR-002** | Telemetry ingestion throughput vs. control-plane RPC guarantees | **Dual Communication Contract:** Apache Kafka for telemetry; gRPC for RPCs | Kafka decouples high-frequency telemetry producers from ML consumers; gRPC provides typed, microsecond request-response calls for recovery dispatch. |
+| **ADR-003** | Avoid domain-specific lock-in (e.g. e-commerce or streaming assumptions) | **Domain-Agnostic Schema (`topology.yaml`):** Model operates purely on graph primitives | The entire pipeline works on abstract `Node` and `Edge` dependencies. Aegis points at any microservice architecture with zero codebase changes. |
+| **ADR-004** | Should classical graph algorithms run in parallel or before the TGNN? | **Sequential Preprocessing:** Graph algorithms complete strictly *before* TGNN | Betweenness centrality, in/out degrees, and SCC groupings are fed directly as structural feature vectors into the GNN, grounding the neural network in topological graph theory. |
+| **ADR-005** | Microservice graphs contain retry cycles ($b \leftrightarrow c$) causing topo-sort crashes | **Tarjan's SCC Condensation:** Collapse cycles into super-nodes before topological sort | Raw topological sort assumes a DAG and crashes on cycles (`CycleError`). Condensing SCCs guarantees a DAG, preventing deadlocks during multi-stage recovery. |
+| **ADR-006** | Post-crash observation windows introduce artificial target leakage | **Pre-Injection Observation ($t < t_{\text{inj}}$):** Strict 15–30s forward lookahead | Forces the model to detect subtle precursor degradation ramps ($0.10 \to 0.60$ severity) rather than trivial post-crash outage categorization. |
+| **ADR-007** | Conventional GNNs bake fixed node counts into layer dimensions | **Dynamic 2D Node Masking:** $A_{\text{norm}} \odot (MM^T)$ with degree normalization | Enables inductive zero-shot transfer across unseen topologies with variable node counts (4 to 7+ nodes) without retraining. |
+| **ADR-008** | Autonomous self-healing risks catastrophic outages on false positives | **Two-Tier Risk Approval Gating:** Dynamic risk score gates destructive actions | Low/Medium risk mitigations execute automatically; High-risk operations (e.g. ingress restarts) pause in the React dashboard pending human operator approval. |
+
+---
 
 ### Chaos Fault Injectors vs. Autonomous Recovery Actions
 
