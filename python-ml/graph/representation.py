@@ -148,7 +148,6 @@ class GraphRepresentationBuilder:
         Used directly by TGNN input layers in Phase 3.
         """
         features: Dict[str, List[float]] = {}
-        status_encoding = {"healthy": 0.0, "degraded": 0.5, "critical": 1.0}
 
         for node_id in graph.nodes():
             data = graph.nodes[node_id]
@@ -164,7 +163,8 @@ class GraphRepresentationBuilder:
             out_deg = c_metrics.get("out_degree", 0.0)
             crit = centrality_scores.get(node_id, 0.0)
 
-            status = status_encoding.get(data.get("status", "healthy"), 0.0)
+            # Continuous queue depth telemetry (normalized), replacing discrete rule-based status proxy
+            queue_depth = min(1.0, float(metrics.get("queue_depth", 1.0)) / 50.0)
 
             feature_vec = [
                 round(cpu, 4),
@@ -174,7 +174,7 @@ class GraphRepresentationBuilder:
                 round(in_deg, 4),
                 round(out_deg, 4),
                 round(crit, 4),
-                round(status, 2),
+                round(queue_depth, 4),
             ]
             features[node_id] = feature_vec
 

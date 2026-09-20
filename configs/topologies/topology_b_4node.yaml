@@ -1,0 +1,55 @@
+version: "1.0"
+system_name: "aegis-topology-b"
+description: "4-node linear sequential processing pipeline"
+
+nodes:
+  - id: "ingress"
+    name: "Pipeline Ingress"
+    type: "gateway"
+    host: "ingress"
+    port: 8080
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "processor"
+    metadata:
+      role: "ingress"
+      tier: "edge"
+
+  - id: "processor"
+    name: "Stream Processor"
+    type: "service"
+    host: "processor"
+    port: 8081
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "transformer"
+    metadata:
+      role: "processor"
+      tier: "application"
+
+  - id: "transformer"
+    name: "Data Transformer"
+    type: "service"
+    host: "transformer"
+    port: 8082
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "sink"
+    metadata:
+      role: "transformer"
+      tier: "transform"
+
+  - id: "sink"
+    name: "Persistent Sink"
+    type: "service"
+    host: "sink"
+    port: 8083
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies: []
+    metadata:
+      role: "storage"
+      tier: "persistence"

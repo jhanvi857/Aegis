@@ -1,0 +1,82 @@
+version: "1.0"
+system_name: "aegis-topology-c"
+description: "6-node tiered dual-path microservice graph"
+
+nodes:
+  - id: "edge-gw"
+    name: "Edge Gateway"
+    type: "gateway"
+    host: "edge-gw"
+    port: 8080
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "auth-svc"
+      - "api-svc"
+    metadata:
+      role: "ingress"
+      tier: "edge"
+
+  - id: "auth-svc"
+    name: "Auth Service"
+    type: "service"
+    host: "auth-svc"
+    port: 8081
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "session-db"
+    metadata:
+      role: "security"
+      tier: "auth"
+
+  - id: "api-svc"
+    name: "API Orchestrator"
+    type: "service"
+    host: "api-svc"
+    port: 8082
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "session-db"
+      - "worker-svc"
+    metadata:
+      role: "orchestrator"
+      tier: "application"
+
+  - id: "session-db"
+    name: "Session Cache Store"
+    type: "database"
+    host: "session-db"
+    port: 8083
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies: []
+    metadata:
+      role: "cache"
+      tier: "in-memory"
+
+  - id: "worker-svc"
+    name: "Background Worker"
+    type: "service"
+    host: "worker-svc"
+    port: 8084
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "data-warehouse"
+    metadata:
+      role: "async-worker"
+      tier: "compute"
+
+  - id: "data-warehouse"
+    name: "Analytics Warehouse"
+    type: "database"
+    host: "data-warehouse"
+    port: 8085
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies: []
+    metadata:
+      role: "olap-sink"
+      tier: "persistence"

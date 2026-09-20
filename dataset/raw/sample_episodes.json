@@ -1,0 +1,252 @@
+[
+  {
+    "id": "ep-nom-0",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-1",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-2",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-3",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-4",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-5",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-6",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-7",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-8",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-9",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-10",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-11",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-12",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-13",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-14",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-15",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-16",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-17",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-18",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-19",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-20",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-21",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-22",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-23",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-24",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-25",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-26",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-27",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-28",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-29",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-30",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-31",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-32",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-33",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-34",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-35",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-36",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-37",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-38",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-39",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-40",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-41",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-42",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-43",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-44",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-45",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-46",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-47",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-48",
+    "type": "nominal",
+    "fault_node": "none"
+  },
+  {
+    "id": "ep-nom-49",
+    "type": "nominal",
+    "fault_node": "none"
+  }
+]

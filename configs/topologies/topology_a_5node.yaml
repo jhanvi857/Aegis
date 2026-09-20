@@ -1,0 +1,68 @@
+version: "1.0"
+system_name: "aegis-topology-a"
+description: "Reference 5-node fan-out microservice mesh"
+
+nodes:
+  - id: "gateway"
+    name: "Edge Ingress Gateway"
+    type: "gateway"
+    host: "gateway"
+    port: 8080
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "node-a"
+    metadata:
+      role: "ingress"
+      tier: "edge"
+
+  - id: "node-a"
+    name: "Generic Node A"
+    type: "service"
+    host: "node-a"
+    port: 8081
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "node-b"
+      - "node-c"
+    metadata:
+      role: "coordinator"
+      tier: "application"
+
+  - id: "node-b"
+    name: "Generic Node B"
+    type: "service"
+    host: "node-b"
+    port: 8082
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies: []
+    metadata:
+      role: "leaf-worker"
+      tier: "compute"
+
+  - id: "node-c"
+    name: "Generic Node C"
+    type: "service"
+    host: "node-c"
+    port: 8083
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "node-d"
+    metadata:
+      role: "intermediate-processor"
+      tier: "pipeline"
+
+  - id: "node-d"
+    name: "Generic Node D"
+    type: "service"
+    host: "node-d"
+    port: 8084
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies: []
+    metadata:
+      role: "sink-storage"
+      tier: "persistence"
