@@ -55,3 +55,6 @@ Thumbs.db
 # Environment variables
 .env
 !.env.example
+
+# Workflow & memory directory
+workflow/
