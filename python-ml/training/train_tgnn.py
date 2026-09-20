@@ -57,13 +57,36 @@ def train(
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
-    # Loss criteria
+    # Loss criteria & Unified Loss Weights (Identical across train & validation)
+    LOSS_WEIGHTS = {
+        "cluster": 1.5,
+        "node": 1.0,
+        "rc": 2.0,
+        "prop": 2.0,
+        "ttf": 0.5,
+    }
+
+    # Class-imbalance compensation: 1-2 positive nodes per 5-node graph -> pos_weight ~ 4.0
+    POS_WEIGHT = 4.0
+
+    def weighted_bce_loss(pred: torch.Tensor, target: torch.Tensor, pos_weight: float = POS_WEIGHT, eps: float = 1e-7) -> torch.Tensor:
+        """Binary cross entropy with positive class weighting to counteract microservice failure sparsity."""
+        pred = torch.clamp(pred, min=eps, max=1.0 - eps)
+        loss = -(pos_weight * target * torch.log(pred) + (1.0 - target) * torch.log(1.0 - pred))
+        return loss.mean()
+
     bce_loss = nn.BCELoss()
     ce_loss = nn.CrossEntropyLoss()
     huber_loss = nn.SmoothL1Loss()
 
+    # Mixed Precision (AMP) setup
+    use_amp = device.type == "cuda"
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+
     best_val_loss = float("inf")
     best_checkpoint_path = os.path.join(checkpoint_dir, "tgnn_best.pt")
+    patience = 10
+    patience_counter = 0
 
     history = {
         "train_loss": [],
@@ -72,7 +95,12 @@ def train(
         "val_fail_acc": [],
     }
 
-    logger.info(f"Starting TGNN training for {epochs} epochs (Train: {len(train_dataset)}, Val: {len(val_dataset)})...")
+    logger.info(
+        f"Starting TGNN training for {epochs} epochs | "
+        f"Train: {len(train_dataset)}, Val: {len(val_dataset)} | "
+        f"Model Parameters: {model.get_param_count():,} | "
+        f"AMP Enabled: {use_amp} | Patience: {patience}"
+    )
 
     for epoch in range(1, epochs + 1):
         model.train()
@@ -89,31 +117,34 @@ def train(
 
             optimizer.zero_grad()
 
-            out = model(x, adj)
+            with torch.amp.autocast("cuda", enabled=use_amp):
+                out = model(x, adj)
 
-            # Multi-task loss formulation:
-            # 1. Cluster failure risk
-            loss_cluster_fail = bce_loss(out["cluster_failure_prob"], y_fail)
-            # 2. Node failure probabilities
-            loss_node_fail = bce_loss(out["node_failure_probs"], y_node_fail)
-            # 3. Root cause classification
-            loss_rc = ce_loss(out["root_cause_logits"], y_rc)
-            # 4. Propagation mask prediction
-            loss_prop = bce_loss(out["propagation_probs"], y_prop)
-            # 5. Time to failure regression (normalized by 600s)
-            loss_ttf = huber_loss(out["time_to_failure"] / 600.0, y_ttf / 600.0)
+                # Multi-task loss formulation:
+                loss_cluster_fail = bce_loss(out["cluster_failure_prob"], y_fail)
+                loss_node_fail = weighted_bce_loss(out["node_failure_probs"], y_node_fail)
+                loss_rc = ce_loss(out["root_cause_logits"], y_rc)
+                loss_prop = weighted_bce_loss(out["propagation_probs"], y_prop)
+                loss_ttf = huber_loss(out["time_to_failure"] / 600.0, y_ttf / 600.0)
 
-            loss = (
-                1.5 * loss_cluster_fail
-                + 1.0 * loss_node_fail
-                + 2.0 * loss_rc
-                + 2.0 * loss_prop
-                + 0.5 * loss_ttf
-            )
+                loss = (
+                    LOSS_WEIGHTS["cluster"] * loss_cluster_fail
+                    + LOSS_WEIGHTS["node"] * loss_node_fail
+                    + LOSS_WEIGHTS["rc"] * loss_rc
+                    + LOSS_WEIGHTS["prop"] * loss_prop
+                    + LOSS_WEIGHTS["ttf"] * loss_ttf
+                )
 
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
+            if use_amp:
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                optimizer.step()
 
             total_train_loss += loss.item() * len(y_fail)
 
@@ -137,15 +168,24 @@ def train(
                 y_prop = batch["propagation_mask"].to(device)
                 y_ttf = batch["time_to_failure"].to(device)
 
-                out = model(x, adj)
+                with torch.amp.autocast("cuda", enabled=use_amp):
+                    out = model(x, adj)
 
-                l_cluster = bce_loss(out["cluster_failure_prob"], y_fail)
-                l_node = bce_loss(out["node_failure_probs"], y_node_fail)
-                l_rc = ce_loss(out["root_cause_logits"], y_rc)
-                l_prop = bce_loss(out["propagation_probs"], y_prop)
-                l_ttf = huber_loss(out["time_to_failure"] / 600.0, y_ttf / 600.0)
+                    l_cluster = bce_loss(out["cluster_failure_prob"], y_fail)
+                    l_node = weighted_bce_loss(out["node_failure_probs"], y_node_fail)
+                    l_rc = ce_loss(out["root_cause_logits"], y_rc)
+                    l_prop = weighted_bce_loss(out["propagation_probs"], y_prop)
+                    l_ttf = huber_loss(out["time_to_failure"] / 600.0, y_ttf / 600.0)
 
-                v_loss = 1.5 * l_cluster + 1.0 * l_node + 2.0 * l_rc + 1.0 * l_prop + 0.5 * l_ttf
+                    # Unified validation loss objective matching training weights exactly
+                    v_loss = (
+                        LOSS_WEIGHTS["cluster"] * l_cluster
+                        + LOSS_WEIGHTS["node"] * l_node
+                        + LOSS_WEIGHTS["rc"] * l_rc
+                        + LOSS_WEIGHTS["prop"] * l_prop
+                        + LOSS_WEIGHTS["ttf"] * l_ttf
+                    )
+
                 total_val_loss += v_loss.item() * len(y_fail)
 
                 # Metrics
@@ -164,8 +204,9 @@ def train(
         history["val_rc_acc"].append(round(val_rc_acc, 4))
         history["val_fail_acc"].append(round(val_fail_acc, 4))
 
-        if val_loss < best_val_loss:
+        if val_loss < best_val_loss - 1e-4:
             best_val_loss = val_loss
+            patience_counter = 0
             torch.save(
                 {
                     "epoch": epoch,
@@ -177,9 +218,12 @@ def train(
                     "node_ids": train_dataset.node_ids,
                     "in_dim": in_dim,
                     "hidden_dim": 64,
+                    "param_count": model.get_param_count(),
                 },
                 best_checkpoint_path,
             )
+        else:
+            patience_counter += 1
 
         if epoch % 5 == 0 or epoch == epochs:
             logger.info(
@@ -189,6 +233,10 @@ def train(
                 f"Val Fail Acc: {val_fail_acc * 100:.1f}% | "
                 f"Val RC Acc: {val_rc_acc * 100:.1f}%"
             )
+
+        if patience_counter >= patience:
+            logger.info(f"Early stopping triggered at epoch {epoch} (no validation improvement for {patience} epochs).")
+            break
 
     logger.info(f"TGNN training complete. Best model checkpoint saved to: {best_checkpoint_path}")
     return {
@@ -203,3 +251,4 @@ def train(
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     train(epochs=20)
+
