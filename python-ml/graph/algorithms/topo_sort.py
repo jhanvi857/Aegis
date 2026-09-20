@@ -1,11 +1,51 @@
 """
 Topological sort on SCC-condensed graph
 Used in recovery planning (Phase 4), guarantees DAG property even in cyclic topologies.
+Implements first-principles Kahn's algorithm (1962) with in-degree tracking and queue processing.
 """
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
+from collections import deque
 import networkx as nx
 from ..condensation import condense_graph
+
+
+def kahn_topological_sort(dag: nx.DiGraph) -> List[Any]:
+    """
+    Computes topological ordering on a Directed Acyclic Graph (DAG) using Kahn's algorithm (1962).
+    
+    Complexity: O(V + E) time and O(V) space.
+    
+    1. Computes in-degree for all vertices.
+    2. Initializes a FIFO queue with all vertices having in-degree 0.
+    3. Repeatedly dequeues a vertex, appends to the sorted order, and decrements in-degrees of neighbors.
+    4. Enqueues neighbors whose in-degree drops to 0.
+    5. Raises ValueError if a cycle is detected (visited count < total vertices).
+    """
+    if dag.number_of_nodes() == 0:
+        return []
+
+    in_degree: Dict[Any, int] = {node: dag.in_degree(node) for node in dag.nodes()}
+    # Deterministic queue initialization (sorted for reproducibility)
+    zero_in = sorted([node for node, deg in in_degree.items() if deg == 0], key=lambda x: str(x))
+    queue = deque(zero_in)
+    order: List[Any] = []
+
+    while queue:
+        u = queue.popleft()
+        order.append(u)
+
+        for v in dag.successors(u):
+            in_degree[v] -= 1
+            if in_degree[v] == 0:
+                queue.append(v)
+
+    if len(order) != dag.number_of_nodes():
+        raise ValueError(
+            f"Graph contains a directed cycle: Kahn's algorithm visited {len(order)} of {dag.number_of_nodes()} nodes."
+        )
+
+    return order
 
 
 def topological_sort_condensed(graph: nx.DiGraph) -> List[List[str]]:
@@ -17,7 +57,7 @@ def topological_sort_condensed(graph: nx.DiGraph) -> List[List[str]]:
         return []
 
     condensed_dag, super_to_members, _ = condense_graph(graph)
-    order = list(nx.topological_sort(condensed_dag))
+    order = kahn_topological_sort(condensed_dag)
     return [super_to_members[super_node] for super_node in order]
 
 
@@ -48,3 +88,4 @@ def topological_sort_flattened(
             flattened.extend(sorted_members)
 
     return flattened
+

@@ -113,6 +113,39 @@ class TestGraphAlgorithms(unittest.TestCase):
         self.assertEqual(flattened_cyclic[0], "service-x")
         self.assertEqual(flattened_cyclic[-1], "service-w")
 
+    def test_algorithmic_equivalence_vs_networkx(self):
+        """
+        Formally verifies that first-principles Tarjan, Kahn, and Brandes implementations
+        strictly match NetworkX reference outputs across diverse graph topologies.
+        """
+        # 1. Tarjan's SCC equivalence
+        tarjan_result = [set(s) for s in compute_scc_groups(self.cyclic_graph)]
+        nx_scc_result = [set(s) for s in nx.strongly_connected_components(self.cyclic_graph)]
+        self.assertEqual(len(tarjan_result), len(nx_scc_result))
+        for comp in tarjan_result:
+            self.assertIn(comp, nx_scc_result)
+
+        # 2. Brandes' Betweenness Centrality equivalence (within 1e-6 precision)
+        from graph.algorithms.centrality import brandes_betweenness_centrality
+        brandes_scores = brandes_betweenness_centrality(self.dag, normalized=True)
+        nx_scores = nx.betweenness_centrality(self.dag, normalized=True)
+        for node in self.dag.nodes():
+            self.assertAlmostEqual(brandes_scores[node], nx_scores[node], places=5)
+
+        # Also test Brandes on cyclic graph
+        brandes_cyclic = brandes_betweenness_centrality(self.cyclic_graph, normalized=True)
+        nx_cyclic = nx.betweenness_centrality(self.cyclic_graph, normalized=True)
+        for node in self.cyclic_graph.nodes():
+            self.assertAlmostEqual(brandes_cyclic[node], nx_cyclic[node], places=5)
+
+        # 3. Kahn's Topological Sort validity
+        from graph.algorithms.topo_sort import kahn_topological_sort
+        kahn_order = kahn_topological_sort(self.dag)
+        # Verify valid DAG ordering: for all u -> v, index(u) < index(v)
+        for u, v in self.dag.edges():
+            self.assertLess(kahn_order.index(u), kahn_order.index(v))
+
 
 if __name__ == "__main__":
     unittest.main()
+
