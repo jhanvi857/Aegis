@@ -1,6 +1,6 @@
-# Aegis: Data Leakage Audit, EDA, Hyperparameter Records & Viva Defense Guide
+# Aegis: Data Leakage Audit, EDA, Hyperparameter Records & Technical Evaluation
 
-> **Target Audience:** Academic Reviewers, Viva Examiners, and Senior Distributed Systems Engineers.  
+> **Target Audience:** Systems Researchers, Performance Engineers, and Distributed Systems Architects.  
 > **Document Purpose:** Forensic audit of experimental integrity, mathematical explanation of benchmark results, formal hyperparameter search logs, EDA distributions, and rigorous error analysis.
 
 ---
@@ -68,20 +68,19 @@ To confirm that `queue_depth` does not act as a renamed shortcut, we audited the
 
 ---
 
-## 2. The Viva Defense: Presenting the Leakage Audit & Post-Fix Reality
+## 2. Technical Evaluation: Leakage Audit & Post-Fix Architecture
 
-When an examiner asks: **"Did you audit your benchmark for data leakage, and why does TGNN outperform baselines?"**
-
-### The Post-Fix Viva Defense Script
-> *"Yes, we actively conducted a forensic data leakage audit on our initial pipeline. We identified two classic pitfalls in our early prototype:*
-> 1. *Our graph preprocessor was inadvertently passing a discrete health status code (healthy/degraded/critical) into the feature matrix, providing a classification proxy.*
-> 2. *The observation window overlapped with active failure steps, testing post-failure detection rather than pre-failure lead-time.*
+### Causal Attribution & Performance Rationale
+When evaluating why TGNN outperforms baselines on pre-injection telemetry without data leakage:
+> In the initial prototype, two subtle leakage vectors were identified and remediated:
+> 1. The graph preprocessor was inadvertently passing a discrete health status code (healthy/degraded/critical) into the feature matrix, providing an artificial classification shortcut.
+> 2. The observation window overlapped with active failure steps, testing post-failure classification rather than advance predictive lead-time.
 >
-> ***We resolved both issues:*** *we stripped the status proxy in favor of continuous queue-depth telemetry, enforced a strictly pre-injection observation window ($t < t_{\text{inj}}$), and evaluated predictions against a 15–30 second forward-looking horizon.*
+> **Remediation implemented:** We stripped the status proxy in favor of continuous queue-depth telemetry, enforced a strictly pre-injection observation window ($t < t_{\text{inj}}$), and evaluated predictions against a 15–30 second forward-looking horizon.
 >
-> *When we rerun the benchmark on this clean dataset, the real scientific value of graph attention became obvious:*
-> - *Without the status proxy, the **temporal-only LSTM's Root Cause Accuracy plummeted from 100% down to 30.0%** (barely above the 20.0% random guessing baseline on 5 nodes, with 0.0% Propagation IoU), because temporal sequences alone cannot distinguish whether an upstream caller or a downstream dependency caused a shared latency rise.*
-> - ***Our TGNN maintained 100.0% Root Cause Accuracy and achieved 70.5% Propagation IoU.*** *Its spatial Graph Attention layers compute directed message-passing along call dependencies, isolating the origin of subtle precursor drift and forecasting cascade paths that non-graph models are fundamentally blind to."*
+> When the benchmark is rerun on this clean dataset, the mathematical necessity of graph attention becomes evident:
+> - Without the status proxy, the **temporal-only LSTM's Root Cause Accuracy drops from 100% down to 30.0%** (barely above the 20.0% random baseline on 5 nodes, with 0.0% Propagation IoU). Temporal sequences alone cannot distinguish whether an upstream caller or a downstream dependency caused a shared latency rise.
+> - **TGNN maintains 100.0% Root Cause Accuracy and achieves 70.5% Propagation IoU (Canonical Seed 42; 5-Seed Mean: 75.1% ± 10.3%).** Its spatial Graph Attention layers compute directed message-passing along call dependencies, isolating the origin of subtle precursor drift and forecasting cascade paths that non-graph models are fundamentally blind to.
 
 ---
 
@@ -150,13 +149,13 @@ In early benchmark reruns, Propagation IoU exhibited fluctuations between **65.2
 3. **Canonical Model Selection:** Checkpoint `python-ml/models/checkpoints/tgnn_best.pt` corresponds to **Seed 42** under HPO-03 weights, yielding **70.5% IoU**, which sits right at the center of the 5-seed distribution.
 
 > [!IMPORTANT]
-> **Key Viva Narrative on the LSTM Baseline:**  
+> **Causal Attribution Analysis on the LSTM Baseline:**  
 > 1. **True Discrimination (81.0% F1 vs. 86.8% Majority Class):** The LSTM actively discriminates nominal vs. impending failure sequences rather than collapsing to a constant majority guess.
 > 2. **Root-Cause Localization Blindness (30.0% Top-1):** The temporal LSTM's Root Cause accuracy is barely above random chance ($1/5 = 20.0\%$, vs Majority Class 23.3%), and its Propagation IoU is **0.0%**. This directly proves our core thesis: *temporal sequence modeling alone cannot differentiate between an upstream root cause and a downstream coupled dependency*. Only spatial graph attention enables topological causal attribution.
 
 > [!TIP]
 > **Dataset Validity & Structural Generalization:**  
-> For the comprehensive formal defense answering questions on dataset bias, class balance, non-trivial precursor overlap, Chi-Square position-bias tests ($p=0.4565$), KS distribution stability, and 1,000-episode cross-topology generalization (**83.1% Failure F1** and **48.8% Prop IoU** on an unseen 7-node diamond graph), consult the dedicated [docs/DATASET_CARD.md](file:///c:/Users/family/OneDrive/Desktop/Aegis/docs/DATASET_CARD.md).
+> For the comprehensive specification on dataset bias, class balance, non-trivial precursor overlap, Chi-Square position-bias tests ($p=0.4565$), KS distribution stability, and 1,000-episode cross-topology generalization (**83.1% Failure F1** and **48.8% Prop IoU** on an unseen 7-node diamond graph), consult the dedicated [docs/DATASET_CARD.md](file:///c:/Users/family/OneDrive/Desktop/Aegis/docs/DATASET_CARD.md).
 
 ### 3.4 Topology Structural Properties
 - **Node Count:** 5 (`gateway`, `node-a`, `node-b`, `node-c`, `node-d`).
@@ -273,17 +272,17 @@ Under these edge cases, **the 100% metric naturally breaks down into empirical, 
 | **Stress Case 2** | **Cyclic SCC Feedback Loop** (Mutual retry storm between `node-b` and `node-c`) | **52.0%** | **100.0%** | 0.0% *(completely confused)* | N/A |
 | **Stress Case 3** | **Multi-Point Dual Failures** (Simultaneous independent faults on distinct tiers) | **100.0%** *(either)* | **100.0%** *(both)* | 44.0% *(either)* | N/A |
 
-### Key Viva Insights from the Stress Benchmark:
+### Key Insights from the Stress Benchmark:
 1. **Low-SNR Noise (Case 1)**: When ambient production noise is injected, TGNN's Top-1 accuracy drops from 100% to **66.0%** (Top-3: **96.0%**), while the baseline LSTM collapses to **24.0%** and fails to detect the impending failure entirely (0% recall).
 2. **Cyclic SCC Retries (Case 2)**: In a mutual retry cycle ($b \leftrightarrow c$), backpressure echoes between both services. TGNN Top-1 drops to **52.0%** because the two nodes appear nearly symmetrical in degradation; however, TGNN's Top-3 accuracy is **100.0%**, successfully identifying the cyclic component. The baseline LSTM drops to **0.0%**.
 3. **Multi-Point Faults (Case 3)**: When two independent failures strike simultaneously, TGNN's Top-1 captures one of the root causes in **100%** of episodes, and its Top-3 captures **both root causes in 100% of episodes**, outperforming the baseline LSTM (44.0%).
 
 ---
 
-## 6. Recommendations for Final Submission / Viva Presentation
+## 6. Summary of Architectural & Empirical Findings
 
-1. **Lead with Zero-Shot Generalization (83.1% F1, 48.8% IoU on Unseen 7-Node Topology):** This is the single strongest and most defensible result in the project—proving inductive domain-agnostic transfer to a graph structure never seen during training, whereas non-graph baselines score 0.0% IoU.
-2. **Present the Standard Clean Benchmark with Variance (75.1% ± 10.3% IoU, Canonical 70.5%):** Present the 5-seed evaluation honestly with mean ± std. Explain that temporal-only LSTM drops to 30.0% RCA (barely above random chance ~20.0%, vs 23.3% Majority Class) and 0.0% IoU, proving that temporal sequences without graph structure cannot localize spatial cascades.
-3. **Show the Hard-Case Stress Test results:** When an examiner asks about clean precursor conditions or real-world noise, pull up Section 5.4: demonstrate that under heavy Gaussian noise and cyclic retries, TGNN's Top-1 drops to 66% and 52%, proving the model is thoroughly stress-tested and has real, non-trivial failure boundaries.
-4. **Present the Architectural Decision Records (ADRs):** Direct examiners to ADR-005 (Sequential Graph Preprocessing), ADR-006 (SCC Condensation), and ADR-008 (Ground-Truth Lookahead Horizon), demonstrating rigorous distributed systems systems design.
+1. **Zero-Shot Generalization (83.1% F1, 48.8% IoU on Unseen 7-Node Topology):** This is the single strongest and most defensible result in the project—proving inductive domain-agnostic transfer to a graph structure never seen during training, whereas non-graph baselines score 0.0% IoU.
+2. **Standard Clean Benchmark with Variance (75.1% ± 10.3% IoU, Canonical 70.5%):** The 5-seed evaluation provides honest reporting with mean ± std. Temporal-only LSTM drops to 30.0% RCA (barely above random chance ~20.0%, vs 23.3% Majority Class) and 0.0% IoU, proving that temporal sequences without graph structure cannot localize spatial cascades.
+3. **Hard-Case Stress Test Boundaries:** Under heavy Gaussian noise and cyclic retries, TGNN's Top-1 drops gracefully to 66% and 52%, proving the model is thoroughly stress-tested and has real, non-trivial failure boundaries.
+4. **Architectural Decision Records (ADRs):** See ADR-005 (Sequential Graph Preprocessing), ADR-006 (SCC Condensation), and ADR-008 (Ground-Truth Lookahead Horizon), demonstrating rigorous distributed systems engineering.
 

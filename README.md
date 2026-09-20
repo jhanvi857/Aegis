@@ -62,7 +62,7 @@ Evaluated on **Topology D (7-node cross-coupled diamond)** never seen during tra
 
 ## Forensic Audits & Scientific Integrity
 
-Aegis includes publication-grade forensic audits documented in [`docs/LEAKAGE_AUDIT_AND_VIVA_DEFENSE.md`](docs/LEAKAGE_AUDIT_AND_VIVA_DEFENSE.md) and [`docs/DATASET_CARD.md`](docs/DATASET_CARD.md):
+Aegis includes publication-grade forensic audits documented in [`docs/FORENSIC_LEAKAGE_AUDIT.md`](docs/FORENSIC_LEAKAGE_AUDIT.md) and [`docs/DATASET_CARD.md`](docs/DATASET_CARD.md):
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -373,9 +373,9 @@ aegis/
 │   ├── topology.example.yaml        # 5-node reference dependency graph
 │   └── topologies/                  # Multi-topology benchmark suite (Topologies A, B, C, D)
 │
-├── docs/                            # Documentation & Academic Defenses
+├── docs/                            # Documentation & Technical Reports
 │   ├── DATASET_CARD.md              # Formal 1-page Dataset Card (precedents, audits)
-│   ├── LEAKAGE_AUDIT_AND_VIVA_DEFENSE.md # Comprehensive leakage audit & viva defense guide
+│   ├── FORENSIC_LEAKAGE_AUDIT.md    # Comprehensive leakage audit, EDA & hyperparameter records
 │   ├── demo-script.md               # End-to-end demo walkthrough script
 │   └── figures/                     # 6 publication-grade audit plots
 │
@@ -468,10 +468,10 @@ go test -v ./...
 
 ---
 
-## Academic Documentation & References
+## Technical Documentation & References
 
 - **Dataset Card:** [`docs/DATASET_CARD.md`](docs/DATASET_CARD.md) — Formal specification detailing academic precedents (**GAIA**, **PodFailPred**, **WOLFFI**), class balance, precursor telemetry overlap, and structural diversity.
-- **Leakage Audit & Viva Defense Guide:** [`docs/LEAKAGE_AUDIT_AND_VIVA_DEFENSE.md`](docs/LEAKAGE_AUDIT_AND_VIVA_DEFENSE.md) — Comprehensive guide covering pre-injection windowing, feature proxy removal, hyperparameter search tables, error taxonomy, and examiner defense scripts.
+- **Forensic Leakage Audit & Evaluation Report:** [`docs/FORENSIC_LEAKAGE_AUDIT.md`](docs/FORENSIC_LEAKAGE_AUDIT.md) — Comprehensive technical report covering pre-injection windowing, feature proxy removal, hyperparameter search tables, error taxonomy, and theoretical causal proofs.
 - **Demo Script:** [`docs/demo-script.md`](docs/demo-script.md) — Step-by-step presentation script demonstrating fault injection, real-time TGNN diagnosis, and topological recovery.
 
 ---
