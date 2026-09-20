@@ -10,6 +10,7 @@ import sys
 import json
 import logging
 from typing import Dict, Any, Tuple
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -66,11 +67,14 @@ def train(
         "ttf": 0.5,
     }
 
-    # Class-imbalance compensation: 1-2 positive nodes per 5-node graph -> pos_weight ~ 4.0
-    POS_WEIGHT = 4.0
+    # Dynamic class-imbalance compensation computed from actual training label frequencies
+    pos_counts = float(train_dataset.node_failures.sum().item())
+    total_elements = float(train_dataset.node_failures.numel())
+    neg_counts = total_elements - pos_counts
+    empirical_pos_weight = float(np.clip(neg_counts / max(1.0, pos_counts), 1.0, 15.0))
 
-    def weighted_bce_loss(pred: torch.Tensor, target: torch.Tensor, pos_weight: float = POS_WEIGHT, eps: float = 1e-7) -> torch.Tensor:
-        """Binary cross entropy with positive class weighting to counteract microservice failure sparsity."""
+    def weighted_bce_loss(pred: torch.Tensor, target: torch.Tensor, pos_weight: float = empirical_pos_weight, eps: float = 1e-7) -> torch.Tensor:
+        """Binary cross entropy with empirical positive class weighting to counteract microservice failure sparsity."""
         pred = torch.clamp(pred, min=eps, max=1.0 - eps)
         loss = -(pos_weight * target * torch.log(pred) + (1.0 - target) * torch.log(1.0 - pred))
         return loss.mean()

@@ -300,14 +300,15 @@ class DatasetGenerator:
             "node_ids": self.node_ids,
         }
 
-        # Stratified train/val/test splits preserving class balance
+        # Stratified train/val/test splits preserving both fault_type and target_node balance
         from collections import defaultdict
-        type_to_indices = defaultdict(list)
+        combo_to_indices = defaultdict(list)
         for idx, meta in enumerate(metadata):
-            type_to_indices[meta["type"]].append(idx)
+            combo_key = f"{meta['type']}:{meta['fault_node']}"
+            combo_to_indices[combo_key].append(idx)
 
         train_indices, val_indices, test_indices = [], [], []
-        for ftype, idx_list in type_to_indices.items():
+        for combo_key, idx_list in combo_to_indices.items():
             rng.shuffle(idx_list)
             n_t = int(len(idx_list) * train_ratio)
             n_v = int(len(idx_list) * val_ratio)
