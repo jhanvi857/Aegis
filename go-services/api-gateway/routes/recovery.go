@@ -25,25 +25,45 @@ func GetRecommendationsHandler(w http.ResponseWriter, r *http.Request) {
 			actionType := "restart"
 			title := fmt.Sprintf("Restart %s Container", svc.Name)
 			desc := fmt.Sprintf("Execute rolling container restart on %s to flush degraded memory and connections.", svc.Name)
+			riskLevel := "LOW"
+			requiresApproval := false
 
-			if svc.CPU > 80.0 {
+			if svc.Latency > 800.0 || svc.ErrorRate >= 0.40 {
+				actionType = "reroute_traffic"
+				title = fmt.Sprintf("Divert Ingress Traffic from %s", svc.Name)
+				desc = fmt.Sprintf("Critical latency/error cascade on %s. Temporarily reroute ingress traffic to healthy paths.", svc.Name)
+				riskLevel = "HIGH"
+				requiresApproval = true
+			} else if svc.CPU > 80.0 {
 				actionType = "scale"
 				title = fmt.Sprintf("Scale %s Horizontal Pod Replicas", svc.Name)
 				desc = fmt.Sprintf("Increase %s replicas from %d to %d to distribute compute load.", svc.Name, svc.Replicas, svc.Replicas+2)
+				riskLevel = "MEDIUM"
+				requiresApproval = false
 			} else if svc.Type == "cache" {
 				actionType = "flush_cache"
 				title = fmt.Sprintf("Flush Corrupted Cache on %s", svc.Name)
 				desc = fmt.Sprintf("Evict keys and reset memory allocation on %s.", svc.Name)
+				riskLevel = "LOW"
+				requiresApproval = false
+			} else if svc.Type == "persistence" || svc.Type == "database" {
+				actionType = "increase_pool"
+				title = fmt.Sprintf("Expand Connection Pool on %s", svc.Name)
+				desc = fmt.Sprintf("Increase database/connection pool capacity on %s.", svc.Name)
+				riskLevel = "MEDIUM"
+				requiresApproval = false
 			}
 
 			recommendations = append(recommendations, RecoveryAction{
-				ID:              fmt.Sprintf("rec-%s-%s", actionType, svc.ID),
-				Title:           title,
-				Description:     desc,
-				TargetServiceID: svc.ID,
-				ActionType:      actionType,
-				Confidence:      95.4,
-				Status:          "idle",
+				ID:               fmt.Sprintf("rec-%s-%s", actionType, svc.ID),
+				Title:            title,
+				Description:      desc,
+				TargetServiceID:  svc.ID,
+				ActionType:       actionType,
+				Confidence:       95.4,
+				Status:           "idle",
+				RiskLevel:        riskLevel,
+				RequiresApproval: requiresApproval,
 			})
 		}
 	}
@@ -173,4 +193,35 @@ func RecoveryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	GetRecommendationsHandler(w, r)
+}
+
+func GetPendingRecoveryHandler(w http.ResponseWriter, r *http.Request) {
+	State.mu.RLock()
+	defer State.mu.RUnlock()
+
+	pending := make([]RecoveryAction, 0)
+	for _, id := range State.ServiceOrder {
+		svc := State.Services[id]
+		if svc.Status != "healthy" && (svc.Latency > 800.0 || svc.ErrorRate >= 0.40) {
+			pending = append(pending, RecoveryAction{
+				ID:               fmt.Sprintf("rec-reroute_traffic-%s", svc.ID),
+				Title:            fmt.Sprintf("Divert Ingress Traffic from %s", svc.Name),
+				Description:      fmt.Sprintf("Critical cascade on %s requires operator approval.", svc.Name),
+				TargetServiceID:  svc.ID,
+				ActionType:       "reroute_traffic",
+				Confidence:       94.2,
+				Status:           "pending_approval",
+				RiskLevel:        "HIGH",
+				RequiresApproval: true,
+			})
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(pending)
+}
+
+func ApproveRecoveryHandler(w http.ResponseWriter, r *http.Request) {
+	// Re-route to execute handler to remediate
+	ExecuteRecoveryHandler(w, r)
 }

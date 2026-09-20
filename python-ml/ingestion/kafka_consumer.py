@@ -100,9 +100,11 @@ class TelemetryConsumer:
         node_ids: Optional[List[str]] = None,
         fault_node: Optional[str] = None,
         fault_type: Optional[str] = None,
+        precursor_severity: float = 0.0,
     ) -> Dict[str, Any]:
         """
-        Generates a realistic telemetry batch for testing Phase 2 graph annotations.
+        Generates a realistic telemetry batch for testing Phase 2 graph annotations
+        and Phase 3 predictive lead-time modeling.
         """
         if node_ids is None:
             node_ids = ["gateway", "node-a", "node-b", "node-c", "node-d"]
@@ -114,36 +116,82 @@ class TelemetryConsumer:
         for node in node_ids:
             is_faulty = node == fault_node
 
-            if is_faulty and fault_type == "cpu_stress":
-                cpu = random.uniform(92.0, 99.5)
-                latency = random.uniform(150.0, 350.0)
-                error_rate = random.uniform(0.05, 0.15)
-            elif is_faulty and fault_type == "latency":
-                cpu = random.uniform(25.0, 45.0)
-                latency = random.uniform(600.0, 1500.0)
-                error_rate = random.uniform(0.08, 0.25)
-            elif is_faulty and fault_type == "memory_leak":
-                cpu = random.uniform(40.0, 70.0)
-                latency = random.uniform(200.0, 400.0)
-                error_rate = random.uniform(0.1, 0.4)
-            elif is_faulty and fault_type == "kill_service":
-                cpu = 0.0
-                latency = 5000.0
-                error_rate = 1.0
+            if is_faulty and precursor_severity > 0.0:
+                # Pre-injection precursor signal (subtle drift before threshold breach)
+                s = min(0.75, max(0.05, precursor_severity))
+                mem = random.uniform(30.0, 50.0)
+                queue_depth = random.randint(1, 4)
+
+                if fault_type == "cpu_stress":
+                    cpu = random.uniform(25.0, 42.0) + (38.0 * s) + random.gauss(0, 2.0)
+                    latency = random.uniform(15.0, 32.0) + (35.0 * s)
+                    error_rate = random.uniform(0.002, 0.008) + (0.015 * s)
+                elif fault_type == "memory_leak":
+                    cpu = random.uniform(22.0, 40.0)
+                    mem = random.uniform(32.0, 45.0) + (42.0 * s)
+                    latency = random.uniform(15.0, 30.0) + (25.0 * s)
+                    error_rate = random.uniform(0.001, 0.008)
+                elif fault_type in ("latency", "slow_query", "db_lock"):
+                    cpu = random.uniform(20.0, 40.0)
+                    latency = random.uniform(18.0, 35.0) + (85.0 * s) + random.gauss(0, 4.0)
+                    error_rate = random.uniform(0.002, 0.008) + (0.020 * s)
+                elif fault_type == "mq_lag":
+                    cpu = random.uniform(20.0, 38.0)
+                    latency = random.uniform(15.0, 32.0) + (40.0 * s)
+                    error_rate = random.uniform(0.001, 0.006)
+                    queue_depth = max(1, int(2 + 20.0 * s + random.randint(0, 2)))
+                elif fault_type == "kill_service":
+                    cpu = max(8.0, random.uniform(22.0, 38.0) - (16.0 * s))
+                    latency = random.uniform(15.0, 32.0) + (35.0 * s)
+                    error_rate = random.uniform(0.002, 0.008) + (0.035 * s)
+                else:
+                    cpu = random.uniform(20.0, 40.0) + (20.0 * s)
+                    latency = random.uniform(15.0, 35.0) + (55.0 * s)
+                    error_rate = random.uniform(0.002, 0.008) + (0.025 * s)
+
+            elif is_faulty:
+                # Active high-severity failure state
+                mem = random.uniform(30.0, 60.0)
+                queue_depth = random.randint(5, 20)
+                if fault_type == "cpu_stress":
+                    cpu = random.uniform(92.0, 99.5)
+                    latency = random.uniform(150.0, 350.0)
+                    error_rate = random.uniform(0.05, 0.15)
+                elif fault_type == "latency":
+                    cpu = random.uniform(25.0, 45.0)
+                    latency = random.uniform(600.0, 1500.0)
+                    error_rate = random.uniform(0.08, 0.25)
+                elif fault_type == "memory_leak":
+                    cpu = random.uniform(40.0, 70.0)
+                    mem = random.uniform(88.0, 98.0)
+                    latency = random.uniform(200.0, 400.0)
+                    error_rate = random.uniform(0.1, 0.4)
+                elif fault_type == "kill_service":
+                    cpu = 0.0
+                    latency = 5000.0
+                    error_rate = 1.0
+                else:
+                    cpu = random.uniform(50.0, 85.0)
+                    latency = random.uniform(300.0, 700.0)
+                    error_rate = random.uniform(0.05, 0.20)
             else:
-                cpu = random.uniform(15.0, 45.0)
-                latency = random.uniform(10.0, 40.0)
-                error_rate = random.uniform(0.001, 0.01)
+                # Nominal background operation with natural variance
+                cpu = max(10.0, min(58.0, random.uniform(18.0, 46.0) + random.gauss(0, 3.0)))
+                mem = random.uniform(28.0, 58.0)
+                latency = max(8.0, min(48.0, random.uniform(12.0, 38.0) + random.gauss(0, 3.0)))
+                error_rate = random.uniform(0.001, 0.012)
+                queue_depth = random.randint(1, 3)
 
             metrics.extend([
-                {"service_id": node, "metric_name": "cpu_usage", "value": cpu, "unit": "%", "timestamp_unix_nano": now_ns},
-                {"service_id": node, "metric_name": "memory_usage", "value": random.uniform(30.0, 60.0), "unit": "%", "timestamp_unix_nano": now_ns},
-                {"service_id": node, "metric_name": "p95_latency_ms", "value": latency, "unit": "ms", "timestamp_unix_nano": now_ns},
-                {"service_id": node, "metric_name": "error_rate", "value": error_rate, "unit": "ratio", "timestamp_unix_nano": now_ns},
+                {"service_id": node, "metric_name": "cpu_usage", "value": round(cpu, 2), "unit": "%", "timestamp_unix_nano": now_ns},
+                {"service_id": node, "metric_name": "memory_usage", "value": round(mem, 2), "unit": "%", "timestamp_unix_nano": now_ns},
+                {"service_id": node, "metric_name": "p95_latency_ms", "value": round(latency, 2), "unit": "ms", "timestamp_unix_nano": now_ns},
+                {"service_id": node, "metric_name": "error_rate", "value": round(error_rate, 4), "unit": "ratio", "timestamp_unix_nano": now_ns},
                 {"service_id": node, "metric_name": "rps", "value": random.uniform(100.0, 500.0), "unit": "req/s", "timestamp_unix_nano": now_ns},
+                {"service_id": node, "metric_name": "queue_depth", "value": queue_depth, "unit": "count", "timestamp_unix_nano": now_ns},
             ])
 
-            if is_faulty:
+            if is_faulty and precursor_severity == 0.0:
                 logs.append({
                     "timestamp_unix_nano": now_ns,
                     "service_id": node,

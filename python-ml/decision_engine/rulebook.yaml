@@ -1,6 +1,10 @@
 # Decision Engine Rulebook (Phase 4)
+# Maps observed anomalous metrics or fault conditions to domain-agnostic recovery actions.
+# Evaluated by DecisionEngine / RiskAssessmentEngine to build dependency-ordered RecoveryPlans.
+
 rules:
   - id: "RULE_OOM_LEAK"
+    description: "Memory consumption approaching container limit. Restart container to release leaked heap."
     condition:
       metric: "memory_usage_percent"
       operator: ">="
@@ -14,27 +18,72 @@ rules:
         grace_period_sec: "5"
 
   - id: "RULE_HIGH_CPU_CASCADE"
+    description: "Sustained CPU saturation causing request queuing. Scale up service replicas."
     condition:
       metric: "cpu_usage_percent"
       operator: ">="
       threshold: 85.0
-      duration_sec: 30
+      duration_sec: 20
     action:
       type: "SCALE_UP"
       risk: "MEDIUM"
       approval_required: false
       parameters:
-        scale_increment: "1"
+        scale_increment: "2"
 
   - id: "RULE_HIGH_LATENCY_DEADLOCK"
+    description: "Severe P99 latency spike or connection deadlock. Temporarily reroute upstream traffic."
     condition:
       metric: "latency_p99_ms"
       operator: ">="
       threshold: 1000.0
-      duration_sec: 20
+      duration_sec: 15
     action:
       type: "REROUTE_TRAFFIC"
       risk: "HIGH"
       approval_required: true
       parameters:
         drain_timeout_sec: "10"
+        reroute_ratio: "1.0"
+
+  - id: "RULE_CACHE_DEGRADATION"
+    description: "Cache hit rate collapse or high stale eviction. Flush corrupted cache store."
+    condition:
+      metric: "cache_miss_rate"
+      operator: ">="
+      threshold: 0.70
+      duration_sec: 10
+    action:
+      type: "FLUSH_CACHE"
+      risk: "LOW"
+      approval_required: false
+      parameters:
+        async_flush: "true"
+
+  - id: "RULE_DB_POOL_EXHAUSTION"
+    description: "Connection pool exhaustion causing query timeouts. Increase connection pool size."
+    condition:
+      metric: "db_connection_wait_ms"
+      operator: ">="
+      threshold: 500.0
+      duration_sec: 10
+    action:
+      type: "INCREASE_POOL"
+      risk: "MEDIUM"
+      approval_required: false
+      parameters:
+        pool_increment: "10"
+
+  - id: "RULE_RUNAWAY_ERROR_CASCADE"
+    description: "Catastrophic error rate across downstream path. Isolate node to prevent cluster wide crash."
+    condition:
+      metric: "error_rate"
+      operator: ">="
+      threshold: 0.50
+      duration_sec: 10
+    action:
+      type: "ISOLATE"
+      risk: "HIGH"
+      approval_required: true
+      parameters:
+        circuit_break: "open"

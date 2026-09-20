@@ -70,13 +70,15 @@ type PredictionOutput struct {
 }
 
 type RecoveryAction struct {
-	ID              string  `json:"id"`
-	Title           string  `json:"title"`
-	Description     string  `json:"description"`
-	TargetServiceID string  `json:"targetServiceId"`
-	ActionType      string  `json:"actionType"` // restart, scale, flush_cache, increase_pool
-	Confidence      float64 `json:"confidence"`
-	Status          string  `json:"status"`
+	ID               string  `json:"id"`
+	Title            string  `json:"title"`
+	Description      string  `json:"description"`
+	TargetServiceID  string  `json:"targetServiceId"`
+	ActionType       string  `json:"actionType"` // restart, scale, flush_cache, increase_pool, reroute_traffic
+	Confidence       float64 `json:"confidence"`
+	Status           string  `json:"status"`
+	RiskLevel        string  `json:"riskLevel,omitempty"`
+	RequiresApproval bool    `json:"requiresApproval,omitempty"`
 }
 
 type RecoveryHistoryItem struct {
@@ -356,12 +358,12 @@ func (s *ControlPlaneState) runTicker() {
 			if isFaulty && activeFault != nil {
 				switch activeFault.FaultType {
 				case "cpu_stress":
-					svc.CPU = math.Min(99.0, svc.CPU+5.0)
-					svc.Latency = math.Min(350.0, svc.Latency+15.0)
+					svc.CPU = math.Round(math.Min(99.0, svc.CPU+5.0)*10) / 10
+					svc.Latency = math.Round(math.Min(350.0, svc.Latency+15.0)*10) / 10
 					svc.Status = "critical"
 				case "latency":
-					svc.Latency = math.Min(1500.0, svc.Latency+120.0)
-					svc.ErrorRate = math.Min(0.25, svc.ErrorRate+0.02)
+					svc.Latency = math.Round(math.Min(1500.0, svc.Latency+120.0)*10) / 10
+					svc.ErrorRate = math.Round(math.Min(0.25, svc.ErrorRate+0.02)*1000) / 1000
 					svc.Status = "degraded"
 				case "kill_service":
 					svc.CPU = 0.0
@@ -369,11 +371,11 @@ func (s *ControlPlaneState) runTicker() {
 					svc.ErrorRate = 1.0
 					svc.Status = "critical"
 				case "memory_leak":
-					svc.Memory = math.Min(98.0, svc.Memory+4.0)
-					svc.Latency = math.Min(400.0, svc.Latency+10.0)
+					svc.Memory = math.Round(math.Min(98.0, svc.Memory+4.0)*10) / 10
+					svc.Latency = math.Round(math.Min(400.0, svc.Latency+10.0)*10) / 10
 					svc.Status = "critical"
 				default:
-					svc.Latency = math.Min(600.0, svc.Latency+30.0)
+					svc.Latency = math.Round(math.Min(600.0, svc.Latency+30.0)*10) / 10
 					svc.Status = "degraded"
 				}
 			} else {
@@ -388,10 +390,10 @@ func (s *ControlPlaneState) runTicker() {
 				}
 
 				// If not faulty, keep healthy around nominal baseline
-				svc.CPU = math.Max(10.0, math.Min(60.0, svc.CPU+rand.Float64()*4.0-2.0))
-				svc.Memory = math.Max(20.0, math.Min(70.0, svc.Memory+rand.Float64()*2.0-1.0))
-				svc.Latency = math.Max(5.0, math.Min(45.0, svc.Latency+rand.Float64()*4.0-2.0))
-				svc.RPS = math.Max(50.0, math.Min(600.0, svc.RPS+rand.Float64()*20.0-10.0))
+				svc.CPU = math.Round(math.Max(10.0, math.Min(60.0, svc.CPU+rand.Float64()*4.0-2.0))*10) / 10
+				svc.Memory = math.Round(math.Max(20.0, math.Min(70.0, svc.Memory+rand.Float64()*2.0-1.0))*10) / 10
+				svc.Latency = math.Round(math.Max(5.0, math.Min(45.0, svc.Latency+rand.Float64()*4.0-2.0))*10) / 10
+				svc.RPS = math.Round(math.Max(50.0, math.Min(600.0, svc.RPS+rand.Float64()*20.0-10.0))*10) / 10
 				svc.ErrorRate = 0.001
 				svc.Status = "healthy"
 			}
