@@ -12,52 +12,107 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class GraphConvLayer(nn.Module):
+class DenseGATv2Layer(nn.Module):
     """
-    Spatially propagates node features across weighted, directed graph adjacency matrices.
-    Applies symmetric or row normalization with self-loops and residual connections.
+    Dense Batched Graph Attention Network v2 (GATv2) layer (Brody et al., 2021).
+    Computes dynamic attention over directed dependency edges:
+        e_ij = a^T LeakyReLU(W_src h_i + W_dst h_j)
+    Applies masked softmax over valid topological neighbors with self-loops,
+    supports residual skip connections, LayerNorm, and exposes learned attention weights.
     """
 
-    def __init__(self, in_features: int, out_features: int, dropout: float = 0.1):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        heads: int = 1,
+        dropout: float = 0.1,
+        negative_slope: float = 0.2,
+    ):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
-        self.weight = nn.Linear(in_features, out_features, bias=False)
-        self.bias = nn.Parameter(torch.zeros(out_features))
+        self.heads = heads
+        self.head_dim = out_features // heads
+        self.negative_slope = negative_slope
+
+        self.lin_src = nn.Linear(in_features, out_features, bias=False)
+        self.lin_dst = nn.Linear(in_features, out_features, bias=False)
+        self.attn_vec = nn.Parameter(torch.empty(heads, self.head_dim))
+        nn.init.xavier_uniform_(self.attn_vec.unsqueeze(0))
+
         self.skip = nn.Linear(in_features, out_features) if in_features != out_features else nn.Identity()
         self.norm = nn.LayerNorm(out_features)
         self.dropout = nn.Dropout(dropout)
+        self.attn_dropout = nn.Dropout(dropout)
 
-    def forward(self, x: torch.Tensor, adj: torch.Tensor, node_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        self.last_attention_weights: Optional[torch.Tensor] = None
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        adj: torch.Tensor,
+        node_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """
         x: (B, N, in_features)
-        adj: (B, N, N)
+        adj: (B, N, N) dynamic directed adjacency matrix
         node_mask: (B, N) optional binary mask (1 for active nodes, 0 for padded dummy nodes)
         returns: (B, N, out_features)
         """
         batch_size, num_nodes, _ = x.shape
 
-        # Add self-loops to adjacency
+        # 1. Linear transformations for source and destination
+        h_src = self.lin_src(x).view(batch_size, num_nodes, self.heads, self.head_dim)
+        h_dst = self.lin_dst(x).view(batch_size, num_nodes, self.heads, self.head_dim)
+
+        # 2. Dynamic GATv2 pairwise combination: LeakyReLU(W_src h_i + W_dst h_j)
+        # Broadcast pairwise combinations: (B, N, 1, H, d) + (B, 1, N, H, d) -> (B, N, N, H, d)
+        h_comb = h_src.unsqueeze(2) + h_dst.unsqueeze(1)
+        h_comb = F.leaky_relu(h_comb, negative_slope=self.negative_slope)
+
+        # 3. Inner product with learned attention vector: (B, N, N, H)
+        scores = (h_comb * self.attn_vec.view(1, 1, 1, self.heads, self.head_dim)).sum(dim=-1)
+        # Permute to (B, H, N, N) for batched attention
+        scores = scores.permute(0, 3, 1, 2)
+
+        # 4. Adjacency masking: self-loops are added first so every node can attend to itself
         eye = torch.eye(num_nodes, device=adj.device, dtype=adj.dtype).unsqueeze(0).expand(batch_size, -1, -1)
         a_hat = adj + eye
+        valid_edge_mask = (a_hat > 0).unsqueeze(1).expand(-1, self.heads, -1, -1)
 
         if node_mask is not None:
-            # Mask out connections involving padded dummy nodes
-            mask2d = node_mask.unsqueeze(1) * node_mask.unsqueeze(2)  # (B, N, N)
-            a_hat = a_hat * mask2d
+            active_2d = (node_mask.unsqueeze(1) * node_mask.unsqueeze(2)).unsqueeze(1)
+            valid_edge_mask = valid_edge_mask & (active_2d > 0)
 
-        # Row normalization: D^-1 * A_hat
-        deg = a_hat.sum(dim=-1, keepdim=True).clamp(min=1e-6)
-        a_norm = a_hat / deg
+        # Mask non-edges to -1e9
+        scores = torch.where(valid_edge_mask, scores, torch.full_like(scores, -1e9))
 
-        # Message passing: A_norm @ (x @ W)
-        support = self.weight(x)
-        out = torch.bmm(a_norm, support) + self.bias
-        out = F.leaky_relu(out, negative_slope=0.1)
+        # NaN Safety: If a padded dummy node row is completely masked (all -1e9),
+        # replace with 0.0 so softmax does not return NaN
+        all_masked_rows = (scores == -1e9).all(dim=-1, keepdim=True)
+        scores = torch.where(all_masked_rows, torch.zeros_like(scores), scores)
+
+        # 5. Softmax attention distribution
+        alpha = F.softmax(scores, dim=-1)
+        self.last_attention_weights = alpha.detach()
+        alpha_dropped = self.attn_dropout(alpha)
+
+        # 6. Message aggregation: alpha (B, H, N, N) @ h_dst (B, H, N, head_dim)
+        h_dst_perm = h_dst.permute(0, 2, 1, 3)
+        out = torch.matmul(alpha_dropped, h_dst_perm)
+        out = out.permute(0, 2, 1, 3).contiguous().view(batch_size, num_nodes, self.out_features)
+
+        # 7. Residual skip + LayerNorm
         out = self.norm(out + self.skip(x))
         if node_mask is not None:
             out = out * node_mask.unsqueeze(-1)
+
         return self.dropout(out)
+
+
+# Alias for backward compatibility
+GraphConvLayer = DenseGATv2Layer
 
 
 class TGNNModel(nn.Module):
@@ -212,6 +267,9 @@ class TGNNModel(nn.Module):
         # Task C: Propagation Prediction
         propagation_probs = self.propagation_head(node_embeddings).squeeze(-1) * node_mask  # (B, N)
 
+        # Attention weights from the last spatial layer
+        last_attn = self.spatial_layers[-1].last_attention_weights
+
         return {
             "cluster_failure_prob": cluster_failure,
             "node_failure_probs": node_failures,
@@ -221,4 +279,20 @@ class TGNNModel(nn.Module):
             "root_cause_probs": root_cause_probs,
             "propagation_probs": propagation_probs,
             "node_embeddings": node_embeddings,
+            "attention_weights": last_attn,
         }
+
+    def get_attention_weights(self) -> Optional[torch.Tensor]:
+        """
+        Returns the learned attention matrix alpha from the final GATv2 spatial layer.
+        Shape: (B, H, N, N) where alpha[b, h, i, j] represents learned attention
+        from node i to incoming neighbor node j.
+        """
+        if self.spatial_layers:
+            return self.spatial_layers[-1].last_attention_weights
+        return None
+
+    def get_param_count(self) -> int:
+        """Returns the total number of trainable parameters in the model."""
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
+

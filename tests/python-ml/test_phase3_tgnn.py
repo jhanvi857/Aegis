@@ -76,6 +76,49 @@ class TestPhase3TGNN(unittest.TestCase):
         loss.backward()
         self.assertIsNotNone(x.grad)
 
+        # Verify attention weights
+        attn = model.get_attention_weights()
+        self.assertIsNotNone(attn)
+        self.assertEqual(attn.shape, (4, 1, 5, 5))
+        # Attention weights should sum to 1.0 across neighbor dimension
+        row_sums = attn.sum(dim=-1)
+        self.assertTrue(torch.allclose(row_sums, torch.ones_like(row_sums), atol=1e-4))
+
+    def test_02b_gatv2_isolated_node_and_mask_nan_safety(self):
+        """
+        Verifies that Dense GATv2 does not produce NaNs when encountering:
+        1. Isolated degree-0 nodes (empty adjacency with zero incoming/outgoing edges)
+        2. Variable-size graphs with padded dummy nodes (node_mask contains 0s)
+        """
+        model = TGNNModel(in_dim=8, hidden_dim=32, num_nodes=5, num_spatial_layers=2)
+        x = torch.randn(2, 10, 5, 8, requires_grad=True)
+
+        # 1. Zero adjacency (completely isolated nodes; only self-loops should exist)
+        adj_isolated = torch.zeros(2, 10, 5, 5)
+        out_iso = model(x, adj_isolated)
+        self.assertFalse(torch.isnan(out_iso["cluster_failure_prob"]).any())
+        self.assertFalse(torch.isnan(out_iso["node_failure_probs"]).any())
+        self.assertFalse(torch.isnan(out_iso["root_cause_probs"]).any())
+        self.assertFalse(torch.isnan(out_iso["propagation_probs"]).any())
+        self.assertFalse(torch.isnan(out_iso["time_to_failure"]).any())
+
+        # 2. Padded dummy nodes: node 3 and 4 are inactive (mask = 0)
+        node_mask = torch.tensor([[1.0, 1.0, 1.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0, 0.0]])
+        out_masked = model(x, adj_isolated, node_mask=node_mask)
+        self.assertFalse(torch.isnan(out_masked["cluster_failure_prob"]).any())
+        self.assertFalse(torch.isnan(out_masked["node_failure_probs"]).any())
+        self.assertFalse(torch.isnan(out_masked["root_cause_probs"]).any())
+        self.assertFalse(torch.isnan(out_masked["propagation_probs"]).any())
+        # Verify dummy nodes are strictly zeroed in masked outputs
+        self.assertTrue((out_masked["node_failure_probs"][0, 3:] == 0.0).all())
+        self.assertTrue((out_masked["propagation_probs"][0, 3:] == 0.0).all())
+
+        # Backpropagation on masked output must be finite and free of NaNs
+        loss_m = out_masked["cluster_failure_prob"].sum() + out_masked["root_cause_logits"].sum()
+        loss_m.backward()
+        self.assertFalse(torch.isnan(x.grad).any())
+
+
     def test_03_isolation_forest_baseline(self):
         baseline = IsolationForestBaseline(contamination=0.1, random_state=42)
         feats = np.random.randn(20, 10, 5, 8).astype(np.float32)
