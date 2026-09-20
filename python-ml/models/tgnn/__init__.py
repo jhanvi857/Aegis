@@ -1,4 +1,8 @@
 """
-Temporal Graph Neural Network (TGNN) - Primary Model
-Consumes Graph Representation + Telemetry metrics/logs/traces to predict failures.
+TGNN module
+Exports SpatioTemporalGNN (TGNNModel) and GraphConvLayer.
 """
+
+from .model import TGNNModel, GraphConvLayer
+
+__all__ = ["TGNNModel", "GraphConvLayer"]

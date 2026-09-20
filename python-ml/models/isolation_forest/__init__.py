@@ -1,4 +1,8 @@
 """
-Isolation Forest baseline model
-Used for anomaly detection baseline comparison against TGNN.
+Isolation Forest module
+Exports IsolationForestBaseline.
 """
+
+from .model import IsolationForestBaseline
+
+__all__ = ["IsolationForestBaseline"]

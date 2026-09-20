@@ -1,4 +1,8 @@
 """
-LSTM baseline model
-Sequence-only (non-graph) baseline for comparison against TGNN.
+LSTM module
+Exports LSTMBaseline.
 """
+
+from .model import LSTMBaseline
+
+__all__ = ["LSTMBaseline"]
