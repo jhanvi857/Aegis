@@ -172,6 +172,50 @@ class TestPhase4RecoveryPlanner(unittest.TestCase):
             self.assertIn(action["target_node_id"], ["node-c", "node-d"])
             self.assertGreaterEqual(action["execution_order"], 1)
 
+    def test_live_prediction_engine_action_selection(self):
+        """
+        Verifies that PredictionEngine.predict() in the actual serving path
+        converts live telemetry batches into telemetry_by_node and selects
+        root-cause proportional actions (e.g. SCALE_UP for CPU, INCREASE_POOL for DB)
+        rather than falling through to default RESTART.
+        """
+        from serving.grpc_server import PredictionEngine
+        from graph.service import GraphPreprocessingService
+
+        service = GraphPreprocessingService(topology_path="configs/topology.yaml", structural_ttl_sec=0.01)
+        engine = PredictionEngine(checkpoint_path="python-ml/models/checkpoints/tgnn_best.pt")
+
+        # 1. Test CPU stress live telemetry batch -> triggers SCALE_UP
+        cpu_batch = {
+            "metrics": [
+                {"service_id": "node-c", "metric_name": "cpu_usage", "value": 92.0},
+                {"service_id": "node-c", "metric_name": "cpu_usage_percent", "value": 92.0},
+                {"service_id": "node-c", "metric_name": "p95_latency_ms", "value": 25.0},
+            ]
+        }
+        rep_cpu = service.process_telemetry_batch(cpu_batch)
+        pred_cpu = engine.predict(rep_cpu, telemetry_batch=cpu_batch, target_node_id="node-c")
+        plan_cpu = pred_cpu.get("recovery_plan")
+        self.assertIsNotNone(plan_cpu)
+        self.assertGreater(len(plan_cpu["actions"]), 0)
+        action_types = [a["action_type"] for a in plan_cpu["actions"]]
+        self.assertIn("SCALE_UP", action_types)
+
+        # 2. Test DB pool exhaustion live telemetry batch -> triggers INCREASE_POOL
+        db_batch = {
+            "metrics": [
+                {"service_id": "node-d", "metric_name": "db_connection_wait_ms", "value": 650.0},
+                {"service_id": "node-d", "metric_name": "p95_latency_ms", "value": 30.0},
+            ]
+        }
+        rep_db = service.process_telemetry_batch(db_batch)
+        pred_db = engine.predict(rep_db, telemetry_batch=db_batch, target_node_id="node-d")
+        plan_db = pred_db.get("recovery_plan")
+        self.assertIsNotNone(plan_db)
+        action_types_db = [a["action_type"] for a in plan_db["actions"]]
+        self.assertIn("INCREASE_POOL", action_types_db)
+
 
 if __name__ == "__main__":
     unittest.main()
+

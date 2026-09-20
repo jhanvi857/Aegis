@@ -72,11 +72,42 @@ class PredictionEngine:
         # 4. Optional recovery plan generation
         plan = None
         if generate_plan:
-            # Reconstruct DiGraph from representation for topological sort
+            # Construct telemetry_by_node from live telemetry_batch and graph representation
+            telemetry_by_node: Dict[str, Dict[str, float]] = {}
+
+            # A. Extract metrics from graph representation snapshot
+            snapshot_nodes = graph_representation.get("snapshot", {}).get("nodes", [])
+            for snode in snapshot_nodes:
+                nid = snode.get("id")
+                if nid and "metrics" in snode:
+                    telemetry_by_node[nid] = {str(k): float(v) for k, v in snode["metrics"].items()}
+
+            # B. Extract metrics from live telemetry_batch
+            if telemetry_batch:
+                for metric in telemetry_batch.get("metrics", []):
+                    svc = metric.get("service_id")
+                    name = metric.get("metric_name")
+                    val = metric.get("value")
+                    if svc and name and val is not None:
+                        if svc not in telemetry_by_node:
+                            telemetry_by_node[svc] = {}
+                        telemetry_by_node[svc][name] = float(val)
+                        # Normalize common metric name variants for rule evaluation
+                        if name == "cpu_usage":
+                            telemetry_by_node[svc]["cpu_usage_percent"] = float(val)
+                        elif name == "memory_usage":
+                            telemetry_by_node[svc]["memory_usage_percent"] = float(val)
+                        elif name in ["p95_latency_ms", "p99_latency_ms"]:
+                            telemetry_by_node[svc]["latency_p99_ms"] = float(val)
+                            telemetry_by_node[svc]["p99_latency_ms"] = float(val)
+
+            # Reconstruct DiGraph from representation with attached node telemetry
             g = nx.DiGraph()
             node_ids = graph_representation.get("node_ids", [])
             for nid in node_ids:
-                g.add_node(nid)
+                node_telem = telemetry_by_node.get(nid, {})
+                g.add_node(nid, telemetry=node_telem, metrics=node_telem)
+
             edge_sources = graph_representation.get("edge_sources", [])
             edge_targets = graph_representation.get("edge_targets", [])
             for src, tgt in zip(edge_sources, edge_targets):
@@ -90,6 +121,7 @@ class PredictionEngine:
                 graph=g,
                 root_causes=root_causes,
                 propagation_set=list(set(all_prop_nodes)),
+                telemetry_by_node=telemetry_by_node,
             )
 
         return {
