@@ -1,0 +1,140 @@
+{
+  "root_cause_distribution_audit": {
+    "num_nodes": 5,
+    "total_chaos_episodes": 420,
+    "counts_per_node": {
+      "gateway": 85,
+      "node-a": 76,
+      "node-b": 75,
+      "node-c": 96,
+      "node-d": 88
+    },
+    "percentages_per_node": {
+      "gateway": 20.238095238095237,
+      "node-a": 18.095238095238095,
+      "node-b": 17.857142857142858,
+      "node-c": 22.857142857142858,
+      "node-d": 20.952380952380953
+    },
+    "expected_count_per_node": 84.0,
+    "chi2_statistic": 3.6428571428571432,
+    "p_value": 0.45649148626782077,
+    "empirical_entropy_bits": 2.3157014584044053,
+    "max_entropy_bits": 2.321928094887362,
+    "entropy_ratio": 0.997318333631146,
+    "is_uniform_and_unbiased": true
+  },
+  "train_val_test_distribution_audit": {
+    "train_size": 420,
+    "val_size": 90,
+    "test_size": 90,
+    "features": {
+      "cpu_utilization": {
+        "train_vs_val": {
+          "ks_stat": 0.1111111111111111,
+          "p_value": 0.297692371370616,
+          "wasserstein": 0.0019075900079712023
+        },
+        "train_vs_test": {
+          "ks_stat": 0.0761904761904762,
+          "p_value": 0.7543055756686997,
+          "wasserstein": 0.001722674166399335
+        },
+        "no_significant_shift": true
+      },
+      "memory_utilization": {
+        "train_vs_val": {
+          "ks_stat": 0.05317460317460317,
+          "p_value": 0.9776637336945209,
+          "wasserstein": 0.0010658180193295552
+        },
+        "train_vs_test": {
+          "ks_stat": 0.05714285714285714,
+          "p_value": 0.9576110910462109,
+          "wasserstein": 0.0009693371634634713
+        },
+        "no_significant_shift": true
+      },
+      "p95_latency": {
+        "train_vs_val": {
+          "ks_stat": 0.12380952380952381,
+          "p_value": 0.18998328387083402,
+          "wasserstein": 0.0006841412612370082
+        },
+        "train_vs_test": {
+          "ks_stat": 0.1357142857142857,
+          "p_value": 0.11912821649169343,
+          "wasserstein": 0.0005957441907080393
+        },
+        "no_significant_shift": true
+      },
+      "error_rate": {
+        "train_vs_val": {
+          "ks_stat": 0.1,
+          "p_value": 0.4220963653890543,
+          "wasserstein": 0.00020024297677630947
+        },
+        "train_vs_test": {
+          "ks_stat": 0.11746031746031746,
+          "p_value": 0.23934778050739633,
+          "wasserstein": 0.0002318968778357856
+        },
+        "no_significant_shift": true
+      },
+      "in_degree": {
+        "train_vs_val": {
+          "ks_stat": 0.0,
+          "p_value": 1.0,
+          "wasserstein": 0.0
+        },
+        "train_vs_test": {
+          "ks_stat": 0.0,
+          "p_value": 1.0,
+          "wasserstein": 0.0
+        },
+        "no_significant_shift": true
+      },
+      "out_degree": {
+        "train_vs_val": {
+          "ks_stat": 0.0,
+          "p_value": 1.0,
+          "wasserstein": 0.0
+        },
+        "train_vs_test": {
+          "ks_stat": 0.0,
+          "p_value": 1.0,
+          "wasserstein": 0.0
+        },
+        "no_significant_shift": true
+      },
+      "criticality": {
+        "train_vs_val": {
+          "ks_stat": 0.0,
+          "p_value": 1.0,
+          "wasserstein": 0.0
+        },
+        "train_vs_test": {
+          "ks_stat": 0.0,
+          "p_value": 1.0,
+          "wasserstein": 0.0
+        },
+        "no_significant_shift": true
+      },
+      "queue_depth": {
+        "train_vs_val": {
+          "ks_stat": 0.05952380952380952,
+          "p_value": 0.9414992973426176,
+          "wasserstein": 0.0011914288240765783
+        },
+        "train_vs_test": {
+          "ks_stat": 0.10714285714285714,
+          "p_value": 0.33888750546192675,
+          "wasserstein": 0.0017095238798194468
+        },
+        "no_significant_shift": true
+      }
+    },
+    "min_train_test_p_value": 0.11912821649169343,
+    "distribution_shift_detected": false
+  }
+}

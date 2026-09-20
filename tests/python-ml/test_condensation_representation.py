@@ -67,8 +67,9 @@ class TestCondensationAndRepresentation(unittest.TestCase):
         self.assertIn("node-b", feat_matrix)
         vec_b = feat_matrix["node-b"]
         self.assertEqual(len(vec_b), 8)  # 8 features per node
-        # feature vector index 7 is status (degraded = 0.5)
-        self.assertEqual(vec_b[7], 0.5)
+        # feature vector index 7 is normalized queue_depth (0.0 <= val <= 1.0)
+        self.assertGreaterEqual(vec_b[7], 0.0)
+        self.assertLessEqual(vec_b[7], 1.0)
 
 
 if __name__ == "__main__":
