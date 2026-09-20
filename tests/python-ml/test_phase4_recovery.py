@@ -181,39 +181,39 @@ class TestPhase4RecoveryPlanner(unittest.TestCase):
         """
         from serving.grpc_server import PredictionEngine
         from graph.service import GraphPreprocessingService
+        from ingestion.kafka_consumer import TelemetryConsumer
 
         service = GraphPreprocessingService(topology_path="configs/topology.yaml", structural_ttl_sec=0.01)
         engine = PredictionEngine(checkpoint_path="python-ml/models/checkpoints/tgnn_best.pt")
+        consumer = TelemetryConsumer()
 
-        # 1. Test CPU stress live telemetry batch -> triggers SCALE_UP
-        cpu_batch = {
-            "metrics": [
-                {"service_id": "node-c", "metric_name": "cpu_usage", "value": 92.0},
-                {"service_id": "node-c", "metric_name": "cpu_usage_percent", "value": 92.0},
-                {"service_id": "node-c", "metric_name": "p95_latency_ms", "value": 25.0},
-            ]
-        }
+        # 1. Pipeline-generated CPU stress batch -> triggers SCALE_UP
+        cpu_batch = consumer.generate_simulated_batch(fault_node="node-c", fault_type="cpu_stress")
         rep_cpu = service.process_telemetry_batch(cpu_batch)
         pred_cpu = engine.predict(rep_cpu, telemetry_batch=cpu_batch, target_node_id="node-c")
         plan_cpu = pred_cpu.get("recovery_plan")
         self.assertIsNotNone(plan_cpu)
         self.assertGreater(len(plan_cpu["actions"]), 0)
-        action_types = [a["action_type"] for a in plan_cpu["actions"]]
-        self.assertIn("SCALE_UP", action_types)
+        action_types_cpu = [a["action_type"] for a in plan_cpu["actions"]]
+        self.assertIn("SCALE_UP", action_types_cpu)
 
-        # 2. Test DB pool exhaustion live telemetry batch -> triggers INCREASE_POOL
-        db_batch = {
-            "metrics": [
-                {"service_id": "node-d", "metric_name": "db_connection_wait_ms", "value": 650.0},
-                {"service_id": "node-d", "metric_name": "p95_latency_ms", "value": 30.0},
-            ]
-        }
+        # 2. Pipeline-generated DB lock batch -> natively contains db_connection_wait_ms >= 500ms -> triggers INCREASE_POOL
+        db_batch = consumer.generate_simulated_batch(fault_node="node-d", fault_type="db_lock")
         rep_db = service.process_telemetry_batch(db_batch)
         pred_db = engine.predict(rep_db, telemetry_batch=db_batch, target_node_id="node-d")
         plan_db = pred_db.get("recovery_plan")
         self.assertIsNotNone(plan_db)
         action_types_db = [a["action_type"] for a in plan_db["actions"]]
         self.assertIn("INCREASE_POOL", action_types_db)
+
+        # 3. Pipeline-generated cache down batch -> natively contains cache_miss_rate >= 0.70 -> triggers FLUSH_CACHE
+        cache_batch = consumer.generate_simulated_batch(fault_node="node-b", fault_type="cache_down")
+        rep_cache = service.process_telemetry_batch(cache_batch)
+        pred_cache = engine.predict(rep_cache, telemetry_batch=cache_batch, target_node_id="node-b")
+        plan_cache = pred_cache.get("recovery_plan")
+        self.assertIsNotNone(plan_cache)
+        action_types_cache = [a["action_type"] for a in plan_cache["actions"]]
+        self.assertIn("FLUSH_CACHE", action_types_cache)
 
 
 if __name__ == "__main__":

@@ -33,7 +33,7 @@ In academic evaluation and production machine learning, a **100% score across al
 │ 4. Deterministic Stratified Sampling: Implemented balanced Cartesian scheduling across     │
 │    all (node, fault_type) tuples and stratified splits.                                   │
 │ 5. Loss Weight & Class Imbalance Alignment: Unified LOSS_WEIGHTS across train and val,    │
-│    added positive class weighting (pos_weight=4.0) to address 1-2 positive nodes per graph.│
+│    dynamically computed empirical pos_weight (neg/pos ratio) for class imbalance alignment. │
 │                                                                                           │
 │ MEASURED BENCHMARK (dataset/processed/benchmark_results.json, 128 Stratified Test Episodes): │
 │ • TGNN (GATv2 + GRU, Ours):        100.0% Fail F1 | 100.0% RC Top-1 | 61.7% Prop IoU      │
