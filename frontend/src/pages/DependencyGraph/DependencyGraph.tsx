@@ -297,28 +297,28 @@ export const DependencyGraph: React.FC = () => {
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] font-semibold tracking-[0.06em] uppercase text-gray-400">CPU USAGE</span>
                     <span className="font-mono text-xs font-semibold text-gray-100">
-                      {selectedService.cpu}%
+                      {Number(selectedService.cpu || 0).toFixed(1)}%
                     </span>
                   </div>
 
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] font-semibold tracking-[0.06em] uppercase text-gray-400">LATENCY (P95)</span>
                     <span className="font-mono text-xs font-semibold text-gray-100">
-                      {selectedService.latency}ms
+                      {Number(selectedService.latency || 0).toFixed(0)}ms
                     </span>
                   </div>
 
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] font-semibold tracking-[0.06em] uppercase text-gray-400">MEMORY LOAD</span>
                     <span className="font-mono text-xs font-semibold text-gray-100">
-                      {selectedService.memory}%
+                      {Number(selectedService.memory || 0).toFixed(1)}%
                     </span>
                   </div>
 
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] font-semibold tracking-[0.06em] uppercase text-gray-400">THROUGHPUT</span>
                     <span className="font-mono text-xs font-semibold text-gray-100">
-                      {selectedService.rps} req/s
+                      {Number(selectedService.rps || 0).toFixed(0)} req/s
                     </span>
                   </div>
 

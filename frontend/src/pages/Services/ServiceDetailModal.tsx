@@ -81,7 +81,7 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
                 <span className="text-[10px] font-semibold tracking-[0.06em] uppercase">CPU LOAD</span>
               </div>
               <span className={`font-mono text-[16px] font-semibold ${service.cpu > 80 ? 'text-[#AD2831]' : 'text-gray-100'}`}>
-                {service.cpu}%
+                {Number(service.cpu || 0).toFixed(1)}%
               </span>
             </div>
 
@@ -91,7 +91,7 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
                 <span className="text-[10px] font-semibold tracking-[0.06em] uppercase">LATENCY (P95)</span>
               </div>
               <span className={`font-mono text-[16px] font-semibold ${service.latency > 150 ? 'text-[#AD2831]' : 'text-gray-100'}`}>
-                {service.latency}ms
+                {Number(service.latency || 0).toFixed(0)}ms
               </span>
             </div>
 
@@ -101,7 +101,7 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
                 <span className="text-[10px] font-semibold tracking-[0.06em] uppercase">MEMORY</span>
               </div>
               <span className="font-mono text-[16px] font-semibold text-gray-100">
-                {service.memory}%
+                {Number(service.memory || 0).toFixed(1)}%
               </span>
             </div>
 

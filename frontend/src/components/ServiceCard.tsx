@@ -68,42 +68,44 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
 
       {/* Primary Telemetry Metrics */}
       <div className="grid grid-cols-2 gap-2 my-3 text-xs">
-        <div className="bg-[#0B0B0C] p-2 rounded-md border border-[#26262B] flex items-center justify-between">
-          <div className="flex items-center space-x-1.5 text-gray-400">
+        <div className="bg-[#0B0B0C] p-2 rounded-md border border-[#26262B] flex items-center justify-between min-w-0">
+          <div className="flex items-center space-x-1.5 text-gray-400 shrink-0">
             <Cpu className="w-3.5 h-3.5 text-gray-400" />
             <span className="text-[10px] font-semibold tracking-[0.06em] uppercase">CPU</span>
           </div>
-          <span className={`font-mono text-xs font-semibold ${service.cpu > 80 ? 'text-[#AD2831]' : 'text-gray-200'}`}>
-            {service.cpu}%
+          <span className={`font-mono text-xs font-semibold shrink-0 ml-1.5 ${service.cpu > 80 ? 'text-[#AD2831]' : 'text-gray-200'}`}>
+            {Number(service.cpu || 0).toFixed(1)}%
           </span>
         </div>
 
-        <div className="bg-[#0B0B0C] p-2 rounded-md border border-[#26262B] flex items-center justify-between">
-          <div className="flex items-center space-x-1.5 text-gray-400">
+        <div className="bg-[#0B0B0C] p-2 rounded-md border border-[#26262B] flex items-center justify-between min-w-0">
+          <div className="flex items-center space-x-1.5 text-gray-400 shrink-0">
             <Clock className="w-3.5 h-3.5 text-[#D4A017]" />
             <span className="text-[10px] font-semibold tracking-[0.06em] uppercase">Latency</span>
           </div>
           <span
-            className={`font-mono text-xs font-semibold ${service.latency > 150 ? 'text-[#AD2831]' : 'text-gray-200'}`}
+            className={`font-mono text-xs font-semibold shrink-0 ml-1.5 ${service.latency > 150 ? 'text-[#AD2831]' : 'text-gray-200'}`}
           >
-            {service.latency}ms
+            {Number(service.latency || 0).toFixed(0)}ms
           </span>
         </div>
 
-        <div className="bg-[#0B0B0C] p-2 rounded-md border border-[#26262B] flex items-center justify-between">
-          <div className="flex items-center space-x-1.5 text-gray-400">
+        <div className="bg-[#0B0B0C] p-2 rounded-md border border-[#26262B] flex items-center justify-between min-w-0">
+          <div className="flex items-center space-x-1.5 text-gray-400 shrink-0">
             <HardDrive className="w-3.5 h-3.5 text-[#e2588a]" />
             <span className="text-[10px] font-semibold tracking-[0.06em] uppercase">Memory</span>
           </div>
-          <span className="font-mono text-xs font-semibold text-gray-200">{service.memory}%</span>
+          <span className="font-mono text-xs font-semibold text-gray-200 shrink-0 ml-1.5">
+            {Number(service.memory || 0).toFixed(1)}%
+          </span>
         </div>
 
-        <div className="bg-[#0B0B0C] p-2 rounded-md border border-[#26262B] flex items-center justify-between">
-          <div className="flex items-center space-x-1.5 text-gray-400">
+        <div className="bg-[#0B0B0C] p-2 rounded-md border border-[#26262B] flex items-center justify-between min-w-0">
+          <div className="flex items-center space-x-1.5 text-gray-400 shrink-0">
             <Layers className="w-3.5 h-3.5 text-[#3F8E4F]" />
             <span className="text-[10px] font-semibold tracking-[0.06em] uppercase">Replicas</span>
           </div>
-          <span className="font-mono text-xs font-semibold text-gray-200">
+          <span className="font-mono text-xs font-semibold text-gray-200 shrink-0 ml-1.5">
             {service.replicas}/{service.maxReplicas}
           </span>
         </div>
@@ -111,7 +113,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
 
       {/* Footer bar */}
       <div className="flex items-center justify-between pt-2 border-t border-[#26262B] text-[11px] text-gray-400">
-        <span className="font-sans">Throughput: <span className="font-mono font-medium text-gray-300">{service.rps} req/s</span></span>
+        <span className="font-sans">Throughput: <span className="font-mono font-medium text-gray-300">{Number(service.rps || 0).toFixed(0)} req/s</span></span>
         <div className="flex items-center space-x-1 text-[#e2588a] font-semibold hover:underline">
           <span>Details</span>
           <ChevronRight className="w-3.5 h-3.5" />

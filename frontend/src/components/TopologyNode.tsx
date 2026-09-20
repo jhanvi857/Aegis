@@ -83,17 +83,17 @@ export const TopologyNode = memo(({ data }: { data: TopologyNodeData }) => {
       </div>
 
       <div className="grid grid-cols-2 gap-1 text-[10px] text-gray-200 bg-[#0B0B0C] p-2 rounded-md border border-[#26262B]">
-        <div className="flex items-center justify-between">
-          <span className="font-sans text-[10px] text-gray-400">CPU</span>
-          <span className={`font-mono text-[10px] font-normal ${data.cpu > 80 ? 'text-[#AD2831] font-semibold' : 'text-gray-300'}`}>
-            {data.cpu}%
+        <div className="flex items-center justify-between min-w-0">
+          <span className="font-sans text-[10px] text-gray-400 shrink-0">CPU</span>
+          <span className={`font-mono text-[10px] font-normal shrink-0 ml-1 ${data.cpu > 80 ? 'text-[#AD2831] font-semibold' : 'text-gray-300'}`}>
+            {Number(data.cpu || 0).toFixed(0)}%
           </span>
         </div>
 
-        <div className="flex items-center justify-between">
-          <span className="font-sans text-[10px] text-gray-400">Lat</span>
-          <span className={`font-mono text-[10px] font-normal ${data.latency > 150 ? 'text-[#AD2831] font-semibold' : 'text-gray-300'}`}>
-            {data.latency}ms
+        <div className="flex items-center justify-between min-w-0">
+          <span className="font-sans text-[10px] text-gray-400 shrink-0">Lat</span>
+          <span className={`font-mono text-[10px] font-normal shrink-0 ml-1 ${data.latency > 150 ? 'text-[#AD2831] font-semibold' : 'text-gray-300'}`}>
+            {Number(data.latency || 0).toFixed(0)}ms
           </span>
         </div>
       </div>

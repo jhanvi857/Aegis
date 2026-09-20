@@ -28,7 +28,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
     const avgCpu = Math.round(services.reduce((acc, s) => acc + (s.history[idx]?.cpu || s.cpu), 0) / services.length);
     const avgLat = Math.round(services.reduce((acc, s) => acc + (s.history[idx]?.latency || s.latency), 0) / services.length);
     const avgMem = Math.round(services.reduce((acc, s) => acc + (s.history[idx]?.memory || s.memory), 0) / services.length);
-    const totalRps = services.reduce((acc, s) => acc + (s.history[idx]?.rps || s.rps), 0);
+    const totalRps = Math.round(services.reduce((acc, s) => acc + (s.history[idx]?.rps || s.rps || 0), 0));
 
     return {
       timestamp,
