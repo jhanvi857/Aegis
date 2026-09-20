@@ -31,17 +31,17 @@ Aegis observes a live microservice mesh, predicts impending failures **15–30 s
 
 ## Empirical Benchmark Results
 
-Evaluated on 98 stratified test episodes under strictly pre-injection observation windows ($t < t_{\text{inj}}$) with zero discrete status shortcut proxies:
+Evaluated on 128 stratified test episodes under strictly pre-injection observation windows ($t < t_{\text{inj}}$) with zero discrete status shortcut proxies:
 
 ### 1. Standard Benchmark (5 Model Tiers)
 
 | Model Tier | Model Architecture | Failure F1 | Root Cause Top-1 | Root Cause Top-3 | Propagation Blast Radius IoU |
 |---|---|:---:|:---:|:---:|:---:|
-| **Model 3 (Ours)** | **TGNN (GATv2 + GRU, Canonical Seed 42)** | **99.3%** | **98.0%** | **100.0%** | **47.3%** |
-| **Model 2** | **LSTM (Temporal Only Sequence)** | 83.3% | 60.2% | 91.8% | 0.0% *(no graph awareness)* |
-| **Model 1** | **Isolation Forest (Tabular ML)** | 37.2% | 16.3% | 21.2% | 0.0% *(no graph awareness)* |
-| **Baseline A** | **Heuristic Threshold Rule (Static Alerting)** | 25.0% | 38.8% | 38.8% | 0.0% *(no graph awareness)* |
-| **Baseline B** | **Majority Class Baseline (Naive Mode)** | 83.3% | 28.6% | 28.6% | 0.0% *(no graph awareness)* |
+| **Model 3 (Ours)** | **TGNN (GATv2 + GRU, Canonical Seed 42)** | **100.0%** | **100.0%** | **100.0%** | **61.7%** |
+| **Model 2** | **LSTM (Temporal Only Sequence)** | 87.7% | 30.5% | 77.3% | 0.0% *(no graph awareness)* |
+| **Model 1** | **Isolation Forest (Tabular ML)** | 49.6% | 17.2% | 22.3% | 0.0% *(no graph awareness)* |
+| **Baseline A** | **Heuristic Threshold Rule (Static Alerting)** | 24.6% | 32.8% | 32.8% | 0.0% *(no graph awareness)* |
+| **Baseline B** | **Majority Class Baseline (Naive Mode)** | 87.7% | 21.9% | 21.9% | 0.0% *(no graph awareness)* |
 
 #### Multi-Seed Reproducibility Verification (5 Fixed Seeds: `[42, 101, 202, 303, 404]`):
 - **Failure F1:** $99.6\% \pm 0.9\%$ (Range: $97.8\% - 100.0\%$)

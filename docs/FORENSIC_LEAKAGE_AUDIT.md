@@ -35,12 +35,12 @@ In academic evaluation and production machine learning, a **100% score across al
 │ 5. Loss Weight & Class Imbalance Alignment: Unified LOSS_WEIGHTS across train and val,    │
 │    added positive class weighting (pos_weight=4.0) to address 1-2 positive nodes per graph.│
 │                                                                                           │
-│ MEASURED BENCHMARK (dataset/processed/benchmark_results.json, 98 Test Episodes):          │
-│ • TGNN (GATv2 + GRU, Ours):        99.3% Fail F1 | 98.0% RC Top-1 | 47.3% Prop IoU       │
-│ • LSTM (Temporal Only):            83.3% Fail F1 | 60.2% RC Top-1 |  0.0% Prop IoU       │
-│ • Isolation Forest (Tabular):      37.2% Fail F1 | 16.3% RC Top-1 |  0.0% Prop IoU       │
-│ • Heuristic Threshold (Baseline):  25.0% Fail F1 | 38.8% RC Top-1 |  0.0% Prop IoU       │
-│ • Majority Class (Baseline):       83.3% Fail F1 | 28.6% RC Top-1 |  0.0% Prop IoU       │
+│ MEASURED BENCHMARK (dataset/processed/benchmark_results.json, 128 Stratified Test Episodes): │
+│ • TGNN (GATv2 + GRU, Ours):        100.0% Fail F1 | 100.0% RC Top-1 | 61.7% Prop IoU      │
+│ • LSTM (Temporal Only):             87.7% Fail F1 |  30.5% RC Top-1 |  0.0% Prop IoU      │
+│ • Isolation Forest (Tabular):       49.6% Fail F1 |  17.2% RC Top-1 |  0.0% Prop IoU      │
+│ • Heuristic Threshold (Baseline):   24.6% Fail F1 |  32.8% RC Top-1 |  0.0% Prop IoU      │
+│ • Majority Class (Baseline):        87.7% Fail F1 |  21.9% RC Top-1 |  0.0% Prop IoU      │
 └───────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 

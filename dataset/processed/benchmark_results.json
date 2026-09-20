@@ -1,55 +1,55 @@
 {
-  "test_episodes": 98,
+  "test_episodes": 128,
   "models": {
     "heuristic_threshold": {
       "model": "Heuristic Threshold Rule (Baseline)",
-      "failure_accuracy": 0.3877551020408163,
+      "failure_accuracy": 0.328125,
       "failure_precision": 1.0,
-      "failure_recall": 0.14285714285714285,
-      "failure_f1": 0.25,
-      "root_cause_top1_acc": 0.3877551020408163,
-      "root_cause_top3_acc": 0.3877551020408163,
+      "failure_recall": 0.14,
+      "failure_f1": 0.24561403508771928,
+      "root_cause_top1_acc": 0.328125,
+      "root_cause_top3_acc": 0.328125,
       "propagation_iou": 0.0
     },
     "majority_class": {
       "model": "Majority Class (Baseline)",
-      "failure_accuracy": 0.7142857142857143,
-      "failure_precision": 0.7142857142857143,
+      "failure_accuracy": 0.78125,
+      "failure_precision": 0.78125,
       "failure_recall": 1.0,
-      "failure_f1": 0.8333333333333334,
-      "root_cause_top1_acc": 0.2857142857142857,
-      "root_cause_top3_acc": 0.2857142857142857,
+      "failure_f1": 0.8771929824561403,
+      "root_cause_top1_acc": 0.21875,
+      "root_cause_top3_acc": 0.21875,
       "propagation_iou": 0.0
     },
     "isolation_forest": {
       "model": "Isolation Forest",
-      "failure_accuracy": 0.4489795918367347,
+      "failure_accuracy": 0.4765625,
       "failure_precision": 1.0,
-      "failure_recall": 0.22857142857142856,
-      "failure_f1": 0.37209302325581395,
-      "root_cause_top1_acc": 0.16326530612244897,
-      "root_cause_top3_acc": 0.21224489795918366,
+      "failure_recall": 0.33,
+      "failure_f1": 0.49624060150375937,
+      "root_cause_top1_acc": 0.171875,
+      "root_cause_top3_acc": 0.2234375,
       "propagation_iou": 0.0
     },
     "lstm": {
       "model": "LSTM (Temporal Only)",
-      "failure_accuracy": 0.7142857142857143,
-      "failure_precision": 0.7142857142857143,
+      "failure_accuracy": 0.78125,
+      "failure_precision": 0.78125,
       "failure_recall": 1.0,
-      "failure_f1": 0.8333333333333334,
-      "root_cause_top1_acc": 0.6020408163265306,
-      "root_cause_top3_acc": 0.9183673469387755,
+      "failure_f1": 0.8771929824561403,
+      "root_cause_top1_acc": 0.3046875,
+      "root_cause_top3_acc": 0.7734375,
       "propagation_iou": 0.0
     },
     "tgnn": {
       "model": "TGNN (Ours)",
-      "failure_accuracy": 0.9897959183673469,
+      "failure_accuracy": 1.0,
       "failure_precision": 1.0,
-      "failure_recall": 0.9857142857142858,
-      "failure_f1": 0.9928057553956835,
-      "root_cause_top1_acc": 0.9795918367346939,
+      "failure_recall": 1.0,
+      "failure_f1": 1.0,
+      "root_cause_top1_acc": 1.0,
       "root_cause_top3_acc": 1.0,
-      "propagation_iou": 0.4727891156462585
+      "propagation_iou": 0.6165364583333334
     }
   },
   "summary": {
