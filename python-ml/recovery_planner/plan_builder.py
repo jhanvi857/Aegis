@@ -76,24 +76,23 @@ class RecoveryPlanBuilder:
         plan_justifications = []
 
         for order_idx, node_id in enumerate(ordered_node_ids, start=1):
-            # Extract metrics for this node if present
-            node_metrics = telemetry_by_node.get(node_id, {})
+            # Extract real observed metrics for this node
+            node_metrics = dict(telemetry_by_node.get(node_id, {}))
 
-            # If node has contributing metrics from root cause analyzer, map them
+            # If telemetry was not passed directly, check graph node telemetry/metrics
+            if not node_metrics and graph.has_node(node_id):
+                node_data = graph.nodes[node_id]
+                node_metrics.update(node_data.get("telemetry", {}))
+                node_metrics.update(node_data.get("metrics", {}))
+
+            # If root-cause item provides structured measured metric values, incorporate them
             if node_id in rc_map:
-                contributing = rc_map[node_id].get("contributing_metrics", [])
-                for cm in contributing:
-                    if "cpu" in cm.lower() and "cpu_usage_percent" not in node_metrics:
-                        node_metrics["cpu_usage_percent"] = 92.0
-                    elif "memory" in cm.lower() and "memory_usage_percent" not in node_metrics:
-                        node_metrics["memory_usage_percent"] = 95.0
-                    elif "latency" in cm.lower() and "latency_p99_ms" not in node_metrics:
-                        node_metrics["latency_p99_ms"] = 1250.0
-                    elif "cache" in cm.lower() and "cache_miss_rate" not in node_metrics:
-                        node_metrics["cache_miss_rate"] = 0.85
-                    elif "pool" in cm.lower() or "db" in cm.lower():
-                        if "db_connection_wait_ms" not in node_metrics:
-                            node_metrics["db_connection_wait_ms"] = 650.0
+                rc_item = rc_map[node_id]
+                for key in ["observed_metrics", "metric_values", "metrics"]:
+                    if key in rc_item and isinstance(rc_item[key], dict):
+                        for m_name, m_val in rc_item[key].items():
+                            if m_name not in node_metrics:
+                                node_metrics[m_name] = float(m_val)
 
             # Calculate blast radius size for this specific node
             downstream_count = 0
