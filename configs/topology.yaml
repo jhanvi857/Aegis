@@ -17,7 +17,7 @@ nodes:
       tier: "edge"
 
   - id: "node-a"
-    name: "Generic Node A"
+    name: "Node A · Coordinator Hub"
     type: "service"
     host: "node-a"
     port: 8081
@@ -31,7 +31,7 @@ nodes:
       tier: "application"
 
   - id: "node-b"
-    name: "Generic Node B"
+    name: "Node B · Compute Leaf"
     type: "service"
     host: "node-b"
     port: 8082
@@ -43,7 +43,7 @@ nodes:
       tier: "compute"
 
   - id: "node-c"
-    name: "Generic Node C"
+    name: "Node C · Pipeline Transit"
     type: "service"
     host: "node-c"
     port: 8083
@@ -56,7 +56,7 @@ nodes:
       tier: "pipeline"
 
   - id: "node-d"
-    name: "Generic Node D"
+    name: "Node D · Persistence Sink"
     type: "service"
     host: "node-d"
     port: 8084

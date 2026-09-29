@@ -30,8 +30,11 @@ export const LogStreamer: React.FC<LogStreamerProps> = ({
     return true;
   });
 
+  // Display newest logs first so live events are immediately visible
+  const displayedLogs = [...filteredLogs].reverse();
+
   const handleCopy = () => {
-    const text = filteredLogs.map((l) => `[${l.timestamp}] [${l.level}] [${l.serviceName}] ${l.message}`).join('\n');
+    const text = displayedLogs.map((l) => `[${l.timestamp}] [${l.level}] [${l.serviceName}] ${l.message}`).join('\n');
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -105,12 +108,12 @@ export const LogStreamer: React.FC<LogStreamerProps> = ({
 
       {/* Log Feed Console */}
       <div className={`p-3 overflow-y-auto ${maxHeight} space-y-1 leading-normal`}>
-        {filteredLogs.length === 0 ? (
+        {displayedLogs.length === 0 ? (
           <div className="text-gray-500 text-center py-6 font-sans text-xs">
             No telemetry log entries matching current filter criteria.
           </div>
         ) : (
-          filteredLogs.map((log) => {
+          displayedLogs.map((log) => {
             const levelStyle =
               log.level === 'ERROR'
                 ? 'text-[#AD2831]'

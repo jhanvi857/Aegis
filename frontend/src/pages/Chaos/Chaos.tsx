@@ -9,6 +9,9 @@ export const Chaos: React.FC = () => {
 
   // Default target service
   const effectiveTargetId = selectedTargetId || (services.find((s) => s.type !== 'gateway')?.id || services[0]?.id || 'node-a');
+  const targetService = services.find((s) => s.id === effectiveTargetId);
+  const targetLabel = targetService ? `${targetService.name} (${targetService.id})` : effectiveTargetId.toUpperCase();
+  const isNodeBusy = activeFaults.some((f) => f.targetServiceId === effectiveTargetId);
 
   const faultCatalog: { type: FaultType; label: string; description: string }[] = [
     {
@@ -159,13 +162,21 @@ export const Chaos: React.FC = () => {
 
       {/* Fault Injection Catalog Grid */}
       <div className="space-y-3">
-        <h3 className="text-[11px] font-semibold text-gray-300 uppercase tracking-[0.07em] leading-[16px]">
-          REAL BACKEND FAULT SCENARIO CATALOG
-        </h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-[11px] font-semibold text-gray-300 uppercase tracking-[0.07em] leading-[16px]">
+            REAL BACKEND FAULT SCENARIO CATALOG — TARGET:{' '}
+            <span className="text-[#e2588a] font-mono">{targetLabel}</span>
+          </h3>
+          {isNodeBusy && (
+            <span className="text-[10px] font-semibold text-[#f87171] bg-[#AD2831]/20 border border-[#AD2831]/50 px-2 py-0.5 rounded tracking-[0.04em] uppercase">
+              NODE BUSY · FAULT IN PROGRESS
+            </span>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {faultCatalog.map((item) => {
-            const isRunning = activeFaults.some(
+            const isThisRunning = activeFaults.some(
               (f) => f.faultType === item.type && f.targetServiceId === effectiveTargetId
             );
 
@@ -173,8 +184,10 @@ export const Chaos: React.FC = () => {
               <div
                 key={item.type}
                 className={`p-4 bg-[#151517] border rounded-lg flex flex-col justify-between transition-all ${
-                  isRunning
+                  isThisRunning
                     ? 'border-[#AD2831] ring-1 ring-[#AD2831] bg-[#AD2831]/10'
+                    : isNodeBusy
+                    ? 'border-[#26262B] opacity-75'
                     : 'border-[#26262B] hover:border-[#383840]'
                 }`}
               >
@@ -190,15 +203,17 @@ export const Chaos: React.FC = () => {
 
                 <button
                   onClick={() => injectChaosFault(item.type, effectiveTargetId, 60)}
-                  disabled={isRunning}
+                  disabled={isNodeBusy}
                   className={`w-full py-2 px-3 rounded-md text-xs font-semibold border transition-all flex items-center justify-center space-x-2 ${
-                    isRunning
+                    isThisRunning
                       ? 'bg-[#AD2831]/20 text-[#f87171] border-[#AD2831] cursor-not-allowed'
+                      : isNodeBusy
+                      ? 'bg-[#26262B]/60 text-gray-500 border-[#26262B] cursor-not-allowed'
                       : 'bg-[#840032] hover:bg-[#9b053d] text-white border-[#840032]'
                   }`}
                 >
                   <Play className="w-3.5 h-3.5" />
-                  <span>{isRunning ? 'FAULT RUNNING' : `INJECT ON ${effectiveTargetId.toUpperCase()}`}</span>
+                  <span>{isThisRunning ? 'FAULT RUNNING' : isNodeBusy ? 'NODE BUSY' : 'INJECT'}</span>
                 </button>
               </div>
             );
