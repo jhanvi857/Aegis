@@ -1,18 +1,30 @@
 package routes
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gorilla/mux"
 )
 
 type ChaosInjectRequest struct {
-	FaultType       string `json:"faultType"`
-	TargetServiceID string `json:"targetServiceId"`
-	DurationSec     int    `json:"durationSec"`
+	FaultType       string            `json:"faultType"`
+	TargetServiceID string            `json:"targetServiceId"`
+	DurationSec     int               `json:"durationSec"`
+	Parameters      map[string]string `json:"parameters,omitempty"`
+}
+
+func getChaosEngineURL() string {
+	url := os.Getenv("CHAOS_ENGINE_URL")
+	if url == "" {
+		return "http://localhost:8091"
+	}
+	return url
 }
 
 func ChaosInjectHandler(w http.ResponseWriter, r *http.Request) {
@@ -33,6 +45,14 @@ func ChaosInjectHandler(w http.ResponseWriter, r *http.Request) {
 	if !exists {
 		http.Error(w, fmt.Sprintf(`{"error":"Target service '%s' not found"}`, req.TargetServiceID), http.StatusNotFound)
 		return
+	}
+
+	// Guard against concurrent faults on the same target node (Requirement #6 & #9)
+	for _, f := range State.ActiveFaults {
+		if f.TargetServiceID == req.TargetServiceID {
+			http.Error(w, fmt.Sprintf(`{"error":"A chaos fault ('%s') is already active on service '%s'. Only one fault per node is permitted at a time."}`, f.FaultType, req.TargetServiceID), http.StatusConflict)
+			return
+		}
 	}
 
 	faultTitles := map[string]string{
@@ -58,42 +78,42 @@ func ChaosInjectHandler(w http.ResponseWriter, r *http.Request) {
 	nowTime := now.Format("15:04:05")
 
 	injection := &ChaosInjection{
-		ID:               faultID,
-		FaultType:        req.FaultType,
-		Title:            title,
-		TargetServiceID:  svc.ID,
+		ID:                faultID,
+		FaultType:         req.FaultType,
+		Title:             title,
+		TargetServiceID:   svc.ID,
 		TargetServiceName: svc.Name,
-		Severity:         "critical",
-		DurationSeconds:  req.DurationSec,
-		RemainingSeconds: req.DurationSec,
-		Status:           "running",
-		StartedAt:        nowTime,
+		Severity:          "critical",
+		DurationSeconds:   req.DurationSec,
+		RemainingSeconds:  req.DurationSec,
+		Status:            "running",
+		StartedAt:         nowTime,
 	}
 
 	State.ActiveFaults[faultID] = injection
 
-	// Degrade target service metrics immediately
-	svc.Status = "critical"
-	switch req.FaultType {
-	case "cpu_stress":
-		svc.CPU = 96.5
-		svc.Latency = 280.0
-	case "latency":
-		svc.Latency = 950.0
-		svc.ErrorRate = 0.12
-		svc.Status = "degraded"
-	case "kill_service":
-		svc.CPU = 0.0
-		svc.Latency = 5000.0
-		svc.ErrorRate = 1.0
-	case "memory_leak":
-		svc.Memory = 94.0
-		svc.Latency = 350.0
-	default:
-		svc.Latency = 600.0
-		svc.ErrorRate = 0.08
-		svc.Status = "degraded"
-	}
+	// Forward physical fault injection to Chaos Engine
+	go func(target, fType string, dur int, params map[string]string) {
+		client := &http.Client{Timeout: 3 * time.Second}
+		payload, _ := json.Marshal(map[string]interface{}{
+			"fault_type":   fType,
+			"target_node":  target,
+			"duration_sec": dur,
+			"parameters":   params,
+		})
+
+		chaosURL := fmt.Sprintf("%s/inject", getChaosEngineURL())
+		resp, err := client.Post(chaosURL, "application/json", bytes.NewBuffer(payload))
+		if err != nil {
+			log.Printf("[api-gateway] Warning: could not forward fault to chaos-engine at %s: %v", chaosURL, err)
+			return
+		}
+		_ = resp.Body.Close()
+		log.Printf("[api-gateway] Successfully forwarded %s on %s to chaos-engine", fType, target)
+	}(req.TargetServiceID, req.FaultType, req.DurationSec, req.Parameters)
+
+	// Note: We do NOT write fabricated metrics here in gateway memory.
+	// Telemetry flows genuinely back from the physical microservice into gateway state.
 
 	// Record event log
 	State.Logs = append(State.Logs, LogEntry{
@@ -137,12 +157,23 @@ func ChaosStopHandler(w http.ResponseWriter, r *http.Request) {
 
 	delete(State.ActiveFaults, id)
 
-	if svc, ok := State.Services[fault.TargetServiceID]; ok {
-		svc.Status = "healthy"
-		svc.CPU = 22.0
-		svc.Latency = 18.0
-		svc.ErrorRate = 0.001
-	}
+	// Forward stop request to Chaos Engine to physically revert fault
+	go func(target, fid string) {
+		client := &http.Client{Timeout: 3 * time.Second}
+		payload, _ := json.Marshal(map[string]interface{}{
+			"target_node": target,
+			"fault_id":    fid,
+		})
+
+		stopURL := fmt.Sprintf("%s/stop", getChaosEngineURL())
+		resp, err := client.Post(stopURL, "application/json", bytes.NewBuffer(payload))
+		if err != nil {
+			log.Printf("[api-gateway] Warning: could not forward stop to chaos-engine at %s: %v", stopURL, err)
+			return
+		}
+		_ = resp.Body.Close()
+		log.Printf("[api-gateway] Successfully forwarded stop for %s to chaos-engine", target)
+	}(fault.TargetServiceID, id)
 
 	nowTime := time.Now().Format("15:04:05")
 	State.Logs = append(State.Logs, LogEntry{

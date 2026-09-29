@@ -33,6 +33,13 @@ func main() {
 	// Initialize dynamic state from topology configuration
 	routes.InitState()
 
+	// Initialize Python ML gRPC client
+	pythonGRPCAddr := os.Getenv("PYTHON_GRPC_ADDR")
+	if pythonGRPCAddr == "" {
+		pythonGRPCAddr = "localhost:50051"
+	}
+	routes.InitGRPCClient(pythonGRPCAddr)
+
 	r := mux.NewRouter()
 
 	// Apply CORS

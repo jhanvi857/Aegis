@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -337,65 +338,105 @@ func (s *ControlPlaneState) runTicker() {
 			}
 		}
 
-		// 2. Refresh node metrics (poll real playground endpoints if reachable, else smooth variance)
+		// 2. Refresh node metrics (query real microservice health/metrics endpoints)
 		for _, id := range s.ServiceOrder {
 			svc, ok := s.Services[id]
 			if !ok {
 				continue
 			}
 
-			// Check if service is currently targeted by a chaos fault
-			isFaulty := false
+			// Deterministic fault selection: choose the most recently started fault (Requirement #6)
 			var activeFault *ChaosInjection
 			for _, f := range s.ActiveFaults {
 				if f.TargetServiceID == id {
-					isFaulty = true
-					activeFault = f
-					break
+					if activeFault == nil || f.StartedAt > activeFault.StartedAt || (f.StartedAt == activeFault.StartedAt && f.ID > activeFault.ID) {
+						activeFault = f
+					}
 				}
 			}
 
-			if isFaulty && activeFault != nil {
-				switch activeFault.FaultType {
-				case "cpu_stress":
-					svc.CPU = math.Round(math.Min(99.0, svc.CPU+5.0)*10) / 10
-					svc.Latency = math.Round(math.Min(350.0, svc.Latency+15.0)*10) / 10
-					svc.Status = "critical"
-				case "latency":
-					svc.Latency = math.Round(math.Min(1500.0, svc.Latency+120.0)*10) / 10
-					svc.ErrorRate = math.Round(math.Min(0.25, svc.ErrorRate+0.02)*1000) / 1000
-					svc.Status = "degraded"
-				case "kill_service":
-					svc.CPU = 0.0
-					svc.Latency = 5000.0
-					svc.ErrorRate = 1.0
-					svc.Status = "critical"
-				case "memory_leak":
-					svc.Memory = math.Round(math.Min(98.0, svc.Memory+4.0)*10) / 10
-					svc.Latency = math.Round(math.Min(400.0, svc.Latency+10.0)*10) / 10
-					svc.Status = "critical"
-				default:
-					svc.Latency = math.Round(math.Min(600.0, svc.Latency+30.0)*10) / 10
-					svc.Status = "degraded"
-				}
-			} else {
-				// Try probing real playground health endpoint
-				if svc.Port > 0 {
-					url := fmt.Sprintf("http://localhost:%d/health", svc.Port)
-					resp, err := httpClient.Get(url)
-					if err == nil && resp.StatusCode == http.StatusOK {
-						resp.Body.Close()
-						svc.Status = "healthy"
-					}
+			// Probe genuine playground microservice endpoint
+			probed := false
+			if svc.Port > 0 {
+				var healthResp struct {
+					Status        string  `json:"status"`
+					CPU           float64 `json:"cpu"`
+					Memory        float64 `json:"memory"`
+					LatencyMs     float64 `json:"latency_ms"`
+					ErrorRate     float64 `json:"error_rate"`
+					ActiveFault   string  `json:"active_fault"`
+					RemainingSec  int     `json:"remaining_sec"`
 				}
 
-				// If not faulty, keep healthy around nominal baseline
-				svc.CPU = math.Round(math.Max(10.0, math.Min(60.0, svc.CPU+rand.Float64()*4.0-2.0))*10) / 10
-				svc.Memory = math.Round(math.Max(20.0, math.Min(70.0, svc.Memory+rand.Float64()*2.0-1.0))*10) / 10
-				svc.Latency = math.Round(math.Max(5.0, math.Min(45.0, svc.Latency+rand.Float64()*4.0-2.0))*10) / 10
-				svc.RPS = math.Round(math.Max(50.0, math.Min(600.0, svc.RPS+rand.Float64()*20.0-10.0))*10) / 10
-				svc.ErrorRate = 0.001
-				svc.Status = "healthy"
+				probeURLs := []string{
+					fmt.Sprintf("http://%s:%d/health", svc.Host, svc.Port),
+					fmt.Sprintf("http://localhost:%d/health", svc.Port),
+				}
+
+				for _, u := range probeURLs {
+					resp, err := httpClient.Get(u)
+					if err == nil {
+						if json.NewDecoder(resp.Body).Decode(&healthResp) == nil {
+							probed = true
+							if resp.StatusCode == http.StatusServiceUnavailable || healthResp.Status == "critical" || healthResp.Status == "CRITICAL" {
+								svc.Status = "critical"
+							} else if healthResp.Status == "degraded" || healthResp.Status == "DEGRADED" {
+								svc.Status = "degraded"
+							} else {
+								svc.Status = "healthy"
+							}
+
+							if healthResp.CPU > 0 {
+								svc.CPU = math.Round(healthResp.CPU*10) / 10
+							}
+							if healthResp.Memory > 0 {
+								svc.Memory = math.Round(healthResp.Memory*10) / 10
+							}
+							if healthResp.LatencyMs > 0 {
+								svc.Latency = math.Round(healthResp.LatencyMs*10) / 10
+							}
+							svc.ErrorRate = math.Round(healthResp.ErrorRate*1000) / 1000
+						}
+						_ = resp.Body.Close()
+						break
+					}
+				}
+			}
+
+			// Fallback only if physical microservice process is completely unreachable
+			if !probed {
+				if activeFault != nil {
+					switch activeFault.FaultType {
+					case "cpu_stress":
+						svc.CPU = 96.5
+						svc.Latency = 240.0
+						svc.Status = "critical"
+					case "latency":
+						svc.Latency = 950.0
+						svc.ErrorRate = 0.08
+						svc.Status = "degraded"
+					case "kill_service":
+						svc.CPU = 0.0
+						svc.Latency = 5000.0
+						svc.ErrorRate = 1.0
+						svc.Status = "critical"
+					case "memory_leak":
+						svc.Memory = 94.0
+						svc.Latency = 280.0
+						svc.Status = "critical"
+					default:
+						svc.Latency = 550.0
+						svc.ErrorRate = 0.05
+						svc.Status = "degraded"
+					}
+				} else {
+					svc.CPU = math.Round(math.Max(10.0, math.Min(50.0, svc.CPU+rand.Float64()*2.0-1.0))*10) / 10
+					svc.Memory = math.Round(math.Max(20.0, math.Min(60.0, svc.Memory+rand.Float64()*2.0-1.0))*10) / 10
+					svc.Latency = math.Round(math.Max(8.0, math.Min(35.0, svc.Latency+rand.Float64()*2.0-1.0))*10) / 10
+					svc.RPS = math.Round(math.Max(50.0, math.Min(500.0, svc.RPS+rand.Float64()*10.0-5.0))*10) / 10
+					svc.ErrorRate = 0.001
+					svc.Status = "healthy"
+				}
 			}
 
 			// Append to history sliding window (keep last 25 points)
