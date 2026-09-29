@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aegis/go-services/playground/chaoshook"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -67,6 +68,7 @@ type Gateway struct {
 	mu              sync.RWMutex
 	loadGenStopChan chan struct{}
 	loadGenActive   bool
+	chaos           *chaoshook.Controller
 
 	// Metrics
 	routeCounter    *prometheus.CounterVec
@@ -93,6 +95,7 @@ func NewGateway() *Gateway {
 		Port:         port,
 		TopologyFile: topoPath,
 		StartTime:    time.Now(),
+		chaos:        chaoshook.NewController("gateway"),
 		httpClient: &http.Client{
 			Timeout: 8 * time.Second,
 		},
@@ -182,15 +185,26 @@ func (g *Gateway) getTargetURL(targetNodeID string) string {
 
 func (g *Gateway) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	uptime := time.Since(g.StartTime).Seconds()
+	cs := g.chaos.GetStatus()
 	resp := map[string]interface{}{
-		"status":      "UP",
-		"node_id":     "gateway",
-		"uptime_sec":  uptime,
-		"timestamp":   time.Now().Unix(),
-		"system_name": "aegis-mesh",
+		"status":        cs.Status,
+		"node_id":       "gateway",
+		"uptime_sec":    uptime,
+		"timestamp":     time.Now().Unix(),
+		"system_name":   "aegis-mesh",
+		"cpu":           cs.CPUPercent,
+		"memory":        cs.MemoryPercent,
+		"latency_ms":    cs.LatencyMs,
+		"error_rate":    cs.ErrorRate,
+		"active_fault":  cs.ActiveFault,
+		"remaining_sec": cs.RemainingSec,
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	if cs.Killed {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
@@ -318,6 +332,7 @@ func (g *Gateway) SetupRoutes() *mux.Router {
 	r.HandleFunc("/topology", g.TopologyHandler).Methods("GET")
 	r.HandleFunc("/route/{nodeId}", g.RouteHandler).Methods("GET", "POST")
 	r.HandleFunc("/route", g.RouteHandler).Methods("GET", "POST")
+	g.chaos.RegisterRoutes(r)
 	return r
 }
 

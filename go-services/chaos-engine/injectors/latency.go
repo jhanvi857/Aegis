@@ -2,7 +2,6 @@ package injectors
 
 import (
 	"context"
-	"fmt"
 	"time"
 )
 
@@ -17,10 +16,9 @@ type LatencyInjector struct{}
 func (i *LatencyInjector) Name() string { return "latency" }
 
 func (i *LatencyInjector) Inject(ctx context.Context, targetNode string, duration time.Duration, params map[string]string) error {
-	// Phase 1 implementation will inject network latency via tc / proxy
-	return fmt.Errorf("latency injector not yet implemented (Phase 1)")
+	return CallNodeChaosInject(ctx, i.Name(), targetNode, duration, params)
 }
 
 func (i *LatencyInjector) Revert(ctx context.Context, targetNode string) error {
-	return nil
+	return CallNodeChaosRevert(ctx, targetNode)
 }

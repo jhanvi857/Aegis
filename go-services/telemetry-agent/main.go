@@ -13,14 +13,17 @@ import (
 func main() {
 	log.Println("[telemetry-agent] Aegis Telemetry Agent initializing (Phase 1 scaffold)...")
 
-	collector := NewCollector([]string{"gateway", "node-a", "node-b", "node-c", "node-d"}, 5*time.Second)
-	publisher := NewKafkaPublisher([]string{"localhost:9092"}, "aegis-telemetry")
+	kafkaBrokers := os.Getenv("KAFKA_BROKERS")
+	if kafkaBrokers == "" {
+		kafkaBrokers = "localhost:9092"
+	}
+	publisher := NewKafkaPublisher([]string{kafkaBrokers}, "aegis-telemetry")
+	collector := NewCollector([]string{"gateway", "node-a", "node-b", "node-c", "node-d"}, 2*time.Second, publisher)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	collector.Start(ctx)
-	_ = publisher
 
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

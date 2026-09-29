@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aegis/go-services/playground/chaoshook"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -67,6 +68,7 @@ type Service struct {
 	DownstreamNodes []string
 	httpClient      *http.Client
 	mu              sync.RWMutex
+	chaos           *chaoshook.Controller
 
 	requestCounter  *prometheus.CounterVec
 	requestDuration *prometheus.HistogramVec
@@ -96,6 +98,7 @@ func NewService() *Service {
 		Port:         port,
 		TopologyFile: topoPath,
 		StartTime:    time.Now(),
+		chaos:        chaoshook.NewController(nodeID),
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
@@ -198,16 +201,27 @@ func (s *Service) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	s.requestCounter.WithLabelValues("/health", "200").Inc()
 	uptime := time.Since(s.StartTime).Seconds()
 
+	cs := s.chaos.GetStatus()
 	resp := map[string]interface{}{
-		"status":      "UP",
-		"node_id":     s.NodeID,
-		"uptime_sec":  uptime,
-		"timestamp":   time.Now().Unix(),
-		"downstream":  s.DownstreamNodes,
+		"status":        cs.Status,
+		"node_id":       s.NodeID,
+		"uptime_sec":    uptime,
+		"timestamp":     time.Now().Unix(),
+		"downstream":    s.DownstreamNodes,
+		"cpu":           cs.CPUPercent,
+		"memory":        cs.MemoryPercent,
+		"latency_ms":    cs.LatencyMs,
+		"error_rate":    cs.ErrorRate,
+		"active_fault":  cs.ActiveFault,
+		"remaining_sec": cs.RemainingSec,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	if cs.Killed {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
@@ -215,6 +229,19 @@ func (s *Service) ProcessHandler(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	s.activeRequests.Inc()
 	defer s.activeRequests.Dec()
+
+	// Physical chaos injection effects
+	if s.chaos.ShouldFail() {
+		s.errorCounter.WithLabelValues("chaos_injected_failure").Inc()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":   "Service unavailable (fault injected)",
+			"node_id": s.NodeID,
+		})
+		return
+	}
+	s.chaos.ApplyDelay()
 
 	var payload ProcessPayload
 	body, err := io.ReadAll(r.Body)
@@ -312,6 +339,7 @@ func (s *Service) SetupRoutes() *mux.Router {
 	r.HandleFunc("/metrics", promhttp.Handler().ServeHTTP).Methods("GET")
 	r.HandleFunc("/process", s.ProcessHandler).Methods("POST")
 	r.HandleFunc("/info", s.InfoHandler).Methods("GET")
+	s.chaos.RegisterRoutes(r)
 	return r
 }
 
