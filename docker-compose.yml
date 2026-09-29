@@ -164,3 +164,110 @@ services:
       TOPOLOGY_PATH: /etc/aegis/topology.yaml
     volumes:
       - ./configs/topology.yaml:/etc/aegis/topology.yaml:ro
+
+  # ─────────────────────────────────────────────────────────────
+  # Control Plane & Intelligence Services
+  # ─────────────────────────────────────────────────────────────
+
+  chaos-engine:
+    build:
+      context: ./go-services
+      dockerfile: playground/Dockerfile
+      args:
+        SERVICE_DIR: chaos-engine
+    container_name: aegis-chaos-engine
+    networks:
+      - aegis-net
+    ports:
+      - "8091:8091"
+    environment:
+      PORT: "8091"
+      TOPOLOGY_PATH: /etc/aegis/topology.yaml
+    volumes:
+      - ./configs/topology.yaml:/etc/aegis/topology.yaml:ro
+    depends_on:
+      - gateway
+      - node-a
+      - node-b
+      - node-c
+      - node-d
+
+  telemetry-agent:
+    build:
+      context: ./go-services
+      dockerfile: playground/Dockerfile
+      args:
+        SERVICE_DIR: telemetry-agent
+    container_name: aegis-telemetry-agent
+    networks:
+      - aegis-net
+    ports:
+      - "8090:8090"
+    environment:
+      PORT: "8090"
+      KAFKA_BROKERS: "kafka:29092"
+    depends_on:
+      - kafka
+      - gateway
+      - node-a
+      - node-b
+      - node-c
+      - node-d
+
+  recovery-engine:
+    build:
+      context: ./go-services
+      dockerfile: playground/Dockerfile
+      args:
+        SERVICE_DIR: recovery-engine
+    container_name: aegis-recovery-engine
+    networks:
+      - aegis-net
+    ports:
+      - "8092:8092"
+    environment:
+      PORT: "8092"
+      PYTHON_GRPC_ADDR: "python-ml:50051"
+    depends_on:
+      - python-ml
+
+  python-ml:
+    build:
+      context: .
+      dockerfile: python-ml/Dockerfile
+    container_name: aegis-python-ml
+    networks:
+      - aegis-net
+    ports:
+      - "50051:50051"
+    environment:
+      PORT: "50051"
+      TOPOLOGY_PATH: /app/configs/topology.yaml
+    volumes:
+      - ./configs/topology.yaml:/app/configs/topology.yaml:ro
+    depends_on:
+      - kafka
+
+  api-gateway:
+    build:
+      context: ./go-services
+      dockerfile: playground/Dockerfile
+      args:
+        SERVICE_DIR: api-gateway
+    container_name: aegis-api-gateway
+    networks:
+      - aegis-net
+    ports:
+      - "8000:8000"
+    environment:
+      API_GATEWAY_PORT: "8000"
+      TOPOLOGY_PATH: /etc/aegis/topology.yaml
+      PYTHON_GRPC_ADDR: "python-ml:50051"
+      CHAOS_ENGINE_URL: "http://chaos-engine:8091"
+      RECOVERY_ENGINE_URL: "http://recovery-engine:8092"
+    volumes:
+      - ./configs/topology.yaml:/etc/aegis/topology.yaml:ro
+    depends_on:
+      - python-ml
+      - chaos-engine
+      - recovery-engine

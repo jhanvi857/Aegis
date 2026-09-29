@@ -15,15 +15,23 @@ echo "Python output: ${PY_OUT_DIR}"
 mkdir -p "${GO_OUT_DIR}"
 mkdir -p "${PY_OUT_DIR}"
 
-# Check for protoc
+# Check for protoc or python grpc_tools fallback
 if command -v protoc >/dev/null 2>&1; then
-    echo "Generating Go stubs..."
+    echo "Generating Go stubs using protoc..."
     protoc -I="${PROTO_DIR}" \
         --go_out="${ROOT_DIR}/go-services" \
         --go_opt=module=github.com/aegis/go-services \
         --go-grpc_out="${ROOT_DIR}/go-services" \
         --go-grpc_opt=module=github.com/aegis/go-services \
         "${PROTO_DIR}"/*.proto || echo "Warning: protoc go generation had warnings or failed"
+elif python -m grpc_tools.protoc --version >/dev/null 2>&1; then
+    echo "Generating Go stubs using python grpc_tools.protoc..."
+    python -m grpc_tools.protoc -I="${PROTO_DIR}" \
+        --go_out="${ROOT_DIR}/go-services" \
+        --go_opt=module=github.com/aegis/go-services \
+        --go-grpc_out="${ROOT_DIR}/go-services" \
+        --go-grpc_opt=module=github.com/aegis/go-services \
+        "${PROTO_DIR}"/*.proto || echo "Warning: grpc_tools go generation had warnings or failed"
 fi
 
 # Check for python grpc_tools
