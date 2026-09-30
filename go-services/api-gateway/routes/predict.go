@@ -16,6 +16,12 @@ import (
 )
 
 func GetLatestPredictionHandler(w http.ResponseWriter, r *http.Request) {
+	pred := ComputePredictionOutput()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(pred)
+}
+
+func ComputePredictionOutput() PredictionOutput {
 	State.mu.RLock()
 	defer State.mu.RUnlock()
 
@@ -324,8 +330,7 @@ func GetLatestPredictionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(pred)
+	return pred
 }
 
 func GetPredictionHistoryHandler(w http.ResponseWriter, r *http.Request) {

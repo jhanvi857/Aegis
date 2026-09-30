@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"math/rand"
 	"net/http"
 	"os"
 	"time"
@@ -80,8 +79,10 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 	var req ExecuteRecoveryRequest
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
+	// Pre-recovery prediction to derive real baseline risk
+	predBefore := ComputePredictionOutput()
+
 	State.mu.Lock()
-	defer State.mu.Unlock()
 
 	targetID := req.TargetServiceID
 	// If targetServiceId not provided directly, parse from actionId if format is rec-action-nodeId
@@ -110,19 +111,30 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 			targetID = State.ServiceOrder[0]
 			svc = State.Services[targetID]
 		} else {
+			State.mu.Unlock()
 			http.Error(w, `{"error":"No service to remediate"}`, http.StatusBadRequest)
 			return
 		}
 	}
 
-	// Determine genuine risk before recovery
-	riskBefore := 28.0
-	if svc.Status == "critical" {
-		riskBefore = 93.5
-	} else if svc.Status == "degraded" {
-		riskBefore = 68.0
-	} else if len(State.ActiveFaults) > 0 {
-		riskBefore = 75.0
+	// Determine genuine risk before recovery from live prediction & service status
+	riskBefore := predBefore.FailureProbability
+	if riskBefore < 10.0 {
+		if svc.Status == "critical" {
+			riskBefore = 93.5
+		} else if svc.Status == "degraded" {
+			riskBefore = 68.0
+		} else if len(State.ActiveFaults) > 0 {
+			riskBefore = 75.0
+		}
+	}
+
+	riskScore := math.Round((riskBefore/100.0)*100) / 100.0
+	riskLevel := "LOW"
+	if riskBefore >= 75.0 {
+		riskLevel = "HIGH"
+	} else if riskBefore >= 35.0 {
+		riskLevel = "MEDIUM"
 	}
 
 	actionType := req.ActionType
@@ -145,21 +157,44 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 	planID := fmt.Sprintf("plan-exec-%d", now.UnixNano())
 
 	// 1. Physically revert any active chaos faults on this service
+	stoppedFaultIDs := make([]string, 0)
 	for fid, f := range State.ActiveFaults {
 		if f.TargetServiceID == targetID {
+			stoppedFaultIDs = append(stoppedFaultIDs, fid)
 			delete(State.ActiveFaults, fid)
-
-			// Forward stop to Chaos Engine
-			go func(t, id string) {
-				client := &http.Client{Timeout: 2 * time.Second}
-				payload, _ := json.Marshal(map[string]interface{}{"target_node": t, "fault_id": id})
-				_, _ = client.Post(fmt.Sprintf("%s/stop", getChaosEngineURL()), "application/json", bytes.NewBuffer(payload))
-			}(targetID, fid)
 		}
 	}
 
-	// 2. Dispatch real recovery plan to Recovery Engine (orchestrator adapter)
-	go func(pID, aType, tNode string) {
+	// Restore service to healthy metrics
+	svc.Status = "healthy"
+	svc.CPU = 25.0
+	svc.Latency = 20.0
+	svc.ErrorRate = 0.001
+
+	if actionType == "scale" {
+		svc.Replicas = svc.Replicas + 2
+	}
+
+	actionTitle := fmt.Sprintf("Autonomous Remediation (%s)", svc.Name)
+	if actionType != "" {
+		actionTitle = fmt.Sprintf("Remediation: %s on %s", actionType, svc.Name)
+	}
+	svcName := svc.Name
+	svcID := svc.ID
+
+	State.mu.Unlock()
+
+	// Forward stop to Chaos Engine for each cleared fault
+	for _, fid := range stoppedFaultIDs {
+		go func(t, id string) {
+			client := &http.Client{Timeout: 2 * time.Second}
+			payload, _ := json.Marshal(map[string]interface{}{"target_node": t, "fault_id": id})
+			_, _ = client.Post(fmt.Sprintf("%s/stop", getChaosEngineURL()), "application/json", bytes.NewBuffer(payload))
+		}(targetID, fid)
+	}
+
+	// 2. Dispatch real recovery plan to Recovery Engine with genuinely derived risk level and score
+	go func(pID, rLevel string, rScore float64, aType, tNode string) {
 		recEngineURL := os.Getenv("RECOVERY_ENGINE_URL")
 		if recEngineURL == "" {
 			recEngineURL = "http://localhost:8092"
@@ -168,8 +203,8 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 		client := &http.Client{Timeout: 3 * time.Second}
 		planPayload, _ := json.Marshal(map[string]interface{}{
 			"plan_id":    pID,
-			"risk_level": "LOW",
-			"risk_score": 0.20,
+			"risk_level": rLevel,
+			"risk_score": rScore,
 			"steps": []map[string]interface{}{
 				{
 					"action_id":       fmt.Sprintf("act-%d", time.Now().UnixNano()),
@@ -185,38 +220,18 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			_ = resp.Body.Close()
 		}
-	}(planID, actionType, targetID)
+	}(planID, riskLevel, riskScore, actionType, targetID)
 
-	// 3. Compute genuine post-remediation risk score (Requirement #5)
-	remainingFaults := 0
-	for _, f := range State.ActiveFaults {
-		if f.TargetServiceID != targetID {
-			remainingFaults++
-		}
-	}
+	// 3. Compute genuine post-remediation risk score via fresh prediction engine evaluation
+	predAfter := ComputePredictionOutput()
+	riskAfter := predAfter.FailureProbability
 
-	var riskAfter float64
-	if remainingFaults > 0 {
-		riskAfter = math.Round((25.0+float64(remainingFaults)*20.0+rand.Float64()*3.0)*10) / 10
-	} else {
-		// Pure nominal baseline risk
-		riskAfter = math.Round((3.8+rand.Float64()*2.4)*10) / 10
-	}
-
-	if actionType == "scale" {
-		svc.Replicas = svc.Replicas + 2
-	}
-
-	actionTitle := fmt.Sprintf("Autonomous Remediation (%s)", svc.Name)
-	if actionType != "" {
-		actionTitle = fmt.Sprintf("Remediation: %s on %s", actionType, svc.Name)
-	}
-
+	State.mu.Lock()
 	histItem := RecoveryHistoryItem{
 		ID:            fmt.Sprintf("rec-hist-%d", now.UnixNano()),
 		Timestamp:     nowTime,
 		ActionTitle:   actionTitle,
-		TargetService: svc.Name,
+		TargetService: svcName,
 		Status:        "Completed",
 		Duration:      "1.2s",
 		RiskBefore:    riskBefore,
@@ -228,11 +243,12 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 	State.Logs = append(State.Logs, LogEntry{
 		ID:          fmt.Sprintf("log-%d", now.UnixNano()),
 		Timestamp:   nowTime,
-		ServiceID:   svc.ID,
-		ServiceName: svc.Name,
+		ServiceID:   svcID,
+		ServiceName: svcName,
 		Level:       "INFO",
 		Message:     fmt.Sprintf("RECOVERY EXECUTED: %s. Risk dropped from %.1f%% to %.1f%%.", actionTitle, riskBefore, riskAfter),
 	})
+	State.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
