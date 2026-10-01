@@ -1,7 +1,7 @@
-# Multi-stage Dockerfile for Aegis Playground Services
-FROM golang:1.22-alpine AS builder
+FROM golang:alpine AS builder
 
 WORKDIR /app
+ENV GOTOOLCHAIN=auto
 
 COPY go.mod go.sum ./
 RUN go mod download
