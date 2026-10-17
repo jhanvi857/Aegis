@@ -336,6 +336,12 @@ class DatasetGenerator:
         with open(os.path.join(self.raw_dir, "sample_episodes.json"), "w") as f:
             json.dump(metadata[:50], f, indent=2)
 
+        # Persist the complete label provenance used by the tabular exports.
+        # Keeping this beside the tensors avoids reconstructing fault labels
+        # from array positions after generation.
+        with open(os.path.join(self.raw_dir, "episodes_metadata.json"), "w") as f:
+            json.dump(metadata, f, indent=2)
+
         logger.info(
             f"Stratified dataset generated successfully: {num_episodes} episodes "
             f"(Train: {len(train_indices)}, Val: {len(val_indices)}, Test: {len(test_indices)}) "

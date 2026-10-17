@@ -1,4 +1,4 @@
-.PHONY: help up down build proto test lint clean logs status
+.PHONY: help up down build proto test lint clean logs status notebooks-smoke
 
 help:
 	@echo "Aegis Development Commands:"
@@ -41,3 +41,6 @@ status:
 	@echo ""
 	@curl -s http://localhost:8084/health || echo "Node D unreachable"
 	@echo ""
+
+notebooks-smoke:
+	python notebooks/scripts/smoke_notebooks.py --reduced

@@ -1,5 +1,9 @@
 # Aegis Dataset Card: Formal Audit, Structural Diversity & Generalization Defense
 
+## Reproducible Notebook Export
+
+The professor-facing notebook suite under `notebooks/` uses `dataset/export_csv.py` to export the generated tensors without reconstructing labels from result tables. The exporter writes `node_timeseries.csv`, `edges.csv`, `episodes.csv`, and `episodes_flat.csv`; complete episode provenance is persisted in `dataset/raw/episodes_metadata.json` whenever `DatasetGenerator.generate_dataset` runs. All notebook metrics are recomputed from tensors, split indices, and model outputs, with committed JSON files serving only as cached outputs.
+
 > **Document Type:** Dataset Specification & Academic Defense (conforming to Gebru et al., *Datasheets for Datasets*)  
 > **Repository:** Aegis (`https://github.com/aegis-platform/aegis`)  
 > **Dataset Artifacts:** `dataset/processed/tensors.pt` (600 episodes), `dataset/processed/multi_topology_tensors.pt` (1,000 episodes)  
