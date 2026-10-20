@@ -84,6 +84,8 @@ func ComputePredictionOutput() PredictionOutput {
 			"queue_depth":           float64(svc.QueueDepth),
 			"db_connection_wait_ms": svc.DBWait,
 			"cache_miss_rate":       svc.CacheMiss,
+			"packet_loss_rate":      svc.PacketLoss,
+			"active_threads":        float64(svc.ActiveThreads),
 		}
 
 		snapshotNodes = append(snapshotNodes, &graphpb.Node{
@@ -124,6 +126,22 @@ func ComputePredictionOutput() PredictionOutput {
 				ServiceId:         svc.ID,
 				MetricName:        "queue_depth",
 				Value:             float64(svc.QueueDepth),
+			})
+		}
+		if svc.PacketLoss > 0 {
+			metricPoints = append(metricPoints, &telemetrypb.MetricPoint{
+				TimestampUnixNano: nowNs,
+				ServiceId:         svc.ID,
+				MetricName:        "packet_loss_rate",
+				Value:             svc.PacketLoss,
+			})
+		}
+		if svc.ActiveThreads > 0 {
+			metricPoints = append(metricPoints, &telemetrypb.MetricPoint{
+				TimestampUnixNano: nowNs,
+				ServiceId:         svc.ID,
+				MetricName:        "active_threads",
+				Value:             float64(svc.ActiveThreads),
 			})
 		}
 
@@ -273,7 +291,7 @@ func ComputePredictionOutput() PredictionOutput {
 				blastRadius = []string{}
 				affectedNodes = []AffectedNodeInfo{}
 				recommendedActions = []RecoveryAction{}
-				estimatedTTF = 600
+				estimatedTTF = 0
 			}
 
 			State.LatestRecommendations = recommendedActions
@@ -351,10 +369,15 @@ func ComputePredictionOutput() PredictionOutput {
 				recID = "act-reroute"
 			}
 
+			ttf := 15
+			if rootCauseSvc.Latency > 0 {
+				ttf = int(math.Max(5, math.Min(90, 60.0-(rootCauseSvc.Latency/20.0))))
+			}
+
 			pred = PredictionOutput{
 				FailureProbability:   prob,
 				Confidence:           95.8,
-				EstimatedFailureSec:  32,
+				EstimatedFailureSec:  ttf,
 				RootCauseServiceID:   rootCauseSvc.ID,
 				RootCauseServiceName: rootCauseSvc.Name,
 				RootCauseReason:      reason,
@@ -366,7 +389,7 @@ func ComputePredictionOutput() PredictionOutput {
 			pred = PredictionOutput{
 				FailureProbability:   4.2,
 				Confidence:           98.4,
-				EstimatedFailureSec:  600,
+				EstimatedFailureSec:  0,
 				RootCauseServiceID:   "",
 				RootCauseServiceName: "None",
 				RootCauseReason:      "Cluster operating within normal nominal latency boundaries",
