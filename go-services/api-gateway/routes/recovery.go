@@ -14,8 +14,6 @@ type ExecuteRecoveryRequest struct {
 	ActionID        string `json:"actionId"`
 	TargetServiceID string `json:"targetServiceId,omitempty"`
 	ActionType      string `json:"actionType,omitempty"`
-	Approved        bool   `json:"approved,omitempty"`
-	Force           bool   `json:"force,omitempty"`
 }
 
 func GetRecommendationsHandler(w http.ResponseWriter, r *http.Request) {
@@ -148,22 +146,29 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 
 	actionType := req.ActionType
 	if actionType == "" {
-		if svc.CPU > 80.0 {
-			actionType = "scale"
-		} else if svc.Type == "cache" {
-			actionType = "flush_cache"
-		} else if svc.Type == "persistence" || svc.Type == "database" {
-			actionType = "increase_pool"
-		} else if svc.Latency > 800.0 || svc.ErrorRate >= 0.40 {
-			actionType = "reroute_traffic"
-		} else {
-			actionType = "restart"
+		// Look up in LatestRecommendations from Python decision engine first
+		for _, rec := range State.LatestRecommendations {
+			if rec.ID == req.ActionID || rec.TargetServiceID == targetID {
+				actionType = rec.ActionType
+				break
+			}
 		}
+	}
+	if actionType == "" && predBefore.RecommendedActionID != "" && predBefore.RecommendedActionID != "act-none" {
+		for _, rec := range predBefore.RecommendedActions {
+			if rec.TargetServiceID == targetID {
+				actionType = rec.ActionType
+				break
+			}
+		}
+	}
+	if actionType == "" {
+		actionType = "restart"
 	}
 
 	// Server-side authority boundary gate: MEDIUM and HIGH risk actions require human operator sign-off
 	requiresApproval := (riskLevel == "MEDIUM" || riskLevel == "HIGH")
-	isApproved := req.Approved || req.Force || (req.ActionID != "" && State.ApprovedPlans[req.ActionID])
+	isApproved := req.ActionID != "" && State.ApprovedPlans[req.ActionID]
 
 	if requiresApproval && !isApproved {
 		State.mu.Unlock()
@@ -177,6 +182,11 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 			"targetServiceId":  targetID,
 		})
 		return
+	}
+
+	// Consume approval token upon execution
+	if req.ActionID != "" {
+		delete(State.ApprovedPlans, req.ActionID)
 	}
 
 	now := time.Now()

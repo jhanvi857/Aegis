@@ -34,6 +34,8 @@ THRESHOLDS = {
     "error_rate": 0.50,
     "p95_latency_ms": 300.0,
     "latency_p99_ms": 1000.0,
+    "packet_loss_rate": 0.15,
+    "active_threads": 80.0,
 }
 
 
@@ -82,6 +84,8 @@ def diagnose_fault(
     db_wait = _get_metric(metrics, ["db_connection_wait_ms"])
     cache_miss = _get_metric(metrics, ["cache_miss_rate"])
     queue_depth = _get_metric(metrics, ["queue_depth"])
+    active_threads = _get_metric(metrics, ["active_threads", "thread_count", "thread_utilization", "threads"])
+    packet_loss = _get_metric(metrics, ["packet_loss_rate", "packet_loss", "dropped_packets_rate", "packet_loss_pct"])
 
     # --- Classification rules (ordered by specificity, most specific first) ---
 
@@ -178,7 +182,41 @@ def diagnose_fault(
             ),
         }
 
-    # 7. Network/latency: latency or error elevated without any of the specific indicators above
+    # 7. Thread pool exhaustion: active worker threads saturated
+    if active_threads is not None and active_threads >= THRESHOLDS["active_threads"]:
+        evidence.append(_make_evidence("active_threads", active_threads, THRESHOLDS["active_threads"]))
+        if error_rate is not None and error_rate > 0.02:
+            evidence.append(_make_evidence("error_rate", error_rate, 0.02))
+        conf = min(1.0, 0.6 + (active_threads - THRESHOLDS["active_threads"]) / 40.0)
+        return {
+            "fault_family": "thread_exhaustion",
+            "confidence": round(conf, 4),
+            "evidence": evidence,
+            "explanation": (
+                f"Thread pool exhaustion on {node_id}: active_threads={active_threads:.0f} "
+                f"(threshold {THRESHOLDS['active_threads']:.0f}). "
+                f"Indicates worker thread pool starvation rejecting concurrent requests."
+            ),
+        }
+
+    # 8. Network packet loss: packet_loss_rate elevated
+    if packet_loss is not None and packet_loss >= THRESHOLDS["packet_loss_rate"]:
+        evidence.append(_make_evidence("packet_loss_rate", packet_loss, THRESHOLDS["packet_loss_rate"]))
+        if error_rate is not None and error_rate > 0.02:
+            evidence.append(_make_evidence("error_rate", error_rate, 0.02))
+        conf = min(1.0, 0.6 + (packet_loss - THRESHOLDS["packet_loss_rate"]) / 0.5)
+        return {
+            "fault_family": "packet_loss",
+            "confidence": round(conf, 4),
+            "evidence": evidence,
+            "explanation": (
+                f"Network packet loss anomaly on {node_id}: packet_loss_rate={packet_loss:.2%} "
+                f"(threshold {THRESHOLDS['packet_loss_rate']:.0%}). "
+                f"Indicates dropped transmission packets causing TCP retransmissions."
+            ),
+        }
+
+    # 9. Network/latency: latency or error elevated without any of the specific indicators above
     latency_threshold = THRESHOLDS["p95_latency_ms"]
     if latency is not None and latency >= latency_threshold:
         evidence.append(_make_evidence("p95_latency_ms", latency, latency_threshold))
@@ -197,7 +235,7 @@ def diagnose_fault(
             ),
         }
 
-    # 8. High error rate alone (not crash, not any specific family)
+    # 10. High error rate alone (not crash, not any specific family)
     if error_rate is not None and error_rate >= THRESHOLDS["error_rate"]:
         evidence.append(_make_evidence("error_rate", error_rate, THRESHOLDS["error_rate"]))
         conf = min(1.0, 0.5 + error_rate * 0.3)
@@ -282,6 +320,14 @@ FAULT_FAMILY_ACTIONS = {
     "crash": [
         {"action": "RESTART", "risk": "LOW", "reason": "Restart crashed service process", "expected_effect": "Restore service availability"},
         {"action": "SCALE_UP", "risk": "MEDIUM", "reason": "Add replicas for redundancy", "expected_effect": "Ensure capacity during recovery"},
+    ],
+    "packet_loss": [
+        {"action": "REROUTE_TRAFFIC", "risk": "HIGH", "reason": "Divert traffic away from packet loss degraded network interface", "expected_effect": "Eliminate packet drops on critical path"},
+        {"action": "RESTART", "risk": "LOW", "reason": "Restart container network stack", "expected_effect": "Reset TCP socket buffer"},
+    ],
+    "thread_exhaustion": [
+        {"action": "SCALE_UP", "risk": "MEDIUM", "reason": "Scale service replicas to distribute thread pool pressure", "expected_effect": "Reduce active threads per instance below threshold"},
+        {"action": "RESTART", "risk": "LOW", "reason": "Restart container to reset starved thread workers", "expected_effect": "Reclaim stuck worker threads"},
     ],
     "nominal": [
         {"action": "RESTART", "risk": "LOW", "reason": "Precautionary restart", "expected_effect": "No expected change"},

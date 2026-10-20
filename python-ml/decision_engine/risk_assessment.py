@@ -182,25 +182,44 @@ class RiskAssessmentEngine:
         fault_family: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Synthesizes rule evaluation, fault diagnosis, and risk assessment to produce a concrete recommendation.
+        Synthesizes fault diagnosis, rule evaluation, and risk assessment to produce a concrete recommendation.
+        Diagnosis runs FIRST so specific fault families (e.g. database contention, crash) are never shadowed by
+        broad fallback rule conditions (e.g. latency >= 1000 or error_rate >= 0.50).
         """
-        matched = self.match_rule(metrics)
-        if matched:
-            action_info = matched["action"]
-            action_type = action_info["type"]
-            params = dict(action_info.get("parameters", {}))
-        else:
-            family = fault_family
-            if (not family or family == "nominal") and diagnose_fault is not None:
-                diag = diagnose_fault(target_node, metrics)
-                family = diag.get("fault_family")
+        family = fault_family
+        if (not family or family == "nominal") and diagnose_fault is not None:
+            diag = diagnose_fault(target_node, metrics)
+            family = diag.get("fault_family")
 
-            if family and family != "nominal" and get_candidate_actions is not None:
-                candidates = get_candidate_actions(family)
+        matched_rule_id = None
+        params = {}
+
+        # 1. Primary: If a specific fault family is identified, use fault_family_actions
+        if family and family != "nominal" and get_candidate_actions is not None:
+            candidates = get_candidate_actions(family)
+            if candidates:
                 action_type = candidates[0]["action"]
+                matched_rule_id = f"RULE_{family.upper()}"
                 params = {"fault_family": family}
+                # Check if rulebook has tuned parameters for this action
+                for rule in self.rules:
+                    if rule.get("action", {}).get("type") == action_type:
+                        params.update(rule["action"].get("parameters", {}))
+                        matched_rule_id = rule.get("id", matched_rule_id)
+                        break
             else:
-                # Default fallback action
+                action_type = "RESTART"
+                params = {"grace_period_sec": "5"}
+        else:
+            # 2. Secondary: If no specific fault family was detected, match generic rulebook rules
+            matched = self.match_rule(metrics)
+            if matched:
+                action_info = matched["action"]
+                action_type = action_info["type"]
+                params = dict(action_info.get("parameters", {}))
+                matched_rule_id = matched["id"]
+            else:
+                # 3. Default fallback
                 action_type = "RESTART"
                 params = {"grace_period_sec": "5"}
 
@@ -211,5 +230,6 @@ class RiskAssessmentEngine:
             "action_type": action_type,
             "parameters": params,
             "risk": risk,
-            "matched_rule_id": matched["id"] if matched else None,
+            "matched_rule_id": matched_rule_id,
+            "fault_family": family,
         }

@@ -21,18 +21,20 @@ type ChaosInjectRequest struct {
 }
 
 type ChaosStatusResponse struct {
-	NodeID        string  `json:"node_id"`
-	ActiveFault   string  `json:"active_fault"`
-	Status        string  `json:"status"` // healthy, degraded, critical, down
-	CPUPercent    float64 `json:"cpu_percent"`
-	MemoryPercent float64 `json:"memory_percent"`
-	LatencyMs     float64 `json:"latency_ms"`
-	ErrorRate     float64 `json:"error_rate"`
-	Killed        bool    `json:"killed"`
-	RemainingSec  int     `json:"remaining_seconds"`
-	DBWaitMs      float64 `json:"db_connection_wait_ms"`
-	CacheMissRate float64 `json:"cache_miss_rate"`
-	QueueDepth    int     `json:"queue_depth"`
+	NodeID         string  `json:"node_id"`
+	ActiveFault    string  `json:"active_fault"`
+	Status         string  `json:"status"` // healthy, degraded, critical, down
+	CPUPercent     float64 `json:"cpu_percent"`
+	MemoryPercent  float64 `json:"memory_percent"`
+	LatencyMs      float64 `json:"latency_ms"`
+	ErrorRate      float64 `json:"error_rate"`
+	Killed         bool    `json:"killed"`
+	RemainingSec   int     `json:"remaining_seconds"`
+	DBWaitMs       float64 `json:"db_connection_wait_ms"`
+	CacheMissRate  float64 `json:"cache_miss_rate"`
+	QueueDepth     int     `json:"queue_depth"`
+	PacketLossRate float64 `json:"packet_loss_rate"`
+	ActiveThreads  int     `json:"active_threads"`
 }
 
 type Controller struct {
@@ -47,6 +49,8 @@ type Controller struct {
 	DBWaitMs        float64
 	CacheMissRate   float64
 	QueueDepth      int
+	PacketLossRate  float64
+	ActiveThreads   int
 	cancelSpin      context.CancelFunc
 	memBuffer       [][]byte
 	faultEndTimer   *time.Timer
@@ -60,6 +64,7 @@ func NewController(nodeID string) *Controller {
 		CPUPercent:    22.0,
 		MemoryPercent: 35.0,
 		CacheMissRate: 0.02,
+		ActiveThreads: 5,
 	}
 }
 
@@ -112,6 +117,7 @@ func (c *Controller) Inject(faultType string, durationSec int, params map[string
 	case "packet_loss":
 		c.ErrorRate = 0.25
 		c.ExtraLatencyMs = 250
+		c.PacketLossRate = 0.25
 
 	case "db_lock":
 		c.DBWaitMs = 950.0
@@ -136,6 +142,7 @@ func (c *Controller) Inject(faultType string, durationSec int, params map[string
 	case "thread_exhaustion":
 		c.ExtraLatencyMs = 800
 		c.ErrorRate = 0.35
+		c.ActiveThreads = 95
 
 	default:
 		c.ExtraLatencyMs = 400
@@ -175,6 +182,8 @@ func (c *Controller) cleanupLocked() {
 	c.DBWaitMs = 0.0
 	c.CacheMissRate = 0.02
 	c.QueueDepth = 0
+	c.PacketLossRate = 0.0
+	c.ActiveThreads = 5
 }
 
 func (c *Controller) runCPUSpin(ctx context.Context) {
@@ -200,7 +209,7 @@ func (c *Controller) GetStatus() ChaosStatusResponse {
 	if c.Killed {
 		status = "critical"
 	} else if c.ActiveFault != "" {
-		if c.CPUPercent > 90.0 || c.ExtraLatencyMs > 800 || c.MemoryPercent > 90.0 || c.DBWaitMs > 500.0 {
+		if c.CPUPercent > 90.0 || c.ExtraLatencyMs > 800 || c.MemoryPercent > 90.0 || c.DBWaitMs > 500.0 || c.PacketLossRate >= 0.20 || c.ActiveThreads >= 80 {
 			status = "critical"
 		} else {
 			status = "degraded"
@@ -214,18 +223,20 @@ func (c *Controller) GetStatus() ChaosStatusResponse {
 
 	lat := 15.0 + float64(c.ExtraLatencyMs)
 	return ChaosStatusResponse{
-		NodeID:        c.NodeID,
-		ActiveFault:   c.ActiveFault,
-		Status:        status,
-		CPUPercent:    c.CPUPercent,
-		MemoryPercent: c.MemoryPercent,
-		LatencyMs:     lat,
-		ErrorRate:     c.ErrorRate,
-		Killed:        c.Killed,
-		RemainingSec:  remaining,
-		DBWaitMs:      c.DBWaitMs,
-		CacheMissRate: c.CacheMissRate,
-		QueueDepth:    c.QueueDepth,
+		NodeID:         c.NodeID,
+		ActiveFault:    c.ActiveFault,
+		Status:         status,
+		CPUPercent:     c.CPUPercent,
+		MemoryPercent:  c.MemoryPercent,
+		LatencyMs:      lat,
+		ErrorRate:      c.ErrorRate,
+		Killed:         c.Killed,
+		RemainingSec:   remaining,
+		DBWaitMs:       c.DBWaitMs,
+		CacheMissRate:  c.CacheMissRate,
+		QueueDepth:     c.QueueDepth,
+		PacketLossRate: c.PacketLossRate,
+		ActiveThreads:  c.ActiveThreads,
 	}
 }
 

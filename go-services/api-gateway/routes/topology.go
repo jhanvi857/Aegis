@@ -2,7 +2,13 @@ package routes
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TopologyHandler(w http.ResponseWriter, r *http.Request) {
@@ -47,3 +53,113 @@ func TopologyHandler(w http.ResponseWriter, r *http.Request) {
 		"nodes":       nodes,
 	})
 }
+
+type TopologyInfo struct {
+	ID          string `json:"id"`
+	Filename    string `json:"filename"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	NodeCount   int    `json:"nodeCount"`
+	Active      bool   `json:"active"`
+}
+
+func getTopologiesDir() string {
+	candidates := []string{
+		"configs/topologies",
+		"../configs/topologies",
+		"../../configs/topologies",
+		"/etc/aegis/topologies",
+	}
+	for _, c := range candidates {
+		if fi, err := os.Stat(c); err == nil && fi.IsDir() {
+			return c
+		}
+	}
+	return "configs/topologies"
+}
+
+func TopologyListHandler(w http.ResponseWriter, r *http.Request) {
+	dir := getTopologiesDir()
+	files, err := os.ReadDir(dir)
+
+	list := make([]TopologyInfo, 0)
+	// Add current / default topology
+	list = append(list, TopologyInfo{
+		ID:          "default",
+		Filename:    "topology.yaml",
+		Name:        "Default Aegis Mesh (5 Nodes)",
+		Description: "Standard 5-node production topology",
+		NodeCount:   len(State.ServiceOrder),
+		Active:      true,
+	})
+
+	if err == nil {
+		for _, f := range files {
+			if !f.IsDir() && (strings.HasSuffix(f.Name(), ".yaml") || strings.HasSuffix(f.Name(), ".yml")) {
+				fullPath := filepath.Join(dir, f.Name())
+				data, readErr := os.ReadFile(fullPath)
+				if readErr == nil {
+					var t TopologyYAML
+					_ = yaml.Unmarshal(data, &t)
+					list = append(list, TopologyInfo{
+						ID:          f.Name(),
+						Filename:    f.Name(),
+						Name:        t.SystemName,
+						Description: t.Description,
+						NodeCount:   len(t.Nodes),
+						Active:      false,
+					})
+				}
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(list)
+}
+
+type SelectTopologyRequest struct {
+	Filename string `json:"filename"`
+}
+
+func TopologySelectHandler(w http.ResponseWriter, r *http.Request) {
+	var req SelectTopologyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"Invalid request payload"}`, http.StatusBadRequest)
+		return
+	}
+
+	targetFile := req.Filename
+	var topoPath string
+	if targetFile == "topology.yaml" || targetFile == "default" {
+		candidates := []string{"configs/topology.yaml", "../configs/topology.yaml", "../../configs/topology.yaml"}
+		for _, c := range candidates {
+			if _, err := os.Stat(c); err == nil {
+				topoPath = c
+				break
+			}
+		}
+	} else {
+		dir := getTopologiesDir()
+		topoPath = filepath.Join(dir, targetFile)
+	}
+
+	if err := LoadTopology(topoPath); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Failed to load topology from %s: %v", topoPath, err),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":   true,
+		"filename":  targetFile,
+		"nodeCount": len(State.ServiceOrder),
+		"message":   fmt.Sprintf("Successfully switched active mesh topology to %s", targetFile),
+	})
+}
+

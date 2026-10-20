@@ -54,6 +54,8 @@ func main() {
 
 	// Topology Routes
 	r.HandleFunc("/api/topology", routes.TopologyHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/topology/list", routes.TopologyListHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/topology/select", routes.TopologySelectHandler).Methods("POST", "OPTIONS")
 
 	// Telemetry Routes
 	r.HandleFunc("/api/telemetry/services", routes.GetServicesHandler).Methods("GET", "OPTIONS")

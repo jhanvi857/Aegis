@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -25,26 +26,28 @@ type ServiceMetric struct {
 }
 
 type Microservice struct {
-	ID           string          `json:"id"`
-	Name         string          `json:"name"`
-	Type         string          `json:"type"`
-	Status       string          `json:"status"` // healthy, degraded, critical
-	Replicas     int             `json:"replicas"`
-	MaxReplicas  int             `json:"maxReplicas"`
-	CPU          float64         `json:"cpu"`
-	Memory       float64         `json:"memory"`
-	Latency      float64         `json:"latency"`
-	RPS          float64         `json:"rps"`
-	ErrorRate    float64         `json:"errorRate"`
-	QueueDepth   int             `json:"queueDepth"`
-	DBWait       float64         `json:"dbConnectionWaitMs"`
-	CacheMiss    float64         `json:"cacheMissRate"`
-	Version      string          `json:"version"`
-	Uptime       string          `json:"uptime"`
-	Dependencies []string        `json:"dependencies"`
-	History      []ServiceMetric `json:"history"`
-	Host         string          `json:"-"`
-	Port         int             `json:"-"`
+	ID            string          `json:"id"`
+	Name          string          `json:"name"`
+	Type          string          `json:"type"`
+	Status        string          `json:"status"` // healthy, degraded, critical
+	Replicas      int             `json:"replicas"`
+	MaxReplicas   int             `json:"maxReplicas"`
+	CPU           float64         `json:"cpu"`
+	Memory        float64         `json:"memory"`
+	Latency       float64         `json:"latency"`
+	RPS           float64         `json:"rps"`
+	ErrorRate     float64         `json:"errorRate"`
+	QueueDepth    int             `json:"queueDepth"`
+	DBWait        float64         `json:"dbConnectionWaitMs"`
+	CacheMiss     float64         `json:"cacheMissRate"`
+	PacketLoss    float64         `json:"packetLossRate"`
+	ActiveThreads int             `json:"activeThreads"`
+	Version       string          `json:"version"`
+	Uptime        string          `json:"uptime"`
+	Dependencies  []string        `json:"dependencies"`
+	History       []ServiceMetric `json:"history"`
+	Host          string          `json:"-"`
+	Port          int             `json:"-"`
 }
 
 type ChaosInjection struct {
@@ -197,76 +200,82 @@ func InitState() {
 		}
 	}
 
+	_ = LoadTopology(topoPath)
+
+	// Start background maintenance loop
+	go State.runTicker()
+}
+
+func LoadTopology(topoPath string) error {
 	data, err := os.ReadFile(topoPath)
 	if err != nil {
 		log.Printf("[api-gateway] Warning: could not load topology: %v", err)
-	} else {
-		State.RawTopologyYAML = data
-		var topo TopologyYAML
-		if err := yaml.Unmarshal(data, &topo); err == nil {
-			nowTime := time.Now().Format("15:04:05")
-			for _, n := range topo.Nodes {
-				baseCPU := 20.0 + rand.Float64()*15.0
-				baseMem := 35.0 + rand.Float64()*15.0
-				baseLat := 15.0 + rand.Float64()*15.0
-				baseRPS := 200.0 + rand.Float64()*200.0
-
-				history := make([]ServiceMetric, 20)
-				for i := 0; i < 20; i++ {
-					t := time.Now().Add(-time.Duration(20-i) * 2 * time.Second).Format("15:04:05")
-					history[i] = ServiceMetric{
-						Timestamp:  t,
-						CPU:        math.Round(baseCPU + rand.Float64()*4 - 2),
-						Memory:     math.Round(baseMem + rand.Float64()*2 - 1),
-						Latency:    math.Round(baseLat + rand.Float64()*4 - 2),
-						RPS:        math.Round(baseRPS + rand.Float64()*20 - 10),
-						ErrorRate:  0.001,
-						QueueDepth: 1,
-					}
-				}
-
-				svcType := n.Type
-				if svcType == "" {
-					svcType = "service"
-				}
-
-				svc := &Microservice{
-					ID:           n.ID,
-					Name:         n.Name,
-					Type:         svcType,
-					Status:       "healthy",
-					Replicas:     3,
-					MaxReplicas:  10,
-					CPU:          math.Round(baseCPU),
-					Memory:       math.Round(baseMem),
-					Latency:      math.Round(baseLat),
-					RPS:          math.Round(baseRPS),
-					ErrorRate:    0.001,
-					QueueDepth:   1,
-					Version:      "v1.0.0",
-					Uptime:       "14d 6h",
-					Dependencies: n.Dependencies,
-					History:      history,
-					Host:         n.Host,
-					Port:         n.Port,
-				}
-				State.Services[n.ID] = svc
-				State.ServiceOrder = append(State.ServiceOrder, n.ID)
-			}
-			log.Printf("[api-gateway] Initialized %d services from %s", len(State.Services), topoPath)
-
-			State.Logs = append(State.Logs, LogEntry{
-				ID:          fmt.Sprintf("log-%d", time.Now().UnixNano()),
-				Timestamp:   nowTime,
-				ServiceID:   "api-gateway",
-				ServiceName: "Control Plane",
-				Level:       "INFO",
-				Message:     fmt.Sprintf("Topology loaded successfully: %d nodes observed.", len(State.Services)),
-			})
-		}
+		return err
 	}
 
-	// Initialize standard experiments from generic topology
+	var topo TopologyYAML
+	if err := yaml.Unmarshal(data, &topo); err != nil {
+		return err
+	}
+
+	State.mu.Lock()
+	defer State.mu.Unlock()
+
+	State.RawTopologyYAML = data
+	State.Services = make(map[string]*Microservice)
+	State.ServiceOrder = make([]string, 0)
+
+	nowTime := time.Now().Format("15:04:05")
+	for _, n := range topo.Nodes {
+		baseCPU := 20.0 + rand.Float64()*15.0
+		baseMem := 35.0 + rand.Float64()*15.0
+		baseLat := 15.0 + rand.Float64()*15.0
+		baseRPS := 200.0 + rand.Float64()*200.0
+
+		history := make([]ServiceMetric, 20)
+		for i := 0; i < 20; i++ {
+			t := time.Now().Add(-time.Duration(20-i) * 2 * time.Second).Format("15:04:05")
+			history[i] = ServiceMetric{
+				Timestamp:  t,
+				CPU:        math.Round(baseCPU + rand.Float64()*4 - 2),
+				Memory:     math.Round(baseMem + rand.Float64()*2 - 1),
+				Latency:    math.Round(baseLat + rand.Float64()*4 - 2),
+				RPS:        math.Round(baseRPS + rand.Float64()*20 - 10),
+				ErrorRate:  0.001,
+				QueueDepth: 1,
+			}
+		}
+
+		svcType := n.Type
+		if svcType == "" {
+			svcType = "service"
+		}
+
+		svc := &Microservice{
+			ID:           n.ID,
+			Name:         n.Name,
+			Type:         svcType,
+			Status:       "healthy",
+			Replicas:     3,
+			MaxReplicas:  10,
+			CPU:          math.Round(baseCPU),
+			Memory:       math.Round(baseMem),
+			Latency:      math.Round(baseLat),
+			RPS:          math.Round(baseRPS),
+			ErrorRate:    0.001,
+			QueueDepth:   1,
+			Version:      "v1.0.0",
+			Uptime:       "14d 6h",
+			Dependencies: n.Dependencies,
+			History:      history,
+			Host:         n.Host,
+			Port:         n.Port,
+		}
+		State.Services[n.ID] = svc
+		State.ServiceOrder = append(State.ServiceOrder, n.ID)
+	}
+
+	// Initialize standard experiments including leaf-node autonomous cases
 	if len(State.ServiceOrder) > 0 {
 		firstWorker := "node-a"
 		if len(State.ServiceOrder) > 1 {
@@ -275,6 +284,14 @@ func InitState() {
 		secondWorker := "node-c"
 		if len(State.ServiceOrder) > 3 {
 			secondWorker = State.ServiceOrder[3]
+		}
+		leafWorkerD := "node-d"
+		if _, ok := State.Services[leafWorkerD]; !ok {
+			leafWorkerD = State.ServiceOrder[len(State.ServiceOrder)-1]
+		}
+		leafWorkerB := "node-b"
+		if _, ok := State.Services[leafWorkerB]; !ok {
+			leafWorkerB = State.ServiceOrder[0]
 		}
 
 		State.Experiments = []Experiment{
@@ -311,11 +328,41 @@ func InitState() {
 				MttrSec:            12,
 				Status:             "idle",
 			},
+			{
+				ID:                 "exp-4",
+				Name:               "Leaf-Node Database Contention (Autonomous)",
+				Description:        "Tests leaf node with blast radius 0; executes autonomously without approval gate (Risk < 0.35)",
+				FaultType:          "db_lock",
+				TargetService:      leafWorkerD,
+				PredictionAccuracy: 97.5,
+				DetectionTimeSec:   2,
+				MttrSec:            8,
+				Status:             "idle",
+			},
+			{
+				ID:                 "exp-5",
+				Name:               "Leaf-Node Cache Degradation (Autonomous)",
+				Description:        "Tests autonomous cache flush on edge service without operator intervention",
+				FaultType:          "cache_down",
+				TargetService:      leafWorkerB,
+				PredictionAccuracy: 98.0,
+				DetectionTimeSec:   1,
+				MttrSec:            6,
+				Status:             "idle",
+			},
 		}
 	}
 
-	// Start background maintenance loop
-	go State.runTicker()
+	log.Printf("[api-gateway] Initialized %d services from %s", len(State.Services), topoPath)
+	State.Logs = append(State.Logs, LogEntry{
+		ID:          fmt.Sprintf("log-%d", time.Now().UnixNano()),
+		Timestamp:   nowTime,
+		ServiceID:   "api-gateway",
+		ServiceName: "Control Plane",
+		Level:       "INFO",
+		Message:     fmt.Sprintf("Topology loaded successfully: %d nodes observed.", len(State.Services)),
+	})
+	return nil
 }
 
 func (s *ControlPlaneState) runTicker() {
@@ -333,10 +380,12 @@ func (s *ControlPlaneState) runTicker() {
 			fault.RemainingSeconds--
 			if fault.RemainingSeconds <= 0 {
 				fault.Status = "completed"
+				targetID := fault.TargetServiceID
+				faultID := id
 				delete(s.ActiveFaults, id)
 
 				// Restore service to healthy
-				if svc, ok := s.Services[fault.TargetServiceID]; ok {
+				if svc, ok := s.Services[targetID]; ok {
 					svc.Status = "healthy"
 					svc.CPU = 25.0
 					svc.Latency = 20.0
@@ -346,11 +395,18 @@ func (s *ControlPlaneState) runTicker() {
 				s.Logs = append(s.Logs, LogEntry{
 					ID:          fmt.Sprintf("log-%d", time.Now().UnixNano()),
 					Timestamp:   nowTime,
-					ServiceID:   fault.TargetServiceID,
+					ServiceID:   targetID,
 					ServiceName: fault.TargetServiceName,
 					Level:       "INFO",
 					Message:     fmt.Sprintf("Chaos episode ended: %s on %s terminated.", fault.Title, fault.TargetServiceName),
 				})
+
+				// Physically halt chaos on node / chaos-engine
+				go func(t, fid string) {
+					client := &http.Client{Timeout: 2 * time.Second}
+					payload, _ := json.Marshal(map[string]interface{}{"target_node": t, "fault_id": fid})
+					_, _ = client.Post(fmt.Sprintf("%s/stop", getChaosEngineURL()), "application/json", bytes.NewBuffer(payload))
+				}(targetID, faultID)
 			}
 		}
 
@@ -385,6 +441,8 @@ func (s *ControlPlaneState) runTicker() {
 					DBConnectionWaitMs float64 `json:"db_connection_wait_ms"`
 					CacheMissRate      float64 `json:"cache_miss_rate"`
 					QueueDepth         int     `json:"queue_depth"`
+					PacketLossRate     float64 `json:"packet_loss_rate"`
+					ActiveThreads      int     `json:"active_threads"`
 				}
 
 				probeURLs := []string{
@@ -417,6 +475,8 @@ func (s *ControlPlaneState) runTicker() {
 							svc.ErrorRate = math.Round(healthResp.ErrorRate*1000) / 1000
 							svc.DBWait = healthResp.DBConnectionWaitMs
 							svc.CacheMiss = healthResp.CacheMissRate
+							svc.PacketLoss = healthResp.PacketLossRate
+							svc.ActiveThreads = healthResp.ActiveThreads
 							if healthResp.QueueDepth > 0 {
 								svc.QueueDepth = healthResp.QueueDepth
 							}

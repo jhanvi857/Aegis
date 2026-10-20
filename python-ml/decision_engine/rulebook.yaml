@@ -110,4 +110,10 @@ fault_family_actions:
   crash:
     primary: "RESTART"
     secondary: ["SCALE_UP"]
+  packet_loss:
+    primary: "REROUTE_TRAFFIC"
+    secondary: ["RESTART"]
+  thread_exhaustion:
+    primary: "SCALE_UP"
+    secondary: ["RESTART"]
 
