@@ -77,11 +77,13 @@ func ComputePredictionOutput() PredictionOutput {
 	for _, id := range State.ServiceOrder {
 		svc := State.Services[id]
 		nodeMetrics := map[string]float64{
-			"cpu":         svc.CPU,
-			"memory":      svc.Memory,
-			"latency_ms":  svc.Latency,
-			"error_rate":  svc.ErrorRate,
-			"queue_depth": float64(svc.QueueDepth),
+			"cpu":                   svc.CPU,
+			"memory":                svc.Memory,
+			"latency_ms":            svc.Latency,
+			"error_rate":            svc.ErrorRate,
+			"queue_depth":           float64(svc.QueueDepth),
+			"db_connection_wait_ms": svc.DBWait,
+			"cache_miss_rate":       svc.CacheMiss,
 		}
 
 		snapshotNodes = append(snapshotNodes, &graphpb.Node{
@@ -99,6 +101,31 @@ func ComputePredictionOutput() PredictionOutput {
 			&telemetrypb.MetricPoint{TimestampUnixNano: nowNs, ServiceId: svc.ID, MetricName: "p95_latency_ms", Value: svc.Latency},
 			&telemetrypb.MetricPoint{TimestampUnixNano: nowNs, ServiceId: svc.ID, MetricName: "error_rate", Value: svc.ErrorRate},
 		)
+
+		if svc.DBWait > 0 {
+			metricPoints = append(metricPoints, &telemetrypb.MetricPoint{
+				TimestampUnixNano: nowNs,
+				ServiceId:         svc.ID,
+				MetricName:        "db_connection_wait_ms",
+				Value:             svc.DBWait,
+			})
+		}
+		if svc.CacheMiss > 0 {
+			metricPoints = append(metricPoints, &telemetrypb.MetricPoint{
+				TimestampUnixNano: nowNs,
+				ServiceId:         svc.ID,
+				MetricName:        "cache_miss_rate",
+				Value:             svc.CacheMiss,
+			})
+		}
+		if svc.QueueDepth > 0 {
+			metricPoints = append(metricPoints, &telemetrypb.MetricPoint{
+				TimestampUnixNano: nowNs,
+				ServiceId:         svc.ID,
+				MetricName:        "queue_depth",
+				Value:             float64(svc.QueueDepth),
+			})
+		}
 
 		for _, dep := range svc.Dependencies {
 			snapshotEdges = append(snapshotEdges, &graphpb.Edge{
@@ -172,8 +199,10 @@ func ComputePredictionOutput() PredictionOutput {
 			var rootCauseID string
 			var rootCauseName string
 			var rootCauseReason string
+			var faultFamily string
 			var recAction string
 			var recID string
+			var recommendedActions []RecoveryAction
 
 			if len(resp.RootCauses) > 0 {
 				topRC := resp.RootCauses[0]
@@ -184,39 +213,30 @@ func ComputePredictionOutput() PredictionOutput {
 					rootCauseName = rootCauseID
 				}
 				rootCauseReason = topRC.Explanation
-				if len(topRC.ContributingMetrics) > 0 {
-					rootCauseReason = fmt.Sprintf("%s (attributed metrics: %s)", rootCauseReason, strings.Join(topRC.ContributingMetrics, ", "))
-				}
+				faultFamily = topRC.FaultFamily
+			}
 
-				// Build recommended action according to causal metric attribution
-				hasCPU := false
-				hasMem := false
-				hasLat := false
-				for _, m := range topRC.ContributingMetrics {
-					if strings.Contains(m, "cpu") {
-						hasCPU = true
-					}
-					if strings.Contains(m, "memory") {
-						hasMem = true
-					}
-					if strings.Contains(m, "latency") {
-						hasLat = true
-					}
+			// Forward action recommendations directly from Python decision engine
+			if len(resp.RecommendedActions) > 0 {
+				for _, act := range resp.RecommendedActions {
+					recommendedActions = append(recommendedActions, RecoveryAction{
+						ID:               act.ActionId,
+						Title:            act.Title,
+						Description:      act.Description,
+						TargetServiceID:  act.TargetNodeId,
+						ActionType:       strings.ToLower(act.ActionType),
+						Confidence:       act.Confidence * 100.0,
+						Status:           "idle",
+						RiskLevel:        act.RiskLevel,
+						RequiresApproval: act.RequiresApproval,
+					})
 				}
-
-				if hasCPU {
-					recAction = fmt.Sprintf("Scale %s replicas from %d to %d", rootCauseName, State.Services[rootCauseID].Replicas, State.Services[rootCauseID].Replicas+2)
-					recID = "act-scale"
-				} else if hasMem {
-					recAction = fmt.Sprintf("Restart container & expand heap limits for %s", rootCauseName)
-					recID = "act-restart"
-				} else if hasLat {
-					recAction = fmt.Sprintf("Reroute ingress traffic around %s", rootCauseName)
-					recID = "act-reroute"
-				} else {
-					recAction = fmt.Sprintf("Execute rolling container restart on %s", rootCauseName)
-					recID = "act-restart"
-				}
+				primary := resp.RecommendedActions[0]
+				recAction = primary.Title
+				recID = primary.ActionId
+			} else if rootCauseID != "" {
+				recAction = fmt.Sprintf("Autonomous remediation on %s", rootCauseName)
+				recID = "act-auto"
 			}
 
 			// Gather blast radius nodes from propagation paths
@@ -233,6 +253,17 @@ func ComputePredictionOutput() PredictionOutput {
 				blastRadius = append(blastRadius, b)
 			}
 
+			// Extract affected nodes with per-hop ETA
+			var affectedNodes []AffectedNodeInfo
+			for _, an := range resp.AffectedNodes {
+				affectedNodes = append(affectedNodes, AffectedNodeInfo{
+					NodeID:      an.NodeId,
+					HopDistance: an.HopDistance,
+					ETASeconds:  an.EtaSeconds,
+					RiskScore:   an.RiskScore,
+				})
+			}
+
 			if rootCauseID == "" || maxFailProb < 20.0 {
 				rootCauseID = ""
 				rootCauseName = "None"
@@ -240,8 +271,12 @@ func ComputePredictionOutput() PredictionOutput {
 				recAction = "Cluster nominal; maintain continuous observation"
 				recID = "act-none"
 				blastRadius = []string{}
+				affectedNodes = []AffectedNodeInfo{}
+				recommendedActions = []RecoveryAction{}
 				estimatedTTF = 600
 			}
+
+			State.LatestRecommendations = recommendedActions
 
 			pred = PredictionOutput{
 				FailureProbability:   maxFailProb,
@@ -250,9 +285,12 @@ func ComputePredictionOutput() PredictionOutput {
 				RootCauseServiceID:   rootCauseID,
 				RootCauseServiceName: rootCauseName,
 				RootCauseReason:      rootCauseReason,
+				FaultFamily:          faultFamily,
 				BlastRadius:          blastRadius,
+				AffectedNodes:        affectedNodes,
 				RecommendedAction:    recAction,
 				RecommendedActionID:  recID,
+				RecommendedActions:   recommendedActions,
 			}
 		}
 	}
@@ -296,7 +334,16 @@ func ComputePredictionOutput() PredictionOutput {
 			reason := fmt.Sprintf("Observed anomalous telemetry signature on %s (Latency: %.0fms, CPU: %.1f%%)", rootCauseSvc.Name, rootCauseSvc.Latency, rootCauseSvc.CPU)
 			recAction := fmt.Sprintf("Execute rolling container restart on %s", rootCauseSvc.Name)
 			recID := "act-restart"
-			if rootCauseSvc.CPU > 80.0 {
+			if rootCauseSvc.DBWait >= 500.0 || rootCauseSvc.Type == "database" || rootCauseSvc.Type == "persistence" {
+				recAction = fmt.Sprintf("Expand connection pool on %s (+10 connections)", rootCauseSvc.Name)
+				recID = "act-increase_pool"
+			} else if rootCauseSvc.CacheMiss >= 0.70 || rootCauseSvc.Type == "cache" {
+				recAction = fmt.Sprintf("Flush cache on %s", rootCauseSvc.Name)
+				recID = "act-flush_cache"
+			} else if rootCauseSvc.QueueDepth >= 10 {
+				recAction = fmt.Sprintf("Scale consumers for %s queue (Replicas +2)", rootCauseSvc.Name)
+				recID = "act-scale"
+			} else if rootCauseSvc.CPU > 80.0 {
 				recAction = fmt.Sprintf("Scale %s replicas from %d to %d", rootCauseSvc.Name, rootCauseSvc.Replicas, rootCauseSvc.Replicas+2)
 				recID = "act-scale"
 			} else if rootCauseSvc.Latency > 500.0 {
