@@ -135,9 +135,9 @@ class TelemetryConsumer:
                     error_rate = random.uniform(0.001, 0.008)
                 elif fault_type in ("db_lock", "slow_query"):
                     cpu = random.uniform(20.0, 40.0)
-                    latency = random.uniform(18.0, 35.0) + (85.0 * s) + random.gauss(0, 4.0)
-                    error_rate = random.uniform(0.002, 0.008) + (0.020 * s)
-                    db_wait = random.uniform(25.0, 60.0) + (550.0 * s) + random.gauss(0, 10.0)
+                    latency = random.uniform(18.0, 35.0)  # Flat nominal latency
+                    error_rate = random.uniform(0.010, 0.030) + (0.040 * s)
+                    db_wait = random.uniform(30.0, 60.0) + (550.0 * s) + random.gauss(0, 10.0)
                 elif fault_type == "cache_down":
                     cpu = random.uniform(22.0, 42.0)
                     latency = random.uniform(18.0, 38.0) + (65.0 * s)
@@ -182,10 +182,10 @@ class TelemetryConsumer:
                     latency = random.uniform(200.0, 400.0)
                     error_rate = random.uniform(0.1, 0.4)
                 elif fault_type in ("db_lock", "slow_query"):
-                    cpu = random.uniform(30.0, 55.0)
-                    latency = random.uniform(250.0, 750.0)
-                    error_rate = random.uniform(0.05, 0.20)
-                    db_wait = random.uniform(550.0, 950.0)  # Exceeds 500ms threshold
+                    cpu = random.uniform(25.0, 45.0)
+                    latency = random.uniform(20.0, 45.0)  # Flat nominal latency
+                    error_rate = random.uniform(0.15, 0.40)  # Error spike
+                    db_wait = random.uniform(600.0, 1100.0)  # Exceeds 500ms threshold
                 elif fault_type == "cache_down":
                     cpu = random.uniform(35.0, 65.0)
                     latency = random.uniform(250.0, 600.0)

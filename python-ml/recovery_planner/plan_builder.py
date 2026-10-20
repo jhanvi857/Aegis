@@ -102,10 +102,15 @@ class RecoveryPlanBuilder:
                 except Exception:
                     downstream_count = len(prop_nodes)
 
+            rc_fault_family = None
+            if node_id in rc_map:
+                rc_fault_family = rc_map[node_id].get("fault_family")
+
             rec = self.risk_engine.recommend_action(
                 target_node=node_id,
                 metrics=node_metrics,
                 blast_radius_size=downstream_count,
+                fault_family=rc_fault_family,
             )
 
             action_type = rec["action_type"]

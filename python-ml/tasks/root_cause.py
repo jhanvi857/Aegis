@@ -21,6 +21,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from models.tgnn.model import TGNNModel
 
+try:
+    from decision_engine.diagnosis import diagnose_fault
+except (ImportError, ValueError):
+    from ..decision_engine.diagnosis import diagnose_fault
+
 logger = logging.getLogger(__name__)
 
 
@@ -141,6 +146,23 @@ class RootCauseAnalyzer:
             dev = max(0.0, f[0] - 0.5) + max(0.0, f[2] - 0.2) + max(0.0, f[3] - 0.02) + max(0.0, f[7] - 0.1)
             metric_anomalies[i] = dev
 
+        # Extract observed per-node metrics from snapshot and telemetry_batch
+        node_metrics_map: Dict[str, Dict[str, float]] = {}
+        for snode in graph_representation.get("snapshot", {}).get("nodes", []):
+            snid = snode.get("id")
+            if snid and "metrics" in snode:
+                node_metrics_map[snid] = {str(k): float(v) for k, v in snode["metrics"].items()}
+
+        if telemetry_batch and "metrics" in telemetry_batch:
+            for m in telemetry_batch["metrics"]:
+                msvc = m.get("service_id")
+                mname = m.get("metric_name")
+                mval = m.get("value")
+                if msvc and mname and mval is not None:
+                    if msvc not in node_metrics_map:
+                        node_metrics_map[msvc] = {}
+                    node_metrics_map[msvc][mname] = float(mval)
+
         # Combine model probabilities with telemetry anomaly scores
         ranking_scores = service_probs + (metric_anomalies * 0.5)
         ranked_indices = np.argsort(ranking_scores)[::-1]
@@ -179,11 +201,35 @@ class RootCauseAnalyzer:
             else:
                 explanation = f"Telemetry deviation identified on service {nid}"
 
+            # Run evidence-based fault diagnosis if metrics are available
+            diag = None
+            if nid in node_metrics_map:
+                diag = diagnose_fault(nid, node_metrics_map[nid])
+            elif len(fvec) >= 8:
+                fvec_dict = {
+                    "cpu_usage": fvec[0] * 100.0,
+                    "memory_usage": fvec[1] * 100.0,
+                    "p95_latency_ms": fvec[2] * 1000.0,
+                    "error_rate": fvec[3],
+                    "queue_depth": fvec[7] * 10.0,
+                }
+                diag = diagnose_fault(nid, fvec_dict)
+
+            fault_family = "nominal"
+            evidence = []
+            if diag and diag.get("fault_family") != "nominal":
+                fault_family = diag.get("fault_family", "nominal")
+                explanation = diag.get("explanation", explanation)
+                evidence = diag.get("evidence", [])
+                contributing = [e["metric"] for e in evidence] or contributing
+
             candidates.append({
                 "node_id": nid,
                 "probability": round(prob, 4),
                 "explanation": explanation,
                 "contributing_metrics": contributing,
+                "fault_family": fault_family,
+                "evidence": evidence,
             })
 
         return candidates
