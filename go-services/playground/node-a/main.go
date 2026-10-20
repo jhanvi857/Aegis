@@ -217,6 +217,8 @@ func (s *Service) HealthHandler(w http.ResponseWriter, r *http.Request) {
 		"db_connection_wait_ms": cs.DBWaitMs,
 		"cache_miss_rate":       cs.CacheMissRate,
 		"queue_depth":           cs.QueueDepth,
+		"packet_loss_rate":      cs.PacketLossRate,
+		"active_threads":        cs.ActiveThreads,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
