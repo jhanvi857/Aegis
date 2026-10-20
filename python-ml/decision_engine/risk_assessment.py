@@ -8,6 +8,15 @@ import os
 import yaml
 from typing import Dict, Any, List, Optional
 
+try:
+    from .diagnosis import diagnose_fault, get_candidate_actions
+except (ImportError, ValueError):
+    try:
+        from decision_engine.diagnosis import diagnose_fault, get_candidate_actions
+    except (ImportError, ValueError):
+        diagnose_fault = None
+        get_candidate_actions = None
+
 
 class RiskAssessmentEngine:
     """
@@ -145,9 +154,10 @@ class RiskAssessmentEngine:
             )
         elif risk_score >= 0.40:
             risk_level = "MEDIUM"
-            requires_approval = False
+            requires_approval = True
             justification = (
-                f"Moderate risk ({risk_score:.2f}) action {action_type} on {target_node}. Auto-executing."
+                f"Moderate risk ({risk_score:.2f}) action {action_type} on {target_node}. "
+                f"Requires human approval before execution."
             )
         else:
             risk_level = "LOW"
@@ -169,19 +179,30 @@ class RiskAssessmentEngine:
         metrics: Dict[str, float],
         blast_radius_size: int = 0,
         node_criticality: float = 0.5,
+        fault_family: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Synthesizes rule evaluation and risk assessment to produce a concrete recommendation.
+        Synthesizes rule evaluation, fault diagnosis, and risk assessment to produce a concrete recommendation.
         """
         matched = self.match_rule(metrics)
         if matched:
             action_info = matched["action"]
             action_type = action_info["type"]
-            params = action_info.get("parameters", {})
+            params = dict(action_info.get("parameters", {}))
         else:
-            # Default fallback action
-            action_type = "RESTART"
-            params = {"grace_period_sec": "5"}
+            family = fault_family
+            if (not family or family == "nominal") and diagnose_fault is not None:
+                diag = diagnose_fault(target_node, metrics)
+                family = diag.get("fault_family")
+
+            if family and family != "nominal" and get_candidate_actions is not None:
+                candidates = get_candidate_actions(family)
+                action_type = candidates[0]["action"]
+                params = {"fault_family": family}
+            else:
+                # Default fallback action
+                action_type = "RESTART"
+                params = {"grace_period_sec": "5"}
 
         risk = self.assess_risk(target_node, action_type, blast_radius_size, node_criticality)
 

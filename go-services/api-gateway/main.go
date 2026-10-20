@@ -78,6 +78,7 @@ func main() {
 	r.HandleFunc("/api/recovery/recommendations", routes.GetRecommendationsHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/recovery/pending", routes.GetPendingRecoveryHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/recovery/approve", routes.ApproveRecoveryHandler).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/recovery/reject", routes.RejectRecoveryHandler).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/recovery/execute", routes.ExecuteRecoveryHandler).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/recovery/history", routes.GetRecoveryHistoryHandler).Methods("GET", "OPTIONS")
 

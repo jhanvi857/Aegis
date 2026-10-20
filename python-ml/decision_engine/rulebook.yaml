@@ -27,7 +27,7 @@ rules:
     action:
       type: "SCALE_UP"
       risk: "MEDIUM"
-      approval_required: false
+      approval_required: true
       parameters:
         scale_increment: "2"
 
@@ -70,7 +70,7 @@ rules:
     action:
       type: "INCREASE_POOL"
       risk: "MEDIUM"
-      approval_required: false
+      approval_required: true
       parameters:
         pool_increment: "10"
 
@@ -87,3 +87,27 @@ rules:
       approval_required: true
       parameters:
         circuit_break: "open"
+
+fault_family_actions:
+  database:
+    primary: "INCREASE_POOL"
+    secondary: ["RESTART"]
+  cache:
+    primary: "FLUSH_CACHE"
+    secondary: ["RESTART"]
+  queue:
+    primary: "SCALE_UP"
+    secondary: ["RESTART"]
+  memory_leak:
+    primary: "RESTART"
+    secondary: ["SCALE_UP"]
+  cpu_saturation:
+    primary: "SCALE_UP"
+    secondary: ["RESTART"]
+  network_latency:
+    primary: "REROUTE_TRAFFIC"
+    secondary: ["RESTART"]
+  crash:
+    primary: "RESTART"
+    secondary: ["SCALE_UP"]
+

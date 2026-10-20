@@ -14,16 +14,44 @@ message FailurePrediction {
   int64 estimated_time_to_failure_sec = 4;
 }
 
+message Evidence {
+  string metric = 1;
+  double observed_value = 2;
+  double threshold_value = 3;
+  string unit = 4;
+}
+
 message RootCause {
   string node_id = 1;
   double probability = 2;
   string explanation = 3;
   repeated string contributing_metrics = 4;
+  string fault_family = 5;
+  repeated Evidence evidence = 6;
 }
 
 message PropagationPath {
   repeated string path_nodes = 1;
   double propagation_risk = 2;
+}
+
+message AffectedNode {
+  string node_id = 1;
+  int32 hop_distance = 2;
+  int64 eta_seconds = 3;
+  double risk_score = 4;
+}
+
+message ActionRecommendation {
+  string action_id = 1;
+  string action_type = 2;
+  string target_node_id = 3;
+  string title = 4;
+  string description = 5;
+  string risk_level = 6;
+  bool requires_approval = 7;
+  double confidence = 8;
+  map<string, string> parameters = 9;
 }
 
 message PredictRequest {
@@ -37,6 +65,8 @@ message PredictResponse {
   repeated RootCause root_causes = 2;
   repeated PropagationPath propagation_paths = 3;
   int64 timestamp_unix_nano = 4;
+  repeated AffectedNode affected_nodes = 5;
+  repeated ActionRecommendation recommended_actions = 6;
 }
 
 service PredictionService {

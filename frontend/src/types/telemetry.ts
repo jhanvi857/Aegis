@@ -73,6 +73,13 @@ export interface ChaosInjection {
   startedAt: string;
 }
 
+export interface AffectedNodeInfo {
+  nodeId: string;
+  hopDistance: number;
+  etaSeconds: number;
+  riskScore: number;
+}
+
 export interface PredictionOutput {
   failureProbability: number; // 0 - 100
   confidence: number;          // 0 - 100
@@ -80,9 +87,12 @@ export interface PredictionOutput {
   rootCauseServiceId: string;
   rootCauseServiceName: string;
   rootCauseReason: string;
+  faultFamily?: string;
   blastRadius: string[];      // Array of affected service IDs in order of cascade
+  affectedNodes?: AffectedNodeInfo[];
   recommendedAction: string;
   recommendedActionId: string;
+  recommendedActions?: RecoveryAction[];
 }
 
 export interface RecoveryAction {
@@ -90,9 +100,12 @@ export interface RecoveryAction {
   title: string;
   description: string;
   targetServiceId: string;
-  actionType: 'scale' | 'restart' | 'flush_cache' | 'pool_expand' | 'increase_pool' | 'reroute_traffic';
+  actionType: 'scale' | 'restart' | 'flush_cache' | 'pool_expand' | 'increase_pool' | 'reroute_traffic' | 'isolate' | string;
   confidence: number;
-  status: 'idle' | 'executing' | 'completed' | 'failed';
+  status: 'idle' | 'executing' | 'completed' | 'failed' | 'pending_approval';
+  riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
+  requiresApproval?: boolean;
+  parameters?: Record<string, string>;
   executedAt?: string;
 }
 

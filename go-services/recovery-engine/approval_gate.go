@@ -42,8 +42,8 @@ func (g *ApprovalGate) RequestApproval(
 
 	normalizedLevel := strings.ToUpper(riskLevel)
 
-	// Low risk and medium risk with score < 0.70 are auto-approved
-	if normalizedLevel == "LOW" || (normalizedLevel == "MEDIUM" && riskScore < 0.70) {
+	// Only LOW risk is auto-approved. MEDIUM and HIGH require human approval.
+	if normalizedLevel == "LOW" {
 		log.Printf("[approval-gate] Auto-approving %s risk plan %s (score: %.2f)", normalizedLevel, planID, riskScore)
 		g.pendingPlans[planID] = &PendingPlanInfo{
 			PlanID:      planID,

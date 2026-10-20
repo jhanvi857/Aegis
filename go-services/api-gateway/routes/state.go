@@ -37,6 +37,8 @@ type Microservice struct {
 	RPS          float64         `json:"rps"`
 	ErrorRate    float64         `json:"errorRate"`
 	QueueDepth   int             `json:"queueDepth"`
+	DBWait       float64         `json:"dbConnectionWaitMs"`
+	CacheMiss    float64         `json:"cacheMissRate"`
 	Version      string          `json:"version"`
 	Uptime       string          `json:"uptime"`
 	Dependencies []string        `json:"dependencies"`
@@ -58,16 +60,26 @@ type ChaosInjection struct {
 	StartedAt        string `json:"startedAt"`
 }
 
+type AffectedNodeInfo struct {
+	NodeID      string  `json:"nodeId"`
+	HopDistance int32   `json:"hopDistance"`
+	ETASeconds  int64   `json:"etaSeconds"`
+	RiskScore   float64 `json:"riskScore"`
+}
+
 type PredictionOutput struct {
-	FailureProbability  float64  `json:"failureProbability"`
-	Confidence          float64  `json:"confidence"`
-	EstimatedFailureSec int      `json:"estimatedFailureSec"`
-	RootCauseServiceID  string   `json:"rootCauseServiceId"`
-	RootCauseServiceName string  `json:"rootCauseServiceName"`
-	RootCauseReason     string   `json:"rootCauseReason"`
-	BlastRadius         []string `json:"blastRadius"`
-	RecommendedAction   string   `json:"recommendedAction"`
-	RecommendedActionID string   `json:"recommendedActionId"`
+	FailureProbability   float64            `json:"failureProbability"`
+	Confidence           float64            `json:"confidence"`
+	EstimatedFailureSec  int                `json:"estimatedFailureSec"`
+	RootCauseServiceID   string             `json:"rootCauseServiceId"`
+	RootCauseServiceName string             `json:"rootCauseServiceName"`
+	RootCauseReason      string             `json:"rootCauseReason"`
+	FaultFamily          string             `json:"faultFamily,omitempty"`
+	BlastRadius          []string           `json:"blastRadius"`
+	AffectedNodes        []AffectedNodeInfo `json:"affectedNodes,omitempty"`
+	RecommendedAction    string             `json:"recommendedAction"`
+	RecommendedActionID  string             `json:"recommendedActionId"`
+	RecommendedActions   []RecoveryAction   `json:"recommendedActions,omitempty"`
 }
 
 type RecoveryAction struct {
@@ -142,27 +154,31 @@ type TopologyYAML struct {
 }
 
 type ControlPlaneState struct {
-	mu              sync.RWMutex
-	Services        map[string]*Microservice
-	ServiceOrder    []string
-	ActiveFaults    map[string]*ChaosInjection
-	Alerts          []LiveAlert
-	Logs            []LogEntry
-	RecoveryHistory []RecoveryHistoryItem
-	Experiments     []Experiment
-	RawTopologyYAML []byte
+	mu                    sync.RWMutex
+	Services              map[string]*Microservice
+	ServiceOrder          []string
+	ActiveFaults          map[string]*ChaosInjection
+	Alerts                []LiveAlert
+	Logs                  []LogEntry
+	RecoveryHistory       []RecoveryHistoryItem
+	Experiments           []Experiment
+	RawTopologyYAML       []byte
+	LatestRecommendations []RecoveryAction
+	ApprovedPlans         map[string]bool
 }
 
 var State *ControlPlaneState
 
 func InitState() {
 	State = &ControlPlaneState{
-		Services:        make(map[string]*Microservice),
-		ActiveFaults:    make(map[string]*ChaosInjection),
-		Alerts:          make([]LiveAlert, 0),
-		Logs:            make([]LogEntry, 0),
-		RecoveryHistory: make([]RecoveryHistoryItem, 0),
-		Experiments:     make([]Experiment, 0),
+		Services:              make(map[string]*Microservice),
+		ActiveFaults:          make(map[string]*ChaosInjection),
+		Alerts:                make([]LiveAlert, 0),
+		Logs:                  make([]LogEntry, 0),
+		RecoveryHistory:       make([]RecoveryHistoryItem, 0),
+		Experiments:           make([]Experiment, 0),
+		LatestRecommendations: make([]RecoveryAction, 0),
+		ApprovedPlans:         make(map[string]bool),
 	}
 
 	topoPath := os.Getenv("TOPOLOGY_PATH")
@@ -359,13 +375,16 @@ func (s *ControlPlaneState) runTicker() {
 			probed := false
 			if svc.Port > 0 {
 				var healthResp struct {
-					Status        string  `json:"status"`
-					CPU           float64 `json:"cpu"`
-					Memory        float64 `json:"memory"`
-					LatencyMs     float64 `json:"latency_ms"`
-					ErrorRate     float64 `json:"error_rate"`
-					ActiveFault   string  `json:"active_fault"`
-					RemainingSec  int     `json:"remaining_sec"`
+					Status             string  `json:"status"`
+					CPU                float64 `json:"cpu"`
+					Memory             float64 `json:"memory"`
+					LatencyMs          float64 `json:"latency_ms"`
+					ErrorRate          float64 `json:"error_rate"`
+					ActiveFault        string  `json:"active_fault"`
+					RemainingSec       int     `json:"remaining_sec"`
+					DBConnectionWaitMs float64 `json:"db_connection_wait_ms"`
+					CacheMissRate      float64 `json:"cache_miss_rate"`
+					QueueDepth         int     `json:"queue_depth"`
 				}
 
 				probeURLs := []string{
@@ -396,6 +415,11 @@ func (s *ControlPlaneState) runTicker() {
 								svc.Latency = math.Round(healthResp.LatencyMs*10) / 10
 							}
 							svc.ErrorRate = math.Round(healthResp.ErrorRate*1000) / 1000
+							svc.DBWait = healthResp.DBConnectionWaitMs
+							svc.CacheMiss = healthResp.CacheMissRate
+							if healthResp.QueueDepth > 0 {
+								svc.QueueDepth = healthResp.QueueDepth
+							}
 						}
 						_ = resp.Body.Close()
 						break
@@ -411,23 +435,64 @@ func (s *ControlPlaneState) runTicker() {
 						svc.CPU = 96.5
 						svc.Latency = 240.0
 						svc.Status = "critical"
+						svc.DBWait = 0.0
+						svc.CacheMiss = 0.02
 					case "latency":
 						svc.Latency = 950.0
 						svc.ErrorRate = 0.08
 						svc.Status = "degraded"
+						svc.DBWait = 0.0
+						svc.CacheMiss = 0.02
 					case "kill_service":
 						svc.CPU = 0.0
 						svc.Latency = 5000.0
 						svc.ErrorRate = 1.0
 						svc.Status = "critical"
+						svc.DBWait = 0.0
+						svc.CacheMiss = 0.02
 					case "memory_leak":
 						svc.Memory = 94.0
 						svc.Latency = 280.0
 						svc.Status = "critical"
+						svc.DBWait = 0.0
+						svc.CacheMiss = 0.02
+					case "db_lock":
+						svc.DBWait = 950.0
+						svc.Latency = 1200.0
+						svc.ErrorRate = 0.15
+						svc.Status = "critical"
+						svc.CacheMiss = 0.02
+					case "slow_query":
+						svc.DBWait = 1200.0
+						svc.Latency = 1400.0
+						svc.ErrorRate = 0.08
+						svc.Status = "degraded"
+						svc.CacheMiss = 0.02
+					case "cache_down":
+						svc.CacheMiss = 0.95
+						svc.Latency = 450.0
+						svc.ErrorRate = 0.04
+						svc.Status = "degraded"
+						svc.DBWait = 0.0
+					case "mq_lag":
+						svc.QueueDepth = 850
+						svc.Latency = 600.0
+						svc.ErrorRate = 0.05
+						svc.Status = "degraded"
+						svc.DBWait = 0.0
+						svc.CacheMiss = 0.02
+					case "thread_exhaustion":
+						svc.Latency = 800.0
+						svc.ErrorRate = 0.35
+						svc.Status = "critical"
+						svc.DBWait = 0.0
+						svc.CacheMiss = 0.02
 					default:
 						svc.Latency = 550.0
 						svc.ErrorRate = 0.05
 						svc.Status = "degraded"
+						svc.DBWait = 0.0
+						svc.CacheMiss = 0.02
 					}
 				} else {
 					svc.CPU = math.Round(math.Max(10.0, math.Min(50.0, svc.CPU+rand.Float64()*2.0-1.0))*10) / 10
@@ -436,6 +501,9 @@ func (s *ControlPlaneState) runTicker() {
 					svc.RPS = math.Round(math.Max(50.0, math.Min(500.0, svc.RPS+rand.Float64()*10.0-5.0))*10) / 10
 					svc.ErrorRate = 0.001
 					svc.Status = "healthy"
+					svc.DBWait = 0.0
+					svc.CacheMiss = 0.02
+					svc.QueueDepth = 0
 				}
 			}
 

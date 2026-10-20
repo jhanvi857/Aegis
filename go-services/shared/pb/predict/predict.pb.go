@@ -91,19 +91,89 @@ func (x *FailurePrediction) GetEstimatedTimeToFailureSec() int64 {
 	return 0
 }
 
+type Evidence struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Metric         string                 `protobuf:"bytes,1,opt,name=metric,proto3" json:"metric,omitempty"`
+	ObservedValue  float64                `protobuf:"fixed64,2,opt,name=observed_value,json=observedValue,proto3" json:"observed_value,omitempty"`
+	ThresholdValue float64                `protobuf:"fixed64,3,opt,name=threshold_value,json=thresholdValue,proto3" json:"threshold_value,omitempty"`
+	Unit           string                 `protobuf:"bytes,4,opt,name=unit,proto3" json:"unit,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *Evidence) Reset() {
+	*x = Evidence{}
+	mi := &file_predict_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Evidence) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Evidence) ProtoMessage() {}
+
+func (x *Evidence) ProtoReflect() protoreflect.Message {
+	mi := &file_predict_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Evidence.ProtoReflect.Descriptor instead.
+func (*Evidence) Descriptor() ([]byte, []int) {
+	return file_predict_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Evidence) GetMetric() string {
+	if x != nil {
+		return x.Metric
+	}
+	return ""
+}
+
+func (x *Evidence) GetObservedValue() float64 {
+	if x != nil {
+		return x.ObservedValue
+	}
+	return 0
+}
+
+func (x *Evidence) GetThresholdValue() float64 {
+	if x != nil {
+		return x.ThresholdValue
+	}
+	return 0
+}
+
+func (x *Evidence) GetUnit() string {
+	if x != nil {
+		return x.Unit
+	}
+	return ""
+}
+
 type RootCause struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	NodeId              string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
 	Probability         float64                `protobuf:"fixed64,2,opt,name=probability,proto3" json:"probability,omitempty"`
 	Explanation         string                 `protobuf:"bytes,3,opt,name=explanation,proto3" json:"explanation,omitempty"`
 	ContributingMetrics []string               `protobuf:"bytes,4,rep,name=contributing_metrics,json=contributingMetrics,proto3" json:"contributing_metrics,omitempty"`
+	FaultFamily         string                 `protobuf:"bytes,5,opt,name=fault_family,json=faultFamily,proto3" json:"fault_family,omitempty"`
+	Evidence            []*Evidence            `protobuf:"bytes,6,rep,name=evidence,proto3" json:"evidence,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
 
 func (x *RootCause) Reset() {
 	*x = RootCause{}
-	mi := &file_predict_proto_msgTypes[1]
+	mi := &file_predict_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -115,7 +185,7 @@ func (x *RootCause) String() string {
 func (*RootCause) ProtoMessage() {}
 
 func (x *RootCause) ProtoReflect() protoreflect.Message {
-	mi := &file_predict_proto_msgTypes[1]
+	mi := &file_predict_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -128,7 +198,7 @@ func (x *RootCause) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RootCause.ProtoReflect.Descriptor instead.
 func (*RootCause) Descriptor() ([]byte, []int) {
-	return file_predict_proto_rawDescGZIP(), []int{1}
+	return file_predict_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *RootCause) GetNodeId() string {
@@ -159,6 +229,20 @@ func (x *RootCause) GetContributingMetrics() []string {
 	return nil
 }
 
+func (x *RootCause) GetFaultFamily() string {
+	if x != nil {
+		return x.FaultFamily
+	}
+	return ""
+}
+
+func (x *RootCause) GetEvidence() []*Evidence {
+	if x != nil {
+		return x.Evidence
+	}
+	return nil
+}
+
 type PropagationPath struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	PathNodes       []string               `protobuf:"bytes,1,rep,name=path_nodes,json=pathNodes,proto3" json:"path_nodes,omitempty"`
@@ -169,7 +253,7 @@ type PropagationPath struct {
 
 func (x *PropagationPath) Reset() {
 	*x = PropagationPath{}
-	mi := &file_predict_proto_msgTypes[2]
+	mi := &file_predict_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -181,7 +265,7 @@ func (x *PropagationPath) String() string {
 func (*PropagationPath) ProtoMessage() {}
 
 func (x *PropagationPath) ProtoReflect() protoreflect.Message {
-	mi := &file_predict_proto_msgTypes[2]
+	mi := &file_predict_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -194,7 +278,7 @@ func (x *PropagationPath) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PropagationPath.ProtoReflect.Descriptor instead.
 func (*PropagationPath) Descriptor() ([]byte, []int) {
-	return file_predict_proto_rawDescGZIP(), []int{2}
+	return file_predict_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *PropagationPath) GetPathNodes() []string {
@@ -211,6 +295,182 @@ func (x *PropagationPath) GetPropagationRisk() float64 {
 	return 0
 }
 
+type AffectedNode struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	HopDistance   int32                  `protobuf:"varint,2,opt,name=hop_distance,json=hopDistance,proto3" json:"hop_distance,omitempty"`
+	EtaSeconds    int64                  `protobuf:"varint,3,opt,name=eta_seconds,json=etaSeconds,proto3" json:"eta_seconds,omitempty"`
+	RiskScore     float64                `protobuf:"fixed64,4,opt,name=risk_score,json=riskScore,proto3" json:"risk_score,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AffectedNode) Reset() {
+	*x = AffectedNode{}
+	mi := &file_predict_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AffectedNode) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AffectedNode) ProtoMessage() {}
+
+func (x *AffectedNode) ProtoReflect() protoreflect.Message {
+	mi := &file_predict_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AffectedNode.ProtoReflect.Descriptor instead.
+func (*AffectedNode) Descriptor() ([]byte, []int) {
+	return file_predict_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *AffectedNode) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *AffectedNode) GetHopDistance() int32 {
+	if x != nil {
+		return x.HopDistance
+	}
+	return 0
+}
+
+func (x *AffectedNode) GetEtaSeconds() int64 {
+	if x != nil {
+		return x.EtaSeconds
+	}
+	return 0
+}
+
+func (x *AffectedNode) GetRiskScore() float64 {
+	if x != nil {
+		return x.RiskScore
+	}
+	return 0
+}
+
+type ActionRecommendation struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	ActionId         string                 `protobuf:"bytes,1,opt,name=action_id,json=actionId,proto3" json:"action_id,omitempty"`
+	ActionType       string                 `protobuf:"bytes,2,opt,name=action_type,json=actionType,proto3" json:"action_type,omitempty"`
+	TargetNodeId     string                 `protobuf:"bytes,3,opt,name=target_node_id,json=targetNodeId,proto3" json:"target_node_id,omitempty"`
+	Title            string                 `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`
+	Description      string                 `protobuf:"bytes,5,opt,name=description,proto3" json:"description,omitempty"`
+	RiskLevel        string                 `protobuf:"bytes,6,opt,name=risk_level,json=riskLevel,proto3" json:"risk_level,omitempty"`
+	RequiresApproval bool                   `protobuf:"varint,7,opt,name=requires_approval,json=requiresApproval,proto3" json:"requires_approval,omitempty"`
+	Confidence       float64                `protobuf:"fixed64,8,opt,name=confidence,proto3" json:"confidence,omitempty"`
+	Parameters       map[string]string      `protobuf:"bytes,9,rep,name=parameters,proto3" json:"parameters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ActionRecommendation) Reset() {
+	*x = ActionRecommendation{}
+	mi := &file_predict_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ActionRecommendation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ActionRecommendation) ProtoMessage() {}
+
+func (x *ActionRecommendation) ProtoReflect() protoreflect.Message {
+	mi := &file_predict_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ActionRecommendation.ProtoReflect.Descriptor instead.
+func (*ActionRecommendation) Descriptor() ([]byte, []int) {
+	return file_predict_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ActionRecommendation) GetActionId() string {
+	if x != nil {
+		return x.ActionId
+	}
+	return ""
+}
+
+func (x *ActionRecommendation) GetActionType() string {
+	if x != nil {
+		return x.ActionType
+	}
+	return ""
+}
+
+func (x *ActionRecommendation) GetTargetNodeId() string {
+	if x != nil {
+		return x.TargetNodeId
+	}
+	return ""
+}
+
+func (x *ActionRecommendation) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *ActionRecommendation) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *ActionRecommendation) GetRiskLevel() string {
+	if x != nil {
+		return x.RiskLevel
+	}
+	return ""
+}
+
+func (x *ActionRecommendation) GetRequiresApproval() bool {
+	if x != nil {
+		return x.RequiresApproval
+	}
+	return false
+}
+
+func (x *ActionRecommendation) GetConfidence() float64 {
+	if x != nil {
+		return x.Confidence
+	}
+	return 0
+}
+
+func (x *ActionRecommendation) GetParameters() map[string]string {
+	if x != nil {
+		return x.Parameters
+	}
+	return nil
+}
+
 type PredictRequest struct {
 	state           protoimpl.MessageState     `protogen:"open.v1"`
 	Graph           *graph.GraphRepresentation `protobuf:"bytes,1,opt,name=graph,proto3" json:"graph,omitempty"`
@@ -222,7 +482,7 @@ type PredictRequest struct {
 
 func (x *PredictRequest) Reset() {
 	*x = PredictRequest{}
-	mi := &file_predict_proto_msgTypes[3]
+	mi := &file_predict_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -234,7 +494,7 @@ func (x *PredictRequest) String() string {
 func (*PredictRequest) ProtoMessage() {}
 
 func (x *PredictRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_predict_proto_msgTypes[3]
+	mi := &file_predict_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -247,7 +507,7 @@ func (x *PredictRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PredictRequest.ProtoReflect.Descriptor instead.
 func (*PredictRequest) Descriptor() ([]byte, []int) {
-	return file_predict_proto_rawDescGZIP(), []int{3}
+	return file_predict_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *PredictRequest) GetGraph() *graph.GraphRepresentation {
@@ -272,18 +532,20 @@ func (x *PredictRequest) GetTargetNodeId() string {
 }
 
 type PredictResponse struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	FailurePredictions []*FailurePrediction   `protobuf:"bytes,1,rep,name=failure_predictions,json=failurePredictions,proto3" json:"failure_predictions,omitempty"`
-	RootCauses         []*RootCause           `protobuf:"bytes,2,rep,name=root_causes,json=rootCauses,proto3" json:"root_causes,omitempty"`
-	PropagationPaths   []*PropagationPath     `protobuf:"bytes,3,rep,name=propagation_paths,json=propagationPaths,proto3" json:"propagation_paths,omitempty"`
-	TimestampUnixNano  int64                  `protobuf:"varint,4,opt,name=timestamp_unix_nano,json=timestampUnixNano,proto3" json:"timestamp_unix_nano,omitempty"`
+	state              protoimpl.MessageState  `protogen:"open.v1"`
+	FailurePredictions []*FailurePrediction    `protobuf:"bytes,1,rep,name=failure_predictions,json=failurePredictions,proto3" json:"failure_predictions,omitempty"`
+	RootCauses         []*RootCause            `protobuf:"bytes,2,rep,name=root_causes,json=rootCauses,proto3" json:"root_causes,omitempty"`
+	PropagationPaths   []*PropagationPath      `protobuf:"bytes,3,rep,name=propagation_paths,json=propagationPaths,proto3" json:"propagation_paths,omitempty"`
+	TimestampUnixNano  int64                   `protobuf:"varint,4,opt,name=timestamp_unix_nano,json=timestampUnixNano,proto3" json:"timestamp_unix_nano,omitempty"`
+	AffectedNodes      []*AffectedNode         `protobuf:"bytes,5,rep,name=affected_nodes,json=affectedNodes,proto3" json:"affected_nodes,omitempty"`
+	RecommendedActions []*ActionRecommendation `protobuf:"bytes,6,rep,name=recommended_actions,json=recommendedActions,proto3" json:"recommended_actions,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
 
 func (x *PredictResponse) Reset() {
 	*x = PredictResponse{}
-	mi := &file_predict_proto_msgTypes[4]
+	mi := &file_predict_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -295,7 +557,7 @@ func (x *PredictResponse) String() string {
 func (*PredictResponse) ProtoMessage() {}
 
 func (x *PredictResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_predict_proto_msgTypes[4]
+	mi := &file_predict_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -308,7 +570,7 @@ func (x *PredictResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PredictResponse.ProtoReflect.Descriptor instead.
 func (*PredictResponse) Descriptor() ([]byte, []int) {
-	return file_predict_proto_rawDescGZIP(), []int{4}
+	return file_predict_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *PredictResponse) GetFailurePredictions() []*FailurePrediction {
@@ -339,6 +601,20 @@ func (x *PredictResponse) GetTimestampUnixNano() int64 {
 	return 0
 }
 
+func (x *PredictResponse) GetAffectedNodes() []*AffectedNode {
+	if x != nil {
+		return x.AffectedNodes
+	}
+	return nil
+}
+
+func (x *PredictResponse) GetRecommendedActions() []*ActionRecommendation {
+	if x != nil {
+		return x.RecommendedActions
+	}
+	return nil
+}
+
 var File_predict_proto protoreflect.FileDescriptor
 
 const file_predict_proto_rawDesc = "" +
@@ -350,26 +626,61 @@ const file_predict_proto_rawDesc = "" +
 	"\n" +
 	"confidence\x18\x03 \x01(\x01R\n" +
 	"confidence\x12@\n" +
-	"\x1destimated_time_to_failure_sec\x18\x04 \x01(\x03R\x19estimatedTimeToFailureSec\"\x9b\x01\n" +
+	"\x1destimated_time_to_failure_sec\x18\x04 \x01(\x03R\x19estimatedTimeToFailureSec\"\x86\x01\n" +
+	"\bEvidence\x12\x16\n" +
+	"\x06metric\x18\x01 \x01(\tR\x06metric\x12%\n" +
+	"\x0eobserved_value\x18\x02 \x01(\x01R\robservedValue\x12'\n" +
+	"\x0fthreshold_value\x18\x03 \x01(\x01R\x0ethresholdValue\x12\x12\n" +
+	"\x04unit\x18\x04 \x01(\tR\x04unit\"\xf3\x01\n" +
 	"\tRootCause\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12 \n" +
 	"\vprobability\x18\x02 \x01(\x01R\vprobability\x12 \n" +
 	"\vexplanation\x18\x03 \x01(\tR\vexplanation\x121\n" +
-	"\x14contributing_metrics\x18\x04 \x03(\tR\x13contributingMetrics\"[\n" +
+	"\x14contributing_metrics\x18\x04 \x03(\tR\x13contributingMetrics\x12!\n" +
+	"\ffault_family\x18\x05 \x01(\tR\vfaultFamily\x123\n" +
+	"\bevidence\x18\x06 \x03(\v2\x17.aegis.predict.EvidenceR\bevidence\"[\n" +
 	"\x0fPropagationPath\x12\x1d\n" +
 	"\n" +
 	"path_nodes\x18\x01 \x03(\tR\tpathNodes\x12)\n" +
-	"\x10propagation_risk\x18\x02 \x01(\x01R\x0fpropagationRisk\"\xba\x01\n" +
+	"\x10propagation_risk\x18\x02 \x01(\x01R\x0fpropagationRisk\"\x8a\x01\n" +
+	"\fAffectedNode\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12!\n" +
+	"\fhop_distance\x18\x02 \x01(\x05R\vhopDistance\x12\x1f\n" +
+	"\veta_seconds\x18\x03 \x01(\x03R\n" +
+	"etaSeconds\x12\x1d\n" +
+	"\n" +
+	"risk_score\x18\x04 \x01(\x01R\triskScore\"\xb2\x03\n" +
+	"\x14ActionRecommendation\x12\x1b\n" +
+	"\taction_id\x18\x01 \x01(\tR\bactionId\x12\x1f\n" +
+	"\vaction_type\x18\x02 \x01(\tR\n" +
+	"actionType\x12$\n" +
+	"\x0etarget_node_id\x18\x03 \x01(\tR\ftargetNodeId\x12\x14\n" +
+	"\x05title\x18\x04 \x01(\tR\x05title\x12 \n" +
+	"\vdescription\x18\x05 \x01(\tR\vdescription\x12\x1d\n" +
+	"\n" +
+	"risk_level\x18\x06 \x01(\tR\triskLevel\x12+\n" +
+	"\x11requires_approval\x18\a \x01(\bR\x10requiresApproval\x12\x1e\n" +
+	"\n" +
+	"confidence\x18\b \x01(\x01R\n" +
+	"confidence\x12S\n" +
+	"\n" +
+	"parameters\x18\t \x03(\v23.aegis.predict.ActionRecommendation.ParametersEntryR\n" +
+	"parameters\x1a=\n" +
+	"\x0fParametersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xba\x01\n" +
 	"\x0ePredictRequest\x126\n" +
 	"\x05graph\x18\x01 \x01(\v2 .aegis.graph.GraphRepresentationR\x05graph\x12J\n" +
 	"\x10recent_telemetry\x18\x02 \x01(\v2\x1f.aegis.telemetry.TelemetryBatchR\x0frecentTelemetry\x12$\n" +
-	"\x0etarget_node_id\x18\x03 \x01(\tR\ftargetNodeId\"\x9c\x02\n" +
+	"\x0etarget_node_id\x18\x03 \x01(\tR\ftargetNodeId\"\xb6\x03\n" +
 	"\x0fPredictResponse\x12Q\n" +
 	"\x13failure_predictions\x18\x01 \x03(\v2 .aegis.predict.FailurePredictionR\x12failurePredictions\x129\n" +
 	"\vroot_causes\x18\x02 \x03(\v2\x18.aegis.predict.RootCauseR\n" +
 	"rootCauses\x12K\n" +
 	"\x11propagation_paths\x18\x03 \x03(\v2\x1e.aegis.predict.PropagationPathR\x10propagationPaths\x12.\n" +
-	"\x13timestamp_unix_nano\x18\x04 \x01(\x03R\x11timestampUnixNano2]\n" +
+	"\x13timestamp_unix_nano\x18\x04 \x01(\x03R\x11timestampUnixNano\x12B\n" +
+	"\x0eaffected_nodes\x18\x05 \x03(\v2\x1b.aegis.predict.AffectedNodeR\raffectedNodes\x12T\n" +
+	"\x13recommended_actions\x18\x06 \x03(\v2#.aegis.predict.ActionRecommendationR\x12recommendedActions2]\n" +
 	"\x11PredictionService\x12H\n" +
 	"\aPredict\x12\x1d.aegis.predict.PredictRequest\x1a\x1e.aegis.predict.PredictResponseB:Z8github.com/aegis/go-services/shared/pb/predict;predictpbb\x06proto3"
 
@@ -385,29 +696,37 @@ func file_predict_proto_rawDescGZIP() []byte {
 	return file_predict_proto_rawDescData
 }
 
-var file_predict_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_predict_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_predict_proto_goTypes = []any{
 	(*FailurePrediction)(nil),         // 0: aegis.predict.FailurePrediction
-	(*RootCause)(nil),                 // 1: aegis.predict.RootCause
-	(*PropagationPath)(nil),           // 2: aegis.predict.PropagationPath
-	(*PredictRequest)(nil),            // 3: aegis.predict.PredictRequest
-	(*PredictResponse)(nil),           // 4: aegis.predict.PredictResponse
-	(*graph.GraphRepresentation)(nil), // 5: aegis.graph.GraphRepresentation
-	(*telemetry.TelemetryBatch)(nil),  // 6: aegis.telemetry.TelemetryBatch
+	(*Evidence)(nil),                  // 1: aegis.predict.Evidence
+	(*RootCause)(nil),                 // 2: aegis.predict.RootCause
+	(*PropagationPath)(nil),           // 3: aegis.predict.PropagationPath
+	(*AffectedNode)(nil),              // 4: aegis.predict.AffectedNode
+	(*ActionRecommendation)(nil),      // 5: aegis.predict.ActionRecommendation
+	(*PredictRequest)(nil),            // 6: aegis.predict.PredictRequest
+	(*PredictResponse)(nil),           // 7: aegis.predict.PredictResponse
+	nil,                               // 8: aegis.predict.ActionRecommendation.ParametersEntry
+	(*graph.GraphRepresentation)(nil), // 9: aegis.graph.GraphRepresentation
+	(*telemetry.TelemetryBatch)(nil),  // 10: aegis.telemetry.TelemetryBatch
 }
 var file_predict_proto_depIdxs = []int32{
-	5, // 0: aegis.predict.PredictRequest.graph:type_name -> aegis.graph.GraphRepresentation
-	6, // 1: aegis.predict.PredictRequest.recent_telemetry:type_name -> aegis.telemetry.TelemetryBatch
-	0, // 2: aegis.predict.PredictResponse.failure_predictions:type_name -> aegis.predict.FailurePrediction
-	1, // 3: aegis.predict.PredictResponse.root_causes:type_name -> aegis.predict.RootCause
-	2, // 4: aegis.predict.PredictResponse.propagation_paths:type_name -> aegis.predict.PropagationPath
-	3, // 5: aegis.predict.PredictionService.Predict:input_type -> aegis.predict.PredictRequest
-	4, // 6: aegis.predict.PredictionService.Predict:output_type -> aegis.predict.PredictResponse
-	6, // [6:7] is the sub-list for method output_type
-	5, // [5:6] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	1,  // 0: aegis.predict.RootCause.evidence:type_name -> aegis.predict.Evidence
+	8,  // 1: aegis.predict.ActionRecommendation.parameters:type_name -> aegis.predict.ActionRecommendation.ParametersEntry
+	9,  // 2: aegis.predict.PredictRequest.graph:type_name -> aegis.graph.GraphRepresentation
+	10, // 3: aegis.predict.PredictRequest.recent_telemetry:type_name -> aegis.telemetry.TelemetryBatch
+	0,  // 4: aegis.predict.PredictResponse.failure_predictions:type_name -> aegis.predict.FailurePrediction
+	2,  // 5: aegis.predict.PredictResponse.root_causes:type_name -> aegis.predict.RootCause
+	3,  // 6: aegis.predict.PredictResponse.propagation_paths:type_name -> aegis.predict.PropagationPath
+	4,  // 7: aegis.predict.PredictResponse.affected_nodes:type_name -> aegis.predict.AffectedNode
+	5,  // 8: aegis.predict.PredictResponse.recommended_actions:type_name -> aegis.predict.ActionRecommendation
+	6,  // 9: aegis.predict.PredictionService.Predict:input_type -> aegis.predict.PredictRequest
+	7,  // 10: aegis.predict.PredictionService.Predict:output_type -> aegis.predict.PredictResponse
+	10, // [10:11] is the sub-list for method output_type
+	9,  // [9:10] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_predict_proto_init() }
@@ -421,7 +740,7 @@ func file_predict_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_predict_proto_rawDesc), len(file_predict_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

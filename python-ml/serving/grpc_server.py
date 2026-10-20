@@ -246,14 +246,24 @@ try:
                         )
                     )
                 for rc in result.get("root_causes", []):
-                    resp.root_causes.append(
-                        predict_pb2.RootCause(
-                            node_id=str(rc.get("node_id", "")),
-                            probability=float(rc.get("probability", 0.0)),
-                            explanation=str(rc.get("explanation", "")),
-                            contributing_metrics=list(rc.get("contributing_metrics", [])),
-                        )
+                    rc_pb = predict_pb2.RootCause(
+                        node_id=str(rc.get("node_id", "")),
+                        probability=float(rc.get("probability", 0.0)),
+                        explanation=str(rc.get("explanation", "")),
+                        contributing_metrics=list(rc.get("contributing_metrics", [])),
+                        fault_family=str(rc.get("fault_family", "nominal")),
                     )
+                    for ev in rc.get("evidence", []):
+                        rc_pb.evidence.append(
+                            predict_pb2.Evidence(
+                                metric=str(ev.get("metric", "")),
+                                observed_value=float(ev.get("value", 0.0)),
+                                threshold_value=float(ev.get("threshold", 0.0)),
+                                unit=str(ev.get("unit", "")),
+                            )
+                        )
+                    resp.root_causes.append(rc_pb)
+
                 for pp in result.get("propagation_paths", []):
                     resp.propagation_paths.append(
                         predict_pb2.PropagationPath(
@@ -261,6 +271,47 @@ try:
                             propagation_risk=float(pp.get("propagation_risk", 0.0)),
                         )
                     )
+
+                # 5b. Compute affected_nodes with hop distance and ETA
+                visited_nodes = {}
+                for pp in result.get("propagation_paths", []):
+                    nodes_list = pp.get("path_nodes", [])
+                    for hop, nid in enumerate(nodes_list):
+                        if nid not in visited_nodes:
+                            visited_nodes[nid] = hop
+                for nid, hop in visited_nodes.items():
+                    resp.affected_nodes.append(
+                        predict_pb2.AffectedNode(
+                            node_id=nid,
+                            hop_distance=hop,
+                            eta_seconds=max(5, hop * 15),
+                            risk_score=max(0.2, 0.95 - (hop * 0.2)),
+                        )
+                    )
+
+                # 5c. Populate recommended_actions from RecoveryPlan
+                plan = result.get("recovery_plan") or {}
+                if plan:
+                    risk_info = plan.get("risk", {})
+                    for act in plan.get("actions", []):
+                        act_type = act.get("action_type", "RESTART")
+                        target = act.get("target_node_id", "")
+                        rec_risk_level = act.get("risk_level", risk_info.get("risk_level", "LOW"))
+                        req_approval = (rec_risk_level.upper() in ["MEDIUM", "HIGH"])
+                        resp.recommended_actions.append(
+                            predict_pb2.ActionRecommendation(
+                                action_id=str(act.get("action_id", "")),
+                                action_type=str(act_type),
+                                target_node_id=str(target),
+                                title=f"{act_type} on {target}",
+                                description=f"Autonomous remediation: execute {act_type} on {target}",
+                                risk_level=str(rec_risk_level),
+                                requires_approval=bool(req_approval),
+                                confidence=0.95,
+                                parameters={str(k): str(v) for k, v in act.get("parameters", {}).items()},
+                            )
+                        )
+
                 resp.timestamp_unix_nano = int(result.get("timestamp_unix_nano", int(time.time() * 1e9)))
                 return resp
             except Exception as e:
