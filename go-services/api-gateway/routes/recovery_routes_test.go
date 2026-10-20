@@ -143,3 +143,26 @@ func TestRejectRecovery_RevokesApproval(t *testing.T) {
 		t.Errorf("expected approval to be removed after rejection")
 	}
 }
+
+func TestExecuteRecovery_CannotBypassWithClientFlags(t *testing.T) {
+	setupTestState()
+
+	// Client sends approved: true in request body, but server has not approved
+	payload, _ := json.Marshal(map[string]interface{}{
+		"actionId":        "rec-reroute_traffic-node-a",
+		"targetServiceId": "node-a",
+		"actionType":      "reroute_traffic",
+		"approved":        true,
+		"force":           true,
+	})
+
+	req := httptest.NewRequest("POST", "/api/recovery/execute", bytes.NewBuffer(payload))
+	rr := httptest.NewRecorder()
+
+	ExecuteRecoveryHandler(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden when client attempts to forge approval flag, got %d", rr.Code)
+	}
+}
+
