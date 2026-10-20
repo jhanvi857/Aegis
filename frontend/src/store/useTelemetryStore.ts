@@ -44,7 +44,9 @@ interface TelemetryState {
   stopChaosFault: (id: string) => Promise<void>;
   clearAllChaosFaults: () => Promise<void>;
 
-  executeRecoveryAction: (actionType: string, targetServiceId: string, actionTitle: string) => Promise<void>;
+  executeRecoveryAction: (actionType: string, targetServiceId: string, actionTitle?: string, approved?: boolean) => Promise<void>;
+  approveAction: (actionId: string, targetServiceId?: string) => Promise<void>;
+  rejectAction: (actionId: string, targetServiceId?: string) => Promise<void>;
   runExperimentScenario: (experimentId: string) => Promise<void>;
   resetDemoState: () => Promise<void>;
 }
@@ -213,12 +215,33 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
     await get().tickTelemetry();
   },
 
-  executeRecoveryAction: async (actionType, targetServiceId, actionTitle) => {
+  executeRecoveryAction: async (actionType, targetServiceId, actionTitle, approved) => {
     try {
-      await recoveryApi.executeAction(actionType, targetServiceId, actionTitle);
+      await recoveryApi.executeAction(actionType, targetServiceId, actionTitle, approved);
       await get().tickTelemetry();
     } catch (err) {
       console.error('[useTelemetryStore] Error executing recovery action:', err);
+      throw err;
+    }
+  },
+
+  approveAction: async (actionId, targetServiceId) => {
+    try {
+      await recoveryApi.approveAction(actionId, targetServiceId);
+      await get().tickTelemetry();
+    } catch (err) {
+      console.error('[useTelemetryStore] Error approving action:', err);
+      throw err;
+    }
+  },
+
+  rejectAction: async (actionId, targetServiceId) => {
+    try {
+      await recoveryApi.rejectAction(actionId, targetServiceId);
+      await get().tickTelemetry();
+    } catch (err) {
+      console.error('[useTelemetryStore] Error rejecting action:', err);
+      throw err;
     }
   },
 
@@ -258,64 +281,23 @@ export function calculateSystemRisk(services: Microservice[], faults: ChaosInjec
   return 8;
 }
 
-// Return dynamic prediction output from the store or evaluate dynamically
-export function getMLPrediction(services: Microservice[], faults: ChaosInjection[]): PredictionOutput {
+// Return dynamic prediction output from the store or authentic state if not yet available
+export function getMLPrediction(_services?: Microservice[], _faults?: ChaosInjection[]): PredictionOutput {
   const storeState = useTelemetryStore.getState();
-  if (storeState.latestPrediction && storeState.latestPrediction.rootCauseServiceId !== '') {
+  if (storeState.latestPrediction && storeState.latestPrediction.rootCauseServiceId !== undefined) {
     return storeState.latestPrediction;
   }
 
-  // Derive dynamic prediction from live services if store has not polled yet
-  const faultyService = faults.length > 0
-    ? services.find((s) => s.id === faults[0].targetServiceId)
-    : undefined;
-
-  const criticalService = services.find((s) => s.status === 'critical');
-  const degradedService = services.find((s) => s.status === 'degraded');
-
-  const rootSvc = faultyService || criticalService;
-
-  if (rootSvc) {
-    // Dynamic blast radius from downstream dependencies
-    const blastSet = new Set<string>();
-    const queue = [...rootSvc.dependencies];
-    while (queue.length > 0) {
-      const curr = queue.shift()!;
-      if (!blastSet.has(curr)) {
-        blastSet.add(curr);
-        const depSvc = services.find((s) => s.id === curr);
-        if (depSvc) {
-          queue.push(...depSvc.dependencies);
-        }
-      }
-    }
-
-    return {
-      failureProbability: 92.5,
-      confidence: 96.0,
-      estimatedFailureSec: 25,
-      rootCauseServiceId: rootSvc.id,
-      rootCauseServiceName: rootSvc.name,
-      rootCauseReason: 'High error rate escalation and latency anomaly',
-      blastRadius: Array.from(blastSet),
-      recommendedAction: `Execute autonomous remediation on ${rootSvc.name}`,
-      recommendedActionId: `act-${rootSvc.id}`,
-    };
-  }
-
-  if (degradedService) {
-    return {
-      failureProbability: 45.0,
-      confidence: 85.0,
-      estimatedFailureSec: 90,
-      rootCauseServiceId: degradedService.id,
-      rootCauseServiceName: degradedService.name,
-      rootCauseReason: 'Moderate latency jitter and queue backpressure',
-      blastRadius: [...degradedService.dependencies],
-      recommendedAction: `Scale replicas or restart ${degradedService.name}`,
-      recommendedActionId: `act-${degradedService.id}`,
-    };
-  }
-
-  return DEFAULT_PREDICTION;
+  // Authentic fallback: do not fabricate numbers when model prediction has not been received
+  return {
+    failureProbability: 0,
+    confidence: 0,
+    estimatedFailureSec: 0,
+    rootCauseServiceId: '',
+    rootCauseServiceName: 'Model Unavailable',
+    rootCauseReason: 'Awaiting TGNN inference output from backend',
+    blastRadius: [],
+    recommendedAction: 'Awaiting model inference; no action recommended',
+    recommendedActionId: 'act-none',
+  };
 }

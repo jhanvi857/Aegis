@@ -2,7 +2,7 @@ import React from 'react';
 import { useTelemetryStore } from '../../store/useTelemetryStore';
 import { MetricChart } from '../../components/MetricChart';
 import { LogStreamer } from '../../components/LogStreamer';
-import { X, Cpu, Clock, HardDrive, Layers, RotateCcw, PlusCircle, ArrowRight } from 'lucide-react';
+import { X, Cpu, Clock, HardDrive, Layers, RotateCcw, PlusCircle, ArrowRight, Database, Zap } from 'lucide-react';
 
 interface ServiceDetailModalProps {
   serviceId: string;
@@ -13,7 +13,7 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
   serviceId,
   onClose,
 }) => {
-  const { services, logs, executeRecoveryAction } = useTelemetryStore();
+  const { services, logs, executeRecoveryAction, latestPrediction } = useTelemetryStore();
   const service = services.find((s) => s.id === serviceId);
 
   if (!service) return null;
@@ -23,6 +23,18 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
 
   const upstreamServices = services.filter((s) => s.dependencies.includes(service.id));
   const downstreamServices = services.filter((s) => service.dependencies.includes(s.id));
+
+  // Check if Python Decision Engine prescribed an action for this specific workload
+  const matchingRec =
+    latestPrediction?.recommendedActions?.find((a) => a.targetServiceId === service.id) ||
+    (latestPrediction?.rootCauseServiceId === service.id && latestPrediction?.recommendedActionId !== 'act-none'
+      ? {
+          title: latestPrediction.recommendedAction,
+          description: latestPrediction.rootCauseReason,
+          actionType: latestPrediction.recommendedActionId?.replace('act-', '') || 'scale',
+          riskLevel: 'LOW' as const,
+        }
+      : null);
 
   return (
     <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 font-sans">
@@ -211,29 +223,81 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
 
         {/* Action Controls Footer */}
         <div className="bg-[#0B0B0C] px-5 py-3 border-t border-[#26262B] flex flex-wrap items-center justify-between gap-3">
-          <span className="text-[11px] text-gray-400">
-            Microservice Operations
-          </span>
+          <div>
+            <span className="text-[11px] text-gray-300 font-semibold uppercase tracking-[0.05em] block">
+              Workload Remediation Controls
+            </span>
+            <span className="text-[10px] text-gray-500 font-mono">
+              Type: {service.type.toUpperCase()} | Status: {service.status.toUpperCase()}
+            </span>
+          </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {matchingRec && (
+              <button
+                onClick={() => {
+                  executeRecoveryAction(
+                    matchingRec.actionType,
+                    service.id,
+                    matchingRec.title,
+                    true
+                  );
+                }}
+                className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#840032] hover:bg-[#9b053d] text-white border border-[#840032] rounded-md text-xs font-semibold transition-all shadow-sm ring-1 ring-[#e2588a]/40"
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-300" />
+                <span className="uppercase tracking-[0.03em]">AI PRESCRIBED: {matchingRec.title}</span>
+              </button>
+            )}
+
             <button
               onClick={() => {
                 executeRecoveryAction('restart', service.id, `Restarted ${service.name} Pods`);
               }}
-              className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#D4A017]/20 hover:bg-[#D4A017]/30 text-[#e5b533] border border-[#D4A017]/70 rounded-md text-xs font-semibold transition-colors"
+              className="flex items-center space-x-1 px-2.5 py-1.5 bg-[#151517] hover:bg-[#1f1f23] text-gray-200 border border-[#26262B] hover:border-gray-500 rounded-md text-xs font-semibold transition-colors"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>RESTART PODS</span>
+              <RotateCcw className="w-3.5 h-3.5 text-[#e5b533]" />
+              <span>RESTART</span>
             </button>
 
             <button
               onClick={() => {
                 executeRecoveryAction('scale', service.id, `Scaled ${service.name} Replicas +2`);
               }}
-              className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#840032] hover:bg-[#9b053d] text-white border border-[#840032] rounded-md text-xs font-semibold transition-colors shadow-sm"
+              className="flex items-center space-x-1 px-2.5 py-1.5 bg-[#151517] hover:bg-[#1f1f23] text-gray-200 border border-[#26262B] hover:border-gray-500 rounded-md text-xs font-semibold transition-colors"
             >
-              <PlusCircle className="w-3.5 h-3.5" />
-              <span>SCALE REPLICAS (+2)</span>
+              <PlusCircle className="w-3.5 h-3.5 text-[#f07b9e]" />
+              <span>SCALE (+2)</span>
+            </button>
+
+            <button
+              onClick={() => {
+                executeRecoveryAction('increase_pool', service.id, `Expand Pool for ${service.name}`);
+              }}
+              className="flex items-center space-x-1 px-2.5 py-1.5 bg-[#151517] hover:bg-[#1f1f23] text-gray-200 border border-[#26262B] hover:border-gray-500 rounded-md text-xs font-semibold transition-colors"
+            >
+              <Database className="w-3.5 h-3.5 text-[#e2588a]" />
+              <span>EXPAND POOL (+10)</span>
+            </button>
+
+            <button
+              onClick={() => {
+                executeRecoveryAction('flush_cache', service.id, `Flush Cache on ${service.name}`);
+              }}
+              className="flex items-center space-x-1 px-2.5 py-1.5 bg-[#151517] hover:bg-[#1f1f23] text-gray-200 border border-[#26262B] hover:border-gray-500 rounded-md text-xs font-semibold transition-colors"
+            >
+              <Zap className="w-3.5 h-3.5 text-[#52b767]" />
+              <span>FLUSH CACHE</span>
+            </button>
+
+            <button
+              onClick={() => {
+                executeRecoveryAction('reroute_traffic', service.id, `Reroute Ingress Traffic`);
+              }}
+              className="flex items-center space-x-1 px-2.5 py-1.5 bg-[#151517] hover:bg-[#1f1f23] text-gray-200 border border-[#26262B] hover:border-gray-500 rounded-md text-xs font-semibold transition-colors"
+            >
+              <ArrowRight className="w-3.5 h-3.5 text-amber-300" />
+              <span>REROUTE TRAFFIC</span>
             </button>
           </div>
         </div>

@@ -8,6 +8,10 @@ interface RecommendationCardProps {
   confidence: number;
   onExecute: () => void;
   isExecuting?: boolean;
+  actionType?: string;
+  riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
+  requiresApproval?: boolean;
+  faultFamily?: string;
 }
 
 export const RecommendationCard: React.FC<RecommendationCardProps> = ({
@@ -17,6 +21,10 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
   confidence,
   onExecute,
   isExecuting = false,
+  actionType,
+  riskLevel = 'LOW',
+  requiresApproval = false,
+  faultFamily,
 }) => {
   const [done, setDone] = useState(false);
   const [localExecuting, setLocalExecuting] = useState(false);
@@ -32,15 +40,25 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
   };
 
   const currentlyExecuting = isExecuting || localExecuting;
+  const isHighRisk = riskLevel === 'HIGH';
+  const isMedRisk = riskLevel === 'MEDIUM';
+  const needsApproval = requiresApproval || isHighRisk || isMedRisk;
 
   return (
     <div className="p-4 bg-[#151517] border border-[#840032] rounded-lg shadow-sm font-sans flex flex-col justify-between">
       <div>
         {/* Section Heading */}
         <div className="flex items-center justify-between border-b border-[#26262B] pb-2.5 mb-3">
-          <span className="text-[11px] font-semibold text-[#f07b9e] tracking-[0.07em] uppercase leading-[16px]">
-            RECOVERY DECISION
-          </span>
+          <div className="flex items-center space-x-2">
+            <span className="text-[11px] font-semibold text-[#f07b9e] tracking-[0.07em] uppercase leading-[16px]">
+              RECOVERY DECISION
+            </span>
+            {faultFamily && (
+              <span className="text-[9px] font-mono bg-[#840032]/30 text-[#f07b9e] border border-[#840032] px-1.5 py-0.2 rounded uppercase">
+                {faultFamily}
+              </span>
+            )}
+          </div>
           <span
             className={`text-[10px] font-semibold tracking-[0.04em] uppercase px-2 py-0.5 rounded border leading-[16px] ${
               done
@@ -59,18 +77,27 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
           <div className="text-[10px] font-semibold tracking-[0.06em] text-gray-400 uppercase leading-[14px]">
             AUTHORITY
           </div>
-          <div className="text-[18px] font-bold text-white tracking-[-0.02em] leading-[24px]">
-            AUTOMATIC
+          <div className={`text-[18px] font-bold tracking-[-0.02em] leading-[24px] ${needsApproval ? 'text-amber-300' : 'text-white'}`}>
+            {needsApproval ? 'OPERATOR APPROVAL REQUIRED' : 'AUTOMATIC'}
           </div>
           <div className="text-[11px] text-gray-400 font-normal leading-[16px] mt-0.5">
-            Policy allows autonomous recovery for this failure pattern
+            {needsApproval
+              ? `Safety gate: ${riskLevel} risk action requires human authorization before dispatch`
+              : 'Policy allows autonomous recovery for this low-risk failure pattern'}
           </div>
         </div>
 
         {/* Recommended Action */}
         <div className="mb-3">
-          <div className="text-[10px] font-semibold tracking-[0.06em] text-gray-400 uppercase leading-[14px]">
-            RECOMMENDED ACTION
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] font-semibold tracking-[0.06em] text-gray-400 uppercase leading-[14px]">
+              RECOMMENDED ACTION
+            </div>
+            {actionType && (
+              <span className="text-[10px] font-mono text-gray-300 uppercase bg-[#0B0B0C] px-1.5 py-0.5 rounded border border-[#26262B]">
+                {actionType}
+              </span>
+            )}
           </div>
           <div className="text-[14px] font-semibold text-gray-100 leading-[20px] mt-0.5">
             {title}
@@ -95,8 +122,16 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
             <div className="text-[10px] font-semibold tracking-[0.06em] text-gray-400 uppercase leading-[14px]">
               RISK LEVEL
             </div>
-            <div className="font-sans text-[11px] font-semibold tracking-[0.04em] uppercase text-emerald-400 mt-0.5">
-              LOW (AUTO-APPROVED)
+            <div
+              className={`font-sans text-[11px] font-semibold tracking-[0.04em] uppercase mt-0.5 ${
+                isHighRisk
+                  ? 'text-[#f87171]'
+                  : isMedRisk
+                  ? 'text-amber-400'
+                  : 'text-emerald-400'
+              }`}
+            >
+              {riskLevel} {needsApproval ? '(APPROVAL GATE)' : '(AUTO-APPROVED)'}
             </div>
           </div>
         </div>
