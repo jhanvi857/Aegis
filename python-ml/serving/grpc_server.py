@@ -272,19 +272,38 @@ try:
                         )
                     )
 
-                # 5b. Compute affected_nodes with hop distance and ETA
+                # Build edge latency lookup for dynamic propagation ETA calculation
+                edge_latencies = {}
+                for e in snapshot_edges:
+                    src = e.get("source")
+                    tgt = e.get("target")
+                    if src and tgt:
+                        edge_latencies[(src, tgt)] = float(e.get("latency_ms", 25.0))
+
+                # 5b. Compute affected_nodes with hop distance and dynamic cumulative ETA
                 visited_nodes = {}
+                node_etas = {}
                 for pp in result.get("propagation_paths", []):
                     nodes_list = pp.get("path_nodes", [])
+                    cum_latency = 0.0
                     for hop, nid in enumerate(nodes_list):
-                        if nid not in visited_nodes:
+                        if hop > 0:
+                            prev_nid = nodes_list[hop - 1]
+                            edge_lat = edge_latencies.get((prev_nid, nid), 25.0)
+                            cum_latency += edge_lat
+
+                        eta = 0 if hop == 0 else max(1, int(round(cum_latency / 50.0)))
+
+                        if nid not in visited_nodes or hop < visited_nodes[nid]:
                             visited_nodes[nid] = hop
+                            node_etas[nid] = eta
+
                 for nid, hop in visited_nodes.items():
                     resp.affected_nodes.append(
                         predict_pb2.AffectedNode(
                             node_id=nid,
                             hop_distance=hop,
-                            eta_seconds=max(5, hop * 15),
+                            eta_seconds=node_etas.get(nid, hop * 5),
                             risk_score=max(0.2, 0.95 - (hop * 0.2)),
                         )
                     )
