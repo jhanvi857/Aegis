@@ -187,17 +187,20 @@ func (g *Gateway) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	uptime := time.Since(g.StartTime).Seconds()
 	cs := g.chaos.GetStatus()
 	resp := map[string]interface{}{
-		"status":        cs.Status,
-		"node_id":       "gateway",
-		"uptime_sec":    uptime,
-		"timestamp":     time.Now().Unix(),
-		"system_name":   "aegis-mesh",
-		"cpu":           cs.CPUPercent,
-		"memory":        cs.MemoryPercent,
-		"latency_ms":    cs.LatencyMs,
-		"error_rate":    cs.ErrorRate,
-		"active_fault":  cs.ActiveFault,
-		"remaining_sec": cs.RemainingSec,
+		"status":                cs.Status,
+		"node_id":               "gateway",
+		"uptime_sec":            uptime,
+		"timestamp":             time.Now().Unix(),
+		"system_name":           "aegis-mesh",
+		"cpu":                   cs.CPUPercent,
+		"memory":                cs.MemoryPercent,
+		"latency_ms":            cs.LatencyMs,
+		"error_rate":            cs.ErrorRate,
+		"active_fault":          cs.ActiveFault,
+		"remaining_sec":         cs.RemainingSec,
+		"db_connection_wait_ms": cs.DBWaitMs,
+		"cache_miss_rate":       cs.CacheMissRate,
+		"queue_depth":           cs.QueueDepth,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if cs.Killed {
