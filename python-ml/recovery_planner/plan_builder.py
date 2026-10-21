@@ -46,7 +46,9 @@ class RecoveryPlanBuilder:
         for rc in root_causes:
             node_id = rc.get("node_id")
             if node_id:
-                affected_set.add(node_id)
+                # Only include in affected set if non-nominal or explicit evidence is present
+                if rc.get("fault_family") != "nominal" or rc.get("evidence"):
+                    affected_set.add(node_id)
                 rc_map[node_id] = rc
 
         if not affected_set:
@@ -113,6 +115,9 @@ class RecoveryPlanBuilder:
                 fault_family=rc_fault_family,
             )
 
+            if not rec or not rec.get("action_type"):
+                continue
+
             action_type = rec["action_type"]
             params = rec["parameters"]
             risk_info = rec["risk"]
@@ -128,11 +133,24 @@ class RecoveryPlanBuilder:
                 "action_id": f"act-{uuid.uuid4().hex[:8]}",
                 "action_type": action_type,
                 "target_node_id": node_id,
-                "execution_order": order_idx,
+                "execution_order": len(actions) + 1,
                 "parameters": params,
                 "risk_level": risk_info["risk_level"],
                 "risk_score": risk_info["risk_score"],
             })
+
+        if not actions:
+            return {
+                "plan_id": f"plan-empty-{uuid.uuid4().hex[:8]}",
+                "actions": [],
+                "created_at_unix_nano": now_ns,
+                "risk": {
+                    "risk_level": "LOW",
+                    "risk_score": 0.0,
+                    "requires_approval": False,
+                    "justification": "No anomalous or degraded nodes detected.",
+                },
+            }
 
         # 4. Overall Plan Risk Assessment
         if max_risk_score >= 0.70 or overall_requires_approval or len(actions) > 3:

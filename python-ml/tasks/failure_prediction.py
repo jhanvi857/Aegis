@@ -140,7 +140,7 @@ class FailurePredictor:
             if len(fvec) >= 8:
                 is_nominal = (fvec[0] < 0.50 and fvec[2] < 0.12 and fvec[3] < 0.02 and fvec[7] < 0.12)
                 if is_nominal:
-                    prob = min(prob * 0.4, 0.25)
+                    prob = min(prob * 0.1, 0.05)
 
             node_ttf = ttf if prob > 0.4 else 600
             predictions.append({
