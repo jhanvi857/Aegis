@@ -26,6 +26,7 @@ Aegis observes a live microservice mesh, predicts impending failures **15–30 s
 5. **Multi-Task Dense GATv2 + GRU:** Brody et al. (2021) dynamic graph attention ($e_{ij} = \mathbf{a}^T \text{LeakyReLU}(W_{src} h_i + W_{dst} h_j)$) with learned attention weight inspection (`model.get_attention_weights()`) and GRU temporal recurrence within a conservative 56K parameter budget.
 6. **Dual Data Methodology:** Uses a stratified parametric precursor simulator for reproducible multi-topology pretraining, paired with `LiveKafkaEpisodeCollector` to validate against physical Go chaos-engine cluster telemetry.
 7. **Closed-Loop Ordered Recovery:** Emits typed `RecoveryPlan` messages over gRPC. Actions are executed by the Go recovery engine in strict topological dependency order with safety approval gating.
+8. **Zero-Trust Encrypted Operator Authentication:** Full-screen security barrier guarding telemetry observation, live chaos injection, and remediation actions. Features per-user 128-bit CSPRNG salts (`crypto/rand`), constant-time HMAC-SHA256 password hashing, dynamic server keys, and 256-bit cryptographically secure session tokens with zero hardcoded credentials.
 
 ---
 
@@ -343,7 +344,7 @@ aegis/
 │   ├── chaos-engine/                # 10 modular chaos injectors & episode scheduler
 │   ├── recovery-engine/             # Action executor, approval gate, orchestrator adapter
 │   ├── orchestrator-adapter/        # Docker and Kubernetes runtime abstraction
-│   ├── api-gateway/                 # Control-plane REST API for React frontend
+│   ├── api-gateway/                 # Control-plane REST API, authority gates & cryptographic auth
 │   └── shared/pb/                   # Generated Go Protobuf stubs
 │
 ├── python-ml/                       # Graph intelligence & ML pipeline (Python)
@@ -367,8 +368,9 @@ aegis/
 │
 ├── frontend/                        # Interactive React + Vite control plane
 │   └── src/
-│       ├── components/              # TopologyGraph, ServiceCard, ChaosControls
-│       └── pages/                   # Dashboard, DependencyGraph, PredictionPanel, RecoveryLog
+│       ├── components/              # TopologyGraph, ServiceCard, ChaosControls, Navbar
+│       ├── pages/                   # Auth, Dashboard, DependencyGraph, PredictionPanel, RecoveryLog
+│       └── store/                   # useAuthStore (session tokens), useTelemetryStore
 │
 ├── configs/                         # Configurations
 │   ├── topology.example.yaml        # 5-node reference dependency graph
@@ -410,7 +412,10 @@ npm run dev
 # Dashboard launches on http://localhost:5173
 ```
 
-#### C. Start the Python ML Service
+#### C. Authenticate as Operator
+Open `http://localhost:5173`. Click **Create Operator Account** to register your operator profile. Your credentials will be encrypted with a unique salt and HMAC-SHA256, issuing an authenticated session token for telemetry and remediation access.
+
+#### D. Start the Python ML Service
 ```powershell
 cd python-ml
 python serving/grpc_server.py
@@ -460,12 +465,16 @@ Execute the complete test suite:
 # Run all Python ML, graph, and recovery tests (40 tests)
 python -m unittest discover -s tests/python-ml
 
+# Run Go API Gateway & encrypted auth tests
+cd go-services
+go test -v ./api-gateway/routes/...
+
 # Run Go recovery engine tests
-cd go-services/recovery-engine
+cd recovery-engine
 go test -v ./...
 ```
 
-*Status:* **40/40 tests passing (100% pass rate, ~5.5s runtime)**.
+*Status:* **All Python ML and Go backend test suites passing (100% pass rate)**.
 
 ---
 
