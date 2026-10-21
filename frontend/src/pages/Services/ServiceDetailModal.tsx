@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTelemetryStore } from '../../store/useTelemetryStore';
 import { MetricChart } from '../../components/MetricChart';
 import { LogStreamer } from '../../components/LogStreamer';
-import { X, Cpu, Clock, HardDrive, Layers, RotateCcw, PlusCircle, ArrowRight, Database, Zap } from 'lucide-react';
+import { X, Cpu, Clock, HardDrive, Layers, RotateCcw, PlusCircle, ArrowRight, Database, Zap, Loader2, CheckCircle2 } from 'lucide-react';
 
 interface ServiceDetailModalProps {
   serviceId: string;
@@ -15,6 +15,23 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
 }) => {
   const { services, logs, executeRecoveryAction, latestPrediction } = useTelemetryStore();
   const service = services.find((s) => s.id === serviceId);
+
+  const [executing, setExecuting] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleAction = async (actionType: string, title: string) => {
+    setExecuting(actionType);
+    setMessage(null);
+    try {
+      await executeRecoveryAction(actionType, service?.id || '', title, true);
+      setMessage({ type: 'success', text: `Dispatched ${title} on ${service?.name || service?.id}.` });
+    } catch (err: unknown) {
+      const errObj = err as { message?: string };
+      setMessage({ type: 'error', text: errObj?.message || 'Failed to execute recovery action.' });
+    } finally {
+      setTimeout(() => setExecuting(null), 1200);
+    }
+  };
 
   if (!service) return null;
 
@@ -235,71 +252,102 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             {matchingRec && (
               <button
-                onClick={() => {
-                  executeRecoveryAction(
-                    matchingRec.actionType,
-                    service.id,
-                    matchingRec.title,
-                    true
-                  );
-                }}
-                className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#840032] hover:bg-[#9b053d] text-white border border-[#840032] rounded-md text-xs font-semibold transition-all shadow-sm ring-1 ring-[#e2588a]/40"
+                onClick={() => handleAction(matchingRec.actionType, matchingRec.title)}
+                disabled={executing !== null}
+                className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#840032] hover:bg-[#9b053d] text-white border border-[#840032] rounded-md text-xs font-semibold transition-all shadow-sm ring-1 ring-[#e2588a]/40 disabled:opacity-50"
               >
-                <Zap className="w-3.5 h-3.5 text-amber-300" />
+                {executing === matchingRec.actionType ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5 text-amber-300" />
+                )}
                 <span className="uppercase tracking-[0.03em]">AI PRESCRIBED: {matchingRec.title}</span>
               </button>
             )}
 
             <button
-              onClick={() => {
-                executeRecoveryAction('restart', service.id, `Restarted ${service.name} Pods`);
-              }}
-              className="flex items-center space-x-1 px-2.5 py-1.5 bg-[#151517] hover:bg-[#1f1f23] text-gray-200 border border-[#26262B] hover:border-gray-500 rounded-md text-xs font-semibold transition-colors"
+              onClick={() => handleAction('restart', `Restarted ${service.name} Pods`)}
+              disabled={executing !== null}
+              className="flex items-center space-x-1 px-2.5 py-1.5 bg-[#151517] hover:bg-[#1f1f23] text-gray-200 border border-[#26262B] hover:border-gray-500 rounded-md text-xs font-semibold transition-colors disabled:opacity-50"
             >
-              <RotateCcw className="w-3.5 h-3.5 text-[#e5b533]" />
+              {executing === 'restart' ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#e5b533]" />
+              ) : (
+                <RotateCcw className="w-3.5 h-3.5 text-[#e5b533]" />
+              )}
               <span>RESTART</span>
             </button>
 
             <button
-              onClick={() => {
-                executeRecoveryAction('scale', service.id, `Scaled ${service.name} Replicas +2`);
-              }}
-              className="flex items-center space-x-1 px-2.5 py-1.5 bg-[#151517] hover:bg-[#1f1f23] text-gray-200 border border-[#26262B] hover:border-gray-500 rounded-md text-xs font-semibold transition-colors"
+              onClick={() => handleAction('scale', `Scaled ${service.name} Replicas +2`)}
+              disabled={executing !== null}
+              className="flex items-center space-x-1 px-2.5 py-1.5 bg-[#151517] hover:bg-[#1f1f23] text-gray-200 border border-[#26262B] hover:border-gray-500 rounded-md text-xs font-semibold transition-colors disabled:opacity-50"
             >
-              <PlusCircle className="w-3.5 h-3.5 text-[#f07b9e]" />
+              {executing === 'scale' ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#f07b9e]" />
+              ) : (
+                <PlusCircle className="w-3.5 h-3.5 text-[#f07b9e]" />
+              )}
               <span>SCALE (+2)</span>
             </button>
 
             <button
-              onClick={() => {
-                executeRecoveryAction('increase_pool', service.id, `Expand Pool for ${service.name}`);
-              }}
-              className="flex items-center space-x-1 px-2.5 py-1.5 bg-[#151517] hover:bg-[#1f1f23] text-gray-200 border border-[#26262B] hover:border-gray-500 rounded-md text-xs font-semibold transition-colors"
+              onClick={() => handleAction('increase_pool', `Expand Pool for ${service.name}`)}
+              disabled={executing !== null}
+              className="flex items-center space-x-1 px-2.5 py-1.5 bg-[#151517] hover:bg-[#1f1f23] text-gray-200 border border-[#26262B] hover:border-gray-500 rounded-md text-xs font-semibold transition-colors disabled:opacity-50"
             >
-              <Database className="w-3.5 h-3.5 text-[#e2588a]" />
+              {executing === 'increase_pool' ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#e2588a]" />
+              ) : (
+                <Database className="w-3.5 h-3.5 text-[#e2588a]" />
+              )}
               <span>EXPAND POOL (+10)</span>
             </button>
 
             <button
-              onClick={() => {
-                executeRecoveryAction('flush_cache', service.id, `Flush Cache on ${service.name}`);
-              }}
-              className="flex items-center space-x-1 px-2.5 py-1.5 bg-[#151517] hover:bg-[#1f1f23] text-gray-200 border border-[#26262B] hover:border-gray-500 rounded-md text-xs font-semibold transition-colors"
+              onClick={() => handleAction('flush_cache', `Flush Cache on ${service.name}`)}
+              disabled={executing !== null}
+              className="flex items-center space-x-1 px-2.5 py-1.5 bg-[#151517] hover:bg-[#1f1f23] text-gray-200 border border-[#26262B] hover:border-gray-500 rounded-md text-xs font-semibold transition-colors disabled:opacity-50"
             >
-              <Zap className="w-3.5 h-3.5 text-[#52b767]" />
+              {executing === 'flush_cache' ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#52b767]" />
+              ) : (
+                <Zap className="w-3.5 h-3.5 text-[#52b767]" />
+              )}
               <span>FLUSH CACHE</span>
             </button>
 
             <button
-              onClick={() => {
-                executeRecoveryAction('reroute_traffic', service.id, `Reroute Ingress Traffic`);
-              }}
-              className="flex items-center space-x-1 px-2.5 py-1.5 bg-[#151517] hover:bg-[#1f1f23] text-gray-200 border border-[#26262B] hover:border-gray-500 rounded-md text-xs font-semibold transition-colors"
+              onClick={() => handleAction('reroute_traffic', `Reroute Ingress Traffic`)}
+              disabled={executing !== null}
+              className="flex items-center space-x-1 px-2.5 py-1.5 bg-[#151517] hover:bg-[#1f1f23] text-gray-200 border border-[#26262B] hover:border-gray-500 rounded-md text-xs font-semibold transition-colors disabled:opacity-50"
             >
-              <ArrowRight className="w-3.5 h-3.5 text-amber-300" />
+              {executing === 'reroute_traffic' ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300" />
+              ) : (
+                <ArrowRight className="w-3.5 h-3.5 text-amber-300" />
+              )}
               <span>REROUTE TRAFFIC</span>
             </button>
           </div>
+
+          {/* Feedback Toast Banner */}
+          {message && (
+            <div
+              className={`mt-2.5 p-2 rounded-md text-xs flex items-center space-x-1.5 font-sans border ${
+                message.type === 'success'
+                  ? 'bg-[#3F8E4F]/20 text-[#86efac] border-[#3F8E4F]/60'
+                  : 'bg-[#AD2831]/20 text-[#fca5a5] border-[#AD2831]/60'
+              }`}
+            >
+              {message.type === 'success' ? (
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#52b767] shrink-0" />
+              ) : (
+                <X className="w-3.5 h-3.5 text-[#f87171] shrink-0" />
+              )}
+              <span>{message.text}</span>
+            </div>
+          )}
         </div>
       </div>
     </div>

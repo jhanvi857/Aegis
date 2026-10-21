@@ -52,6 +52,11 @@ func main() {
 		_, _ = w.Write([]byte(`{"status":"UP","service":"api-gateway"}`))
 	}).Methods("GET", "OPTIONS")
 
+	// Authentication & Identity Routes
+	r.HandleFunc("/api/auth/login", routes.LoginHandler).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/auth/signup", routes.SignupHandler).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/auth/me", routes.GetMeHandler).Methods("GET", "OPTIONS")
+
 	// Topology Routes
 	r.HandleFunc("/api/topology", routes.TopologyHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/topology/list", routes.TopologyListHandler).Methods("GET", "OPTIONS")
