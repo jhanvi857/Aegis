@@ -13,23 +13,34 @@ import { Recovery } from './pages/Recovery/Recovery';
 import { Experiments } from './pages/Experiments/Experiments';
 import { Settings } from './pages/Settings/Settings';
 
+import { useAuthStore } from './store/useAuthStore';
+import { AuthPage } from './pages/Auth/AuthPage';
+
 export function App() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const { tickTelemetry, fetchInitialData, refreshIntervalMs } = useTelemetryStore();
+  const { isAuthenticated } = useAuthStore();
 
-  // Load initial backend state on mount
+  // Load initial backend state on mount when authenticated
   useEffect(() => {
-    fetchInitialData();
-  }, [fetchInitialData]);
+    if (isAuthenticated) {
+      fetchInitialData();
+    }
+  }, [isAuthenticated, fetchInitialData]);
 
-  // Run live 1-second telemetry poll loop
+  // Run live 1-second telemetry poll loop when authenticated
   useEffect(() => {
+    if (!isAuthenticated) return;
     const interval = setInterval(() => {
       tickTelemetry();
     }, refreshIntervalMs);
 
     return () => clearInterval(interval);
-  }, [tickTelemetry, refreshIntervalMs]);
+  }, [isAuthenticated, tickTelemetry, refreshIntervalMs]);
+
+  if (!isAuthenticated) {
+    return <AuthPage />;
+  }
 
   return (
     <div className="min-h-screen bg-[#0B0B0C] text-gray-100 font-sans flex flex-col antialiased">

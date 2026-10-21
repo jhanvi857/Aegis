@@ -24,8 +24,27 @@ import {
 } from 'lucide-react';
 
 export const DependencyGraph: React.FC = () => {
-  const { services, activeFaults, logs, setSelectedServiceId, selectedServiceId } = useTelemetryStore();
+  const { services, activeFaults, logs, setSelectedServiceId, selectedServiceId, tickTelemetry } = useTelemetryStore();
   const [activeSideNodeId, setActiveSideNodeId] = useState<string | null>(null);
+  const [selectedTopo, setSelectedTopo] = useState<string>('topology.yaml');
+  const [switchingTopo, setSwitchingTopo] = useState<boolean>(false);
+
+  const handleSelectTopology = async (filename: string) => {
+    setSelectedTopo(filename);
+    setSwitchingTopo(true);
+    try {
+      await fetch('/api/topology/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename }),
+      });
+      await tickTelemetry();
+    } catch (err) {
+      console.error('Failed to switch topology:', err);
+    } finally {
+      setSwitchingTopo(false);
+    }
+  };
 
   const prediction = getMLPrediction(services, activeFaults);
 
@@ -187,6 +206,23 @@ export const DependencyGraph: React.FC = () => {
           <p className="text-[11px] text-gray-400 font-normal leading-[16px]">
             Live TGNN dependency graph, dynamic cascade edge propagation, and health status
           </p>
+        </div>
+
+        {/* Topology Selector Dropdown */}
+        <div className="flex items-center space-x-2 bg-[#0B0B0C] border border-[#26262B] px-2.5 py-1.5 rounded-md">
+          <span className="text-[11px] text-gray-400 font-medium">Topology:</span>
+          <select
+            value={selectedTopo}
+            onChange={(e) => handleSelectTopology(e.target.value)}
+            disabled={switchingTopo}
+            className="bg-transparent text-[11px] font-semibold text-white focus:outline-none cursor-pointer"
+          >
+            <option value="topology.yaml" className="bg-[#151517] text-white">Default Mesh (5 Nodes)</option>
+            <option value="topology_b_4node.yaml" className="bg-[#151517] text-white">Topology B (4 Nodes)</option>
+            <option value="topology_c_6node.yaml" className="bg-[#151517] text-white">Topology C (6 Nodes)</option>
+            <option value="topology_d_7node.yaml" className="bg-[#151517] text-white">Topology D (7 Nodes - Cross-Coupled)</option>
+          </select>
+          {switchingTopo && <span className="text-[10px] text-amber-400 animate-pulse font-mono">LOADING...</span>}
         </div>
 
         {/* Legend */}

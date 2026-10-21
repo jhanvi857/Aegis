@@ -102,7 +102,7 @@ export const Settings: React.FC = () => {
             className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-[#0B0B0C] hover:bg-[#1a1a1d] text-gray-300 border border-[#26262B] hover:border-gray-500 rounded-md text-xs font-semibold transition-colors"
           >
             <RotateCcw className="w-3.5 h-3.5 text-[#3F8E4F]" />
-            <span>RESET DEMO STATE</span>
+            <span>PURGE SYSTEM FAULTS</span>
           </button>
 
           <button

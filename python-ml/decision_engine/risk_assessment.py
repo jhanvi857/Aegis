@@ -78,7 +78,7 @@ class RiskAssessmentEngine:
         ]
 
     def evaluate_condition(self, condition: Dict[str, Any], metrics: Dict[str, float]) -> bool:
-        """Evaluates a single rule condition against observed metrics."""
+        """Evaluates a single rule condition against observed metrics, including sustained duration."""
         metric_name = condition.get("metric")
         if metric_name not in metrics:
             return False
@@ -87,17 +87,30 @@ class RiskAssessmentEngine:
         threshold = float(condition.get("threshold", 0.0))
         op = condition.get("operator", ">=")
 
+        matched = False
         if op == ">=":
-            return value >= threshold
+            matched = value >= threshold
         elif op == ">":
-            return value > threshold
+            matched = value > threshold
         elif op == "<=":
-            return value <= threshold
+            matched = value <= threshold
         elif op == "<":
-            return value < threshold
+            matched = value < threshold
         elif op == "==":
-            return abs(value - threshold) < 1e-6
-        return False
+            matched = abs(value - threshold) < 1e-6
+
+        if not matched:
+            return False
+
+        # Enforce sustained duration_sec if specified in rulebook condition
+        required_duration = float(condition.get("duration_sec", 0))
+        if required_duration > 0:
+            observed_duration = float(metrics.get("sustained_duration_sec", metrics.get("duration_sec", 0.0)))
+            # If observed duration was tracked and does not meet the sustained requirement, rule does not fire
+            if observed_duration > 0 and observed_duration < required_duration:
+                return False
+
+        return True
 
     def match_rule(self, metrics: Dict[str, float]) -> Optional[Dict[str, Any]]:
         """Finds the first matching rule for the observed telemetry metrics."""
@@ -116,7 +129,7 @@ class RiskAssessmentEngine:
     ) -> Dict[str, Any]:
         """
         Assesses execution risk based on blast radius, action severity, and node criticality.
-        High risk triggers human-in-the-loop approval gate.
+        Central hub nodes with significant blast radius are calibrated to HIGH risk to enforce gate approval.
         """
         # Base risk weights by action type
         severity_map = {
@@ -137,11 +150,16 @@ class RiskAssessmentEngine:
 
         risk_score = round(min(1.0, base_severity + radius_penalty + criticality_penalty), 3)
 
-        # High risk threshold: score >= 0.70 OR high-impact action OR blast radius > 3
+        # High risk threshold:
+        # 1. Total score >= 0.55
+        # 2. Critical traffic routing/isolation actions
+        # 3. Large blast radius (>= 3 downstream dependencies)
+        # 4. Central hub node (criticality >= 0.70) with blast radius >= 2 (e.g. node-a)
         is_high_risk = (
-            risk_score >= 0.70
+            risk_score >= 0.55
             or action_type.upper() in ["REROUTE_TRAFFIC", "ISOLATE"]
-            or blast_radius_size > 3
+            or blast_radius_size >= 3
+            or (node_criticality >= 0.70 and blast_radius_size >= 2)
         )
 
         if is_high_risk:
@@ -152,7 +170,7 @@ class RiskAssessmentEngine:
                 f"(blast radius: {blast_radius_size} downstream nodes, criticality: {node_criticality:.2f}). "
                 f"Requires human authorization."
             )
-        elif risk_score >= 0.40:
+        elif risk_score >= 0.35:
             risk_level = "MEDIUM"
             requires_approval = True
             justification = (
@@ -219,9 +237,8 @@ class RiskAssessmentEngine:
                 params = dict(action_info.get("parameters", {}))
                 matched_rule_id = matched["id"]
             else:
-                # 3. Default fallback
-                action_type = "RESTART"
-                params = {"grace_period_sec": "5"}
+                # No fault detected and no rule matched: do not fabricate a default template action
+                return None
 
         risk = self.assess_risk(target_node, action_type, blast_radius_size, node_criticality)
 

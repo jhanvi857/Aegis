@@ -13,6 +13,7 @@ import { telemetryApi } from '../api/telemetry';
 import { chaosApi } from '../api/chaos';
 import { predictionApi } from '../api/prediction';
 import { recoveryApi } from '../api/recovery';
+import { useAuthStore } from './useAuthStore';
 
 interface TelemetryState {
   services: Microservice[];
@@ -45,9 +46,10 @@ interface TelemetryState {
   clearAllChaosFaults: () => Promise<void>;
 
   executeRecoveryAction: (actionType: string, targetServiceId: string, actionTitle?: string, approved?: boolean) => Promise<void>;
-  approveAction: (actionId: string, targetServiceId?: string) => Promise<void>;
+  approveAction: (actionId: string, targetServiceId?: string, actionType?: string, approver?: string) => Promise<void>;
   rejectAction: (actionId: string, targetServiceId?: string) => Promise<void>;
   runExperimentScenario: (experimentId: string) => Promise<void>;
+  resetSystemState: () => Promise<void>;
   resetDemoState: () => Promise<void>;
 }
 
@@ -215,9 +217,29 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
     await get().tickTelemetry();
   },
 
-  executeRecoveryAction: async (actionType, targetServiceId, actionTitle, approved) => {
+  executeRecoveryAction: async (actionType, targetServiceId, actionTitle, approved = true) => {
     try {
-      await recoveryApi.executeAction(actionType, targetServiceId, actionTitle, approved);
+      const authUser = useAuthStore.getState().user;
+      if (!authUser?.email) {
+        throw new Error('Operator authentication required to dispatch recovery actions.');
+      }
+      const approverEmail = authUser.email;
+
+      const actionId = (actionTitle && (actionTitle.startsWith('act-') || actionTitle.startsWith('rec-')))
+        ? actionTitle
+        : `act-${actionType}-${targetServiceId || 'svc'}`;
+
+      if (approved) {
+        // Pre-register operator authorization with Authority Boundary Gate
+        await recoveryApi.approveAction(
+          actionId,
+          targetServiceId,
+          actionType,
+          approverEmail
+        ).catch(() => {});
+      }
+
+      await recoveryApi.executeAction(actionType, targetServiceId, actionId, approved);
       await get().tickTelemetry();
     } catch (err) {
       console.error('[useTelemetryStore] Error executing recovery action:', err);
@@ -225,9 +247,14 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
     }
   },
 
-  approveAction: async (actionId, targetServiceId) => {
+  approveAction: async (actionId, targetServiceId, actionType, approver) => {
     try {
-      await recoveryApi.approveAction(actionId, targetServiceId);
+      const authUser = useAuthStore.getState().user;
+      const finalApprover = approver || authUser?.email;
+      if (!finalApprover) {
+        throw new Error('Operator identity required for authority boundary approval.');
+      }
+      await recoveryApi.approveAction(actionId, targetServiceId, actionType, finalApprover);
       await get().tickTelemetry();
     } catch (err) {
       console.error('[useTelemetryStore] Error approving action:', err);
@@ -252,9 +279,13 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
     await get().injectChaosFault(exp.faultType, exp.targetService, 30);
   },
 
-  resetDemoState: async () => {
+  resetSystemState: async () => {
     await get().clearAllChaosFaults();
     await get().tickTelemetry();
+  },
+
+  resetDemoState: async () => {
+    await get().resetSystemState();
   },
 }));
 

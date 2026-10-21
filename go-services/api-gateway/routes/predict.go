@@ -252,9 +252,9 @@ func ComputePredictionOutput() PredictionOutput {
 				primary := resp.RecommendedActions[0]
 				recAction = primary.Title
 				recID = primary.ActionId
-			} else if rootCauseID != "" {
-				recAction = fmt.Sprintf("Autonomous remediation on %s", rootCauseName)
-				recID = "act-auto"
+			} else {
+				recAction = "Cluster nominal; maintain continuous observation"
+				recID = "act-none"
 			}
 
 			// Gather blast radius nodes from propagation paths
@@ -282,7 +282,18 @@ func ComputePredictionOutput() PredictionOutput {
 				})
 			}
 
-			if rootCauseID == "" || maxFailProb < 20.0 {
+			// Determine if cluster is operating nominally
+			hasActiveFault := len(State.ActiveFaults) > 0
+			for _, svc := range State.Services {
+				if svc.Status == "critical" || svc.Status == "degraded" {
+					hasActiveFault = true
+					break
+				}
+			}
+
+			isNominal := faultFamily == "nominal" || faultFamily == "" || rootCauseID == "" || maxFailProb < 30.0
+
+			if isNominal && !hasActiveFault {
 				rootCauseID = ""
 				rootCauseName = "None"
 				rootCauseReason = "Cluster operating within nominal spatiotemporal bounds"
@@ -292,6 +303,7 @@ func ComputePredictionOutput() PredictionOutput {
 				affectedNodes = []AffectedNodeInfo{}
 				recommendedActions = []RecoveryAction{}
 				estimatedTTF = 0
+				faultFamily = "nominal"
 			}
 
 			State.LatestRecommendations = recommendedActions
@@ -374,6 +386,34 @@ func ComputePredictionOutput() PredictionOutput {
 				ttf = int(math.Max(5, math.Min(90, 60.0-(rootCauseSvc.Latency/20.0))))
 			}
 
+			actType := "restart"
+			riskLvl := "LOW"
+			reqAppr := false
+			if rootCauseSvc.Latency > 500.0 || rootCauseSvc.ErrorRate >= 0.40 {
+				actType = "reroute_traffic"
+				riskLvl = "HIGH"
+				reqAppr = true
+			} else if rootCauseSvc.CPU > 80.0 {
+				actType = "scale"
+				riskLvl = "MEDIUM"
+				reqAppr = true
+			}
+
+			recs := []RecoveryAction{
+				{
+					ID:               recID,
+					Title:            recAction,
+					Description:      reason,
+					TargetServiceID:  rootCauseSvc.ID,
+					ActionType:       actType,
+					Confidence:       95.8,
+					Status:           "idle",
+					RiskLevel:        riskLvl,
+					RequiresApproval: reqAppr,
+				},
+			}
+			State.LatestRecommendations = recs
+
 			pred = PredictionOutput{
 				FailureProbability:   prob,
 				Confidence:           95.8,
@@ -384,6 +424,7 @@ func ComputePredictionOutput() PredictionOutput {
 				BlastRadius:          blastRadius,
 				RecommendedAction:    recAction,
 				RecommendedActionID:  recID,
+				RecommendedActions:   recs,
 			}
 		} else {
 			pred = PredictionOutput{

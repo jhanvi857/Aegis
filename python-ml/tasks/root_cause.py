@@ -222,6 +222,11 @@ class RootCauseAnalyzer:
                 explanation = diag.get("explanation", explanation)
                 evidence = diag.get("evidence", [])
                 contributing = [e["metric"] for e in evidence] or contributing
+            elif diag and diag.get("fault_family") == "nominal":
+                fault_family = "nominal"
+                explanation = diag.get("explanation", f"Service {nid} operating within normal thresholds.")
+                evidence = []
+                contributing = []
 
             candidates.append({
                 "node_id": nid,

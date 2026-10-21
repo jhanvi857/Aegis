@@ -6,8 +6,10 @@ import {
   RotateCcw,
   FileText,
   Bell,
+  LogOut,
 } from 'lucide-react';
 import { useTelemetryStore, calculateSystemRisk } from '../store/useTelemetryStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { IncidentReportModal } from './IncidentReportModal';
 
 interface NavbarProps {
@@ -24,6 +26,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab: _activeTab, setActive
     isTimeTravelActive,
     setTimeTravelActive,
   } = useTelemetryStore();
+  const { user, logout } = useAuthStore();
 
   const safeServices = services || [];
   const safeFaults = activeFaults || [];
@@ -142,7 +145,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab: _activeTab, setActive
             <span className="hidden sm:inline">REPORT</span>
           </button>
 
-          {/* Reset Demo State Button */}
+          {/* Reset System State Button */}
           <button
             onClick={resetDemoState}
             className="flex items-center space-x-1.5 bg-[#0B0B0C] hover:bg-[#1E1E22] text-gray-200 border border-[#26262B] hover:border-gray-500 px-3 py-1.5 rounded text-xs font-semibold transition-all"
@@ -207,6 +210,32 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab: _activeTab, setActive
               </div>
             )}
           </div>
+
+          <div className="h-4 w-px bg-[#26262B]" />
+
+          {/* Authenticated Operator Profile Chip */}
+          {user && (
+            <div className="flex items-center space-x-2.5 bg-[#0B0B0C] border border-[#26262B] pl-2.5 pr-1.5 py-1 rounded-lg">
+              <div className="w-6 h-6 rounded-md bg-[#840032] flex items-center justify-center text-white text-[10px] font-bold">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="hidden lg:block text-left">
+                <div className="text-[11px] font-semibold text-white leading-tight">
+                  {user.name}
+                </div>
+                <div className="text-[9px] font-mono text-[#f07b9e] leading-tight uppercase">
+                  {user.role}
+                </div>
+              </div>
+              <button
+                onClick={logout}
+                title="Sign Out of Operator Console"
+                className="p-1 hover:bg-[#1a1a1f] text-gray-400 hover:text-red-400 rounded transition-colors ml-1"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
       </header>
 

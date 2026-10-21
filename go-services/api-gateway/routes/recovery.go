@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -18,68 +19,21 @@ type ExecuteRecoveryRequest struct {
 
 func GetRecommendationsHandler(w http.ResponseWriter, r *http.Request) {
 	State.mu.RLock()
-	defer State.mu.RUnlock()
+	recs := State.LatestRecommendations
+	State.mu.RUnlock()
 
-	// 1. If Python decision engine recommendations are available, return them
-	if len(State.LatestRecommendations) > 0 {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(State.LatestRecommendations)
-		return
+	// If no cached Python recommendations yet, trigger prediction evaluation
+	if len(recs) == 0 {
+		pred := ComputePredictionOutput()
+		recs = pred.RecommendedActions
 	}
 
-	recommendations := make([]RecoveryAction, 0)
-
-	for _, id := range State.ServiceOrder {
-		svc := State.Services[id]
-		if svc.Status != "healthy" {
-			actionType := "restart"
-			title := fmt.Sprintf("Restart %s Container", svc.Name)
-			desc := fmt.Sprintf("Execute rolling container restart on %s to flush degraded memory and connections.", svc.Name)
-			riskLevel := "LOW"
-			requiresApproval := false
-
-			if svc.Latency > 800.0 || svc.ErrorRate >= 0.40 {
-				actionType = "reroute_traffic"
-				title = fmt.Sprintf("Divert Ingress Traffic from %s", svc.Name)
-				desc = fmt.Sprintf("Critical latency/error cascade on %s. Temporarily reroute ingress traffic to healthy paths.", svc.Name)
-				riskLevel = "HIGH"
-				requiresApproval = true
-			} else if svc.CPU > 80.0 {
-				actionType = "scale"
-				title = fmt.Sprintf("Scale %s Horizontal Pod Replicas", svc.Name)
-				desc = fmt.Sprintf("Increase %s replicas from %d to %d to distribute compute load.", svc.Name, svc.Replicas, svc.Replicas+2)
-				riskLevel = "MEDIUM"
-				requiresApproval = true
-			} else if svc.Type == "cache" {
-				actionType = "flush_cache"
-				title = fmt.Sprintf("Flush Corrupted Cache on %s", svc.Name)
-				desc = fmt.Sprintf("Evict keys and reset memory allocation on %s.", svc.Name)
-				riskLevel = "LOW"
-				requiresApproval = false
-			} else if svc.Type == "persistence" || svc.Type == "database" {
-				actionType = "increase_pool"
-				title = fmt.Sprintf("Expand Connection Pool on %s", svc.Name)
-				desc = fmt.Sprintf("Increase database/connection pool capacity on %s.", svc.Name)
-				riskLevel = "MEDIUM"
-				requiresApproval = true
-			}
-
-			recommendations = append(recommendations, RecoveryAction{
-				ID:               fmt.Sprintf("rec-%s-%s", actionType, svc.ID),
-				Title:            title,
-				Description:      desc,
-				TargetServiceID:  svc.ID,
-				ActionType:       actionType,
-				Confidence:       95.4,
-				Status:           "idle",
-				RiskLevel:        riskLevel,
-				RequiresApproval: requiresApproval,
-			})
-		}
+	if recs == nil {
+		recs = make([]RecoveryAction, 0)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(recommendations)
+	_ = json.NewEncoder(w).Encode(recs)
 }
 
 func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
@@ -168,7 +122,9 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Server-side authority boundary gate: MEDIUM and HIGH risk actions require human operator sign-off
 	requiresApproval := (riskLevel == "MEDIUM" || riskLevel == "HIGH")
-	isApproved := req.ActionID != "" && State.ApprovedPlans[req.ActionID]
+
+	rec, hasRecord := State.ApprovedRecords[req.ActionID]
+	isApproved := hasRecord || (req.ActionID != "" && State.ApprovedPlans[req.ActionID])
 
 	if requiresApproval && !isApproved {
 		State.mu.Unlock()
@@ -184,9 +140,39 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Verify target and action bindings if recorded
+	if hasRecord {
+		if rec.TargetServiceID != "" && rec.TargetServiceID != targetID {
+			State.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": fmt.Sprintf("Approval authorization mismatch: token bound to '%s' cannot be executed on '%s'", rec.TargetServiceID, targetID),
+			})
+			return
+		}
+		if rec.ActionType != "" && actionType != "" && !strings.EqualFold(rec.ActionType, actionType) {
+			State.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": fmt.Sprintf("Approval authorization mismatch: token bound to '%s' cannot be executed for action '%s'", rec.ActionType, actionType),
+			})
+			return
+		}
+	}
+
+	approverName := "Authorized Operator"
+	if authUser, err := GetUserFromRequest(r); err == nil && authUser != nil {
+		approverName = authUser.Email
+	} else if hasRecord && rec.Approver != "" {
+		approverName = rec.Approver
+	}
+
 	// Consume approval token upon execution
 	if req.ActionID != "" {
 		delete(State.ApprovedPlans, req.ActionID)
+		delete(State.ApprovedRecords, req.ActionID)
 	}
 
 	now := time.Now()
@@ -279,7 +265,7 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 
 	auditType := "Autonomous Execution"
 	if isApproved {
-		auditType = "Human-Approved by Operator"
+		auditType = fmt.Sprintf("Human-Approved by %s", approverName)
 	}
 
 	State.Logs = append(State.Logs, LogEntry{
@@ -337,29 +323,12 @@ func GetPendingRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(pending) == 0 {
-		for _, id := range State.ServiceOrder {
-			svc := State.Services[id]
-			if svc.Status != "healthy" && (svc.Latency > 800.0 || svc.ErrorRate >= 0.40 || svc.CPU > 80.0) {
-				actType := "reroute_traffic"
-				rLevel := "HIGH"
-				if svc.CPU > 80.0 {
-					actType = "scale"
-					rLevel = "MEDIUM"
-				}
-				actionID := fmt.Sprintf("rec-%s-%s", actType, svc.ID)
-				if !State.ApprovedPlans[actionID] {
-					pending = append(pending, RecoveryAction{
-						ID:               actionID,
-						Title:            fmt.Sprintf("Remediate %s via %s", svc.Name, actType),
-						Description:      fmt.Sprintf("Elevated anomaly on %s requires operator approval.", svc.Name),
-						TargetServiceID:  svc.ID,
-						ActionType:       actType,
-						Confidence:       94.2,
-						Status:           "pending_approval",
-						RiskLevel:        rLevel,
-						RequiresApproval: true,
-					})
-				}
+		// If no cached recommendations, evaluate live model
+		pred := ComputePredictionOutput()
+		for _, rec := range pred.RecommendedActions {
+			if rec.RequiresApproval && !State.ApprovedPlans[rec.ID] {
+				rec.Status = "pending_approval"
+				pending = append(pending, rec)
 			}
 		}
 	}
@@ -370,24 +339,77 @@ func GetPendingRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 
 type ApprovalPayload struct {
 	ActionID        string `json:"actionId"`
-	TargetServiceID string `json:"targetServiceId,omitempty"`
+	TargetServiceID string `json:"targetServiceId"`
+	ActionType      string `json:"actionType,omitempty"`
+	Approver        string `json:"approver"`
+	Reason          string `json:"reason,omitempty"`
 }
 
 func ApproveRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 	var payload ApprovalPayload
-	_ = json.NewDecoder(r.Body).Decode(&payload)
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, `{"error":"Invalid request payload"}`, http.StatusBadRequest)
+		return
+	}
+
+	if payload.ActionID == "" {
+		http.Error(w, `{"error":"actionId is required"}`, http.StatusBadRequest)
+		return
+	}
+	if payload.TargetServiceID == "" {
+		http.Error(w, `{"error":"targetServiceId is required for authorization binding"}`, http.StatusBadRequest)
+		return
+	}
+	approver := strings.TrimSpace(payload.Approver)
+	if approver == "" {
+		if authUser, err := GetUserFromRequest(r); err == nil && authUser != nil {
+			approver = authUser.Email
+		}
+	}
+	if approver == "" {
+		http.Error(w, `{"error":"Approver identity (approver) is required for audit trail"}`, http.StatusBadRequest)
+		return
+	}
+
+	now := time.Now().UTC()
+	nowISO := now.Format(time.RFC3339)
+	nowTime := now.Format("15:04:05")
+
+	rec := ApprovalRecord{
+		ActionID:        payload.ActionID,
+		TargetServiceID: payload.TargetServiceID,
+		ActionType:      payload.ActionType,
+		Approver:        approver,
+		Timestamp:       nowISO,
+		Reason:          payload.Reason,
+	}
 
 	State.mu.Lock()
-	if payload.ActionID != "" {
-		State.ApprovedPlans[payload.ActionID] = true
+	if State.ApprovedRecords == nil {
+		State.ApprovedRecords = make(map[string]ApprovalRecord)
 	}
+	State.ApprovedRecords[payload.ActionID] = rec
+	State.ApprovedPlans[payload.ActionID] = true
+
+	State.Logs = append(State.Logs, LogEntry{
+		ID:          fmt.Sprintf("log-appr-%d", now.UnixNano()),
+		Timestamp:   nowTime,
+		ServiceID:   payload.TargetServiceID,
+		ServiceName: payload.TargetServiceID,
+		Level:       "INFO",
+		Message:     fmt.Sprintf("RECOVERY AUTHORIZED: Operator [%s] approved action '%s' on %s (ActionID: %s)", approver, payload.ActionType, payload.TargetServiceID, payload.ActionID),
+	})
 	State.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"approved": true,
-		"actionId": payload.ActionID,
-		"status":   "approval_recorded",
+		"approved":        true,
+		"actionId":        payload.ActionID,
+		"targetServiceId": payload.TargetServiceID,
+		"actionType":      payload.ActionType,
+		"approver":        approver,
+		"timestamp":       nowISO,
+		"status":          "approval_recorded",
 	})
 }
 
@@ -398,6 +420,7 @@ func RejectRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 	State.mu.Lock()
 	if payload.ActionID != "" {
 		delete(State.ApprovedPlans, payload.ActionID)
+		delete(State.ApprovedRecords, payload.ActionID)
 	}
 	State.mu.Unlock()
 

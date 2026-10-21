@@ -91,17 +91,19 @@ func TestExecuteRecovery_ApprovalGateEnforcement(t *testing.T) {
 		t.Fatalf("expected 403 Forbidden for unapproved high risk action, got %d", rr.Code)
 	}
 
-	// 2. Grant approval via /recovery/approve
+	// 2. Grant approval via /recovery/approve with approver identity
 	approvePayload, _ := json.Marshal(map[string]interface{}{
 		"actionId":        "rec-reroute_traffic-node-a",
 		"targetServiceId": "node-a",
+		"actionType":      "reroute_traffic",
+		"approver":        "secops-lead@aegis",
 	})
 	appReq := httptest.NewRequest("POST", "/api/recovery/approve", bytes.NewBuffer(approvePayload))
 	appRr := httptest.NewRecorder()
 
 	ApproveRecoveryHandler(appRr, appReq)
 	if appRr.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK from approve handler, got %d", appRr.Code)
+		t.Fatalf("expected 200 OK from approve handler, got %d. Body: %s", appRr.Code, appRr.Body.String())
 	}
 
 	// 3. Retry execution -> should succeed now that approval is recorded
@@ -113,11 +115,11 @@ func TestExecuteRecovery_ApprovalGateEnforcement(t *testing.T) {
 		t.Fatalf("expected 200 OK after approval, got %d. Body: %s", execRr.Code, execRr.Body.String())
 	}
 
-	// Verify audit log recorded Human-Approved by Operator
+	// Verify audit log recorded Human-Approved by specified approver
 	var resp map[string]interface{}
 	_ = json.Unmarshal(execRr.Body.Bytes(), &resp)
-	if resp["approvalType"] != "Human-Approved by Operator" {
-		t.Errorf("expected approvalType 'Human-Approved by Operator', got '%v'", resp["approvalType"])
+	if resp["approvalType"] != "Human-Approved by secops-lead@aegis" {
+		t.Errorf("expected approvalType 'Human-Approved by secops-lead@aegis', got '%v'", resp["approvalType"])
 	}
 }
 
@@ -126,6 +128,11 @@ func TestRejectRecovery_RevokesApproval(t *testing.T) {
 
 	actionID := "rec-scale-node-a"
 	State.ApprovedPlans[actionID] = true
+	State.ApprovedRecords[actionID] = ApprovalRecord{
+		ActionID:        actionID,
+		TargetServiceID: "node-a",
+		Approver:        "secops@aegis",
+	}
 
 	rejectPayload, _ := json.Marshal(map[string]interface{}{
 		"actionId": actionID,
@@ -139,7 +146,7 @@ func TestRejectRecovery_RevokesApproval(t *testing.T) {
 		t.Fatalf("expected 200 from reject handler, got %d", rejRr.Code)
 	}
 
-	if State.ApprovedPlans[actionID] {
+	if State.ApprovedPlans[actionID] || len(State.ApprovedRecords[actionID].ActionID) > 0 {
 		t.Errorf("expected approval to be removed after rejection")
 	}
 }
@@ -163,6 +170,55 @@ func TestExecuteRecovery_CannotBypassWithClientFlags(t *testing.T) {
 
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 Forbidden when client attempts to forge approval flag, got %d", rr.Code)
+	}
+}
+
+func TestApproveRecovery_RequiresApproverIdentity(t *testing.T) {
+	setupTestState()
+
+	// Anonymous / empty approver must be rejected
+	payload, _ := json.Marshal(map[string]interface{}{
+		"actionId":        "rec-scale-node-a",
+		"targetServiceId": "node-a",
+		"approver":        "",
+	})
+
+	req := httptest.NewRequest("POST", "/api/recovery/approve", bytes.NewBuffer(payload))
+	rr := httptest.NewRecorder()
+
+	ApproveRecoveryHandler(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 Bad Request for missing approver identity, got %d", rr.Code)
+	}
+}
+
+func TestExecuteRecovery_TargetMismatchBlocked(t *testing.T) {
+	setupTestState()
+
+	actionID := "rec-scale-node-b"
+	// Approved specifically for node-b
+	State.ApprovedRecords[actionID] = ApprovalRecord{
+		ActionID:        actionID,
+		TargetServiceID: "node-b",
+		ActionType:      "scale",
+		Approver:        "admin@aegis",
+	}
+
+	// Client attempts to execute this token against node-a
+	payload, _ := json.Marshal(map[string]interface{}{
+		"actionId":        actionID,
+		"targetServiceId": "node-a",
+		"actionType":      "scale",
+	})
+
+	req := httptest.NewRequest("POST", "/api/recovery/execute", bytes.NewBuffer(payload))
+	rr := httptest.NewRecorder()
+
+	ExecuteRecoveryHandler(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden when approval token target mismatches execution target, got %d", rr.Code)
 	}
 }
 

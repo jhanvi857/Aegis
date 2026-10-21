@@ -156,6 +156,15 @@ type TopologyYAML struct {
 	} `yaml:"nodes"`
 }
 
+type ApprovalRecord struct {
+	ActionID        string `json:"actionId"`
+	TargetServiceID string `json:"targetServiceId"`
+	ActionType      string `json:"actionType"`
+	Approver        string `json:"approver"`
+	Timestamp       string `json:"timestamp"`
+	Reason          string `json:"reason,omitempty"`
+}
+
 type ControlPlaneState struct {
 	mu                    sync.RWMutex
 	Services              map[string]*Microservice
@@ -168,6 +177,7 @@ type ControlPlaneState struct {
 	RawTopologyYAML       []byte
 	LatestRecommendations []RecoveryAction
 	ApprovedPlans         map[string]bool
+	ApprovedRecords       map[string]ApprovalRecord
 }
 
 var State *ControlPlaneState
@@ -182,6 +192,7 @@ func InitState() {
 		Experiments:           make([]Experiment, 0),
 		LatestRecommendations: make([]RecoveryAction, 0),
 		ApprovedPlans:         make(map[string]bool),
+		ApprovedRecords:       make(map[string]ApprovalRecord),
 	}
 
 	topoPath := os.Getenv("TOPOLOGY_PATH")
@@ -544,6 +555,14 @@ func (s *ControlPlaneState) runTicker() {
 					case "thread_exhaustion":
 						svc.Latency = 800.0
 						svc.ErrorRate = 0.35
+						svc.ActiveThreads = 95
+						svc.Status = "critical"
+						svc.DBWait = 0.0
+						svc.CacheMiss = 0.02
+					case "packet_loss":
+						svc.Latency = 250.0
+						svc.ErrorRate = 0.25
+						svc.PacketLoss = 0.25
 						svc.Status = "critical"
 						svc.DBWait = 0.0
 						svc.CacheMiss = 0.02

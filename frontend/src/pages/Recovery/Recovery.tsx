@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTelemetryStore, getMLPrediction, calculateSystemRisk } from '../../store/useTelemetryStore';
+import { useAuthStore } from '../../store/useAuthStore';
 import { recoveryApi } from '../../api/recovery';
 import type { RecoveryAction } from '../../types/telemetry';
 import {
@@ -20,6 +21,7 @@ import {
 export const Recovery: React.FC = () => {
   const { services, activeFaults, recoveryHistory, executeRecoveryAction, approveAction, rejectAction } =
     useTelemetryStore();
+  const { user } = useAuthStore();
   const prediction = getMLPrediction(services, activeFaults);
   const risk = calculateSystemRisk(services, activeFaults);
 
@@ -69,12 +71,13 @@ export const Recovery: React.FC = () => {
       : (prediction.recommendedActions || [])
   ).filter((act) => !selectedTargetId || act.targetServiceId === selectedTargetId);
 
-  const handleGrantApproval = async (actionId: string, svcId: string) => {
+  const handleGrantApproval = async (actionId: string, svcId: string, actionType?: string) => {
     setLoadingApprovalId(actionId);
+    const approverIdentity = user?.email || 'Authorized Operator';
     try {
-      await approveAction(actionId, svcId);
+      await approveAction(actionId, svcId, actionType, approverIdentity);
       setApprovedActionIds((prev) => new Set(prev).add(actionId));
-      setStatusMessage({ type: 'success', text: `Approval granted for action ${actionId}. Ready for dispatch.` });
+      setStatusMessage({ type: 'success', text: `Approval granted by ${approverIdentity} for ${actionType || 'action'} on ${svcId}. Ready for dispatch.` });
       await refreshActions();
     } catch (err) {
       setStatusMessage({ type: 'error', text: `Failed to record approval: ${err}` });
@@ -341,7 +344,7 @@ export const Recovery: React.FC = () => {
                           <span>REJECT</span>
                         </button>
                         <button
-                          onClick={() => handleGrantApproval(plan.id, plan.targetServiceId)}
+                          onClick={() => handleGrantApproval(plan.id, plan.targetServiceId, plan.actionType)}
                           disabled={loadingApprovalId === plan.id}
                           className="px-3 py-1 rounded text-xs font-semibold bg-[#840032]/40 hover:bg-[#840032]/70 text-amber-300 border border-[#D4A017] transition-all flex items-center space-x-1"
                         >
