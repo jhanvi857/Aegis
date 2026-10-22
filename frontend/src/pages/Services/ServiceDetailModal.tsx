@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useTelemetryStore } from '../../store/useTelemetryStore';
+import { recoveryApi } from '../../api/recovery';
 import { MetricChart } from '../../components/MetricChart';
 import { LogStreamer } from '../../components/LogStreamer';
 import { X, Cpu, Clock, HardDrive, Layers, RotateCcw, PlusCircle, ArrowRight, Database, Zap, Loader2, CheckCircle2 } from 'lucide-react';
@@ -20,11 +21,25 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const handleAction = async (actionType: string, title: string) => {
+    if (!service) return;
     setExecuting(actionType);
     setMessage(null);
     try {
-      await executeRecoveryAction(actionType, service?.id || '', title, true);
-      setMessage({ type: 'success', text: `Dispatched ${title} on ${service?.name || service?.id}.` });
+      // Unify manual button trigger with the authoritative backend policy check
+      const policy = await recoveryApi.checkPolicy(actionType, service.id);
+      if (policy.cooldownRemainingSec > 0) {
+        setMessage({
+          type: 'error',
+          text: `Safety Cooldown Active: ${service.name} was recently remediated. Wait ${policy.cooldownRemainingSec}s before retrying.`,
+        });
+        return;
+      }
+
+      await executeRecoveryAction(actionType, service.id, title, true);
+      setMessage({
+        type: 'success',
+        text: `Dispatched ${title} [Policy: ${policy.riskLevel} (${Math.round(policy.riskScore * 100)}% risk, blast radius ${policy.blastRadiusSize} nodes)]. Verification window active.`,
+      });
     } catch (err: unknown) {
       const errObj = err as { message?: string };
       setMessage({ type: 'error', text: errObj?.message || 'Failed to execute recovery action.' });

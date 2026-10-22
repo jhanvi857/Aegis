@@ -10,6 +10,7 @@ import (
 
 func setupTestState() {
 	InitState()
+	Safety.Reset()
 	State.Services["node-a"] = &Microservice{
 		ID:           "node-a",
 		Name:         "Node A",
