@@ -111,7 +111,11 @@ func (c *Collector) Start(ctx context.Context) {
 				if len(batch.Metrics) > 0 && c.publisher != nil {
 					data, err := proto.Marshal(batch)
 					if err == nil {
-						_ = c.publisher.Publish(data)
+						key := c.publisher.FormatPartitionKey("telemetry-batch")
+						if len(c.targetNodes) > 0 {
+							key = c.publisher.FormatPartitionKey(c.targetNodes[0])
+						}
+						_ = c.publisher.PublishWithKey(key, data)
 					}
 				}
 			}

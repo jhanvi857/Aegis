@@ -154,6 +154,8 @@ func TopologySelectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	LogAudit(r, "topology.select", "", "", "", fmt.Sprintf("filename: %s", targetFile), "SUCCESS", "")
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":   true,
