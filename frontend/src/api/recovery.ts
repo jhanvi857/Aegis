@@ -26,4 +26,30 @@ export const recoveryApi = {
       body: JSON.stringify({ actionType, targetServiceId, actionId: actionTitleOrId, approved }),
     }),
   getHistory: () => apiFetch<RecoveryHistoryItem[]>('/recovery/history'),
+  checkPolicy: (actionType: string, targetServiceId: string) =>
+    apiFetch<import('../types/telemetry').PolicyAssessment>('/recovery/policy-check', {
+      method: 'POST',
+      body: JSON.stringify({ actionType, targetServiceId }),
+    }),
+  rollbackAction: (id: string) =>
+    apiFetch<{ success: boolean; actionId: string; status: string; message: string }>(`/recovery/rollback/${id}`, {
+      method: 'POST',
+    }),
+  getStatus: (id: string) =>
+    apiFetch<Record<string, unknown>>(`/recovery/status/${id}`),
+  getAutonomousStatus: () =>
+    apiFetch<{
+      enabled: boolean;
+      policy: string;
+      autoExecuteLow: boolean;
+      cooldownSec: number;
+      maxConcurrent: number;
+      activeDispatches: number;
+    }>('/recovery/autonomous'),
+  setAutonomousStatus: (enabled: boolean) =>
+    apiFetch<{ enabled: boolean; message: string }>('/recovery/autonomous', {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    }),
 };
+

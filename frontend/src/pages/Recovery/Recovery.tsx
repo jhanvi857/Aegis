@@ -38,7 +38,6 @@ export const Recovery: React.FC = () => {
     selectedTargetId ||
     prediction.rootCauseServiceId ||
     (services.find((s) => s.status !== 'healthy')?.id || (services.length > 0 ? services[0].id : ''));
-  const targetService = services.find((s) => s.id === targetServiceId);
 
   // Fetch live recommendations and pending approval items from API
   const refreshActions = async () => {
@@ -111,24 +110,36 @@ export const Recovery: React.FC = () => {
     title: string,
     requiresApproval: boolean
   ) => {
-    const isApproved = approvedActionIds.has(actionId);
-    if (requiresApproval && !isApproved) {
-      setStatusMessage({
-        type: 'error',
-        text: `Action "${title}" requires human approval before execution. Click "Grant Approval" above first.`,
-      });
-      return;
-    }
-
     const finalServiceId = serviceId || targetServiceId;
     setExecutingActionId(actionId || title);
     setStatusMessage(null);
 
     try {
+      // 1. Run canonical policy check
+      const policy = await recoveryApi.checkPolicy(actionType, finalServiceId);
+      if (policy.cooldownRemainingSec > 0) {
+        setStatusMessage({
+          type: 'error',
+          text: `Safety Cooldown Active: ${finalServiceId} was recently remediated. Wait ${policy.cooldownRemainingSec}s before retrying.`,
+        });
+        setExecutingActionId(null);
+        return;
+      }
+
+      const isApproved = approvedActionIds.has(actionId);
+      if ((requiresApproval || policy.requiresApproval) && !isApproved) {
+        setStatusMessage({
+          type: 'error',
+          text: `Action "${title}" evaluated as ${policy.riskLevel} risk (${Math.round(policy.riskScore * 100)}%, blast radius: ${policy.blastRadiusSize} nodes) and requires human approval. Click "APPROVE FIRST" above before executing.`,
+        });
+        setExecutingActionId(null);
+        return;
+      }
+
       await executeRecoveryAction(actionType, finalServiceId, actionId || title, isApproved);
       setStatusMessage({
         type: 'success',
-        text: `Successfully executed ${title} on ${targetService?.name || finalServiceId}.`,
+        text: `Dispatched ${title} [Risk: ${policy.riskLevel} (${Math.round(policy.riskScore * 100)}%), Blast Radius: ${policy.blastRadiusSize} nodes]. Telemetry verification window active.`,
       });
       await refreshActions();
     } catch (err: unknown) {
@@ -141,6 +152,23 @@ export const Recovery: React.FC = () => {
       setTimeout(() => {
         setExecutingActionId(null);
       }, 1500);
+    }
+  };
+
+  const handleRollback = async (planId: string) => {
+    try {
+      const res = await recoveryApi.rollbackAction(planId);
+      setStatusMessage({
+        type: 'success',
+        text: res.message || `Successfully initiated rollback for ${planId}`,
+      });
+      await refreshActions();
+    } catch (err: unknown) {
+      const errObj = err as { message?: string };
+      setStatusMessage({
+        type: 'error',
+        text: errObj?.message || 'Failed to rollback action',
+      });
     }
   };
 
@@ -515,9 +543,28 @@ export const Recovery: React.FC = () => {
                     Risk: <span className="font-mono text-[#AD2831]">{item.riskBefore}%</span> {'->'}{' '}
                     <span className="font-mono text-[#3F8E4F]">{item.riskAfter}%</span>
                   </span>
-                  <span className="text-[10px] bg-[#3F8E4F]/15 text-[#52b767] border border-[#3F8E4F]/50 px-2 py-0.5 rounded font-semibold tracking-[0.04em] uppercase">
-                    RECOVERED ({item.duration})
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded font-semibold tracking-[0.04em] uppercase border ${
+                      item.status === 'Verified' || item.status === 'Completed'
+                        ? 'bg-[#3F8E4F]/15 text-[#52b767] border-[#3F8E4F]/50'
+                        : item.status === 'Verifying'
+                        ? 'bg-[#D4A017]/15 text-[#e5b533] border-[#D4A017]/50 animate-pulse'
+                        : item.status === 'RolledBack'
+                        ? 'bg-purple-900/20 text-purple-300 border-purple-500/50'
+                        : 'bg-[#AD2831]/15 text-[#f87171] border-[#AD2831]/50'
+                    }`}
+                  >
+                    {item.status} ({item.duration || 'pending'})
                   </span>
+                  {(item.status === 'Verified' || item.status === 'Completed') && item.actionTitle.toLowerCase().includes('scale') && (
+                    <button
+                      onClick={() => handleRollback(item.id)}
+                      className="px-2 py-0.5 bg-[#1F1F23] hover:bg-[#2A2A30] text-gray-300 border border-[#3A3A42] rounded text-[10px] font-semibold tracking-wider uppercase transition-colors"
+                      title="Revert scaled replicas"
+                    >
+                      Rollback
+                    </button>
+                  )}
                 </div>
               </div>
             ))
