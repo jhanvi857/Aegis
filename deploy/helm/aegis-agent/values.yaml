@@ -1,0 +1,55 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/jhanvi857/aegis-telemetry-agent
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Aegis Control Plane connection configuration
+aegis:
+  clusterId: "prod-k8s-cluster"
+  namespace: "default"
+  gatewayUrl: "http://aegis-gateway.aegis-system.svc.cluster.local:8080"
+  # Machine API key (format: aegis_ak_*) used to authenticate outbound telemetry
+  apiKey: "aegis_ak_change_me_in_production"
+  # If true, agent publishes to Kafka directly instead of/in addition to gateway HTTP/gRPC
+  kafka:
+    enabled: false
+    brokers: "kafka.telemetry.svc.cluster.local:9092"
+    topic: "aegis-telemetry"
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

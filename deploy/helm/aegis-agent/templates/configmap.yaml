@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "aegis-agent.fullname" . }}-config
+  labels:
+    {{- include "aegis-agent.labels" . | nindent 4 }}
+data:
+  AEGIS_CLUSTER_ID: {{ .Values.aegis.clusterId | quote }}
+  AEGIS_NAMESPACE: {{ .Values.aegis.namespace | quote }}
+  AEGIS_GATEWAY_URL: {{ .Values.aegis.gatewayUrl | quote }}
+  KAFKA_BROKERS: {{ .Values.aegis.kafka.brokers | quote }}
+  KAFKA_TOPIC: {{ .Values.aegis.kafka.topic | quote }}

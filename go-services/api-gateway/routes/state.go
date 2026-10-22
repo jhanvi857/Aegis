@@ -2,6 +2,7 @@ package routes
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -9,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -178,11 +180,19 @@ type ControlPlaneState struct {
 	LatestRecommendations []RecoveryAction
 	ApprovedPlans         map[string]bool
 	ApprovedRecords       map[string]ApprovalRecord
+	DemoMode              bool
+	AutonomousRecovery    bool
 }
 
 var State *ControlPlaneState
 
 func InitState() {
+	demoMode := strings.EqualFold(os.Getenv("DEMO_MODE"), "true") || strings.EqualFold(os.Getenv("AEGIS_DEMO_MODE"), "true")
+	autoRecovery := true
+	if env := os.Getenv("AEGIS_AUTONOMOUS_RECOVERY"); env != "" {
+		autoRecovery = strings.EqualFold(env, "true")
+	}
+
 	State = &ControlPlaneState{
 		Services:              make(map[string]*Microservice),
 		ActiveFaults:          make(map[string]*ChaosInjection),
@@ -193,6 +203,8 @@ func InitState() {
 		LatestRecommendations: make([]RecoveryAction, 0),
 		ApprovedPlans:         make(map[string]bool),
 		ApprovedRecords:       make(map[string]ApprovalRecord),
+		DemoMode:              demoMode,
+		AutonomousRecovery:    autoRecovery,
 	}
 
 	topoPath := os.Getenv("TOPOLOGY_PATH")
@@ -238,20 +250,36 @@ func LoadTopology(topoPath string) error {
 
 	nowTime := time.Now().Format("15:04:05")
 	for _, n := range topo.Nodes {
-		baseCPU := 20.0 + rand.Float64()*15.0
-		baseMem := 35.0 + rand.Float64()*15.0
-		baseLat := 15.0 + rand.Float64()*15.0
-		baseRPS := 200.0 + rand.Float64()*200.0
+		baseCPU := 25.0
+		baseMem := 40.0
+		baseLat := 18.0
+		baseRPS := 250.0
+		if State.DemoMode {
+			baseCPU += rand.Float64() * 15.0
+			baseMem += rand.Float64() * 15.0
+			baseLat += rand.Float64() * 15.0
+			baseRPS += rand.Float64() * 200.0
+		}
 
 		history := make([]ServiceMetric, 20)
 		for i := 0; i < 20; i++ {
 			t := time.Now().Add(-time.Duration(20-i) * 2 * time.Second).Format("15:04:05")
+			cpuVal := math.Round(baseCPU)
+			memVal := math.Round(baseMem)
+			latVal := math.Round(baseLat)
+			rpsVal := math.Round(baseRPS)
+			if State.DemoMode {
+				cpuVal = math.Round(baseCPU + rand.Float64()*4 - 2)
+				memVal = math.Round(baseMem + rand.Float64()*2 - 1)
+				latVal = math.Round(baseLat + rand.Float64()*4 - 2)
+				rpsVal = math.Round(baseRPS + rand.Float64()*20 - 10)
+			}
 			history[i] = ServiceMetric{
 				Timestamp:  t,
-				CPU:        math.Round(baseCPU + rand.Float64()*4 - 2),
-				Memory:     math.Round(baseMem + rand.Float64()*2 - 1),
-				Latency:    math.Round(baseLat + rand.Float64()*4 - 2),
-				RPS:        math.Round(baseRPS + rand.Float64()*20 - 10),
+				CPU:        cpuVal,
+				Memory:     memVal,
+				Latency:    latVal,
+				RPS:        rpsVal,
 				ErrorRate:  0.001,
 				QueueDepth: 1,
 			}
@@ -381,10 +409,39 @@ func (s *ControlPlaneState) runTicker() {
 	defer ticker.Stop()
 
 	httpClient := &http.Client{Timeout: 500 * time.Millisecond}
+	tickCounter := 0
 
 	for range ticker.C {
+		tickCounter++
 		s.mu.Lock()
 		nowTime := time.Now().Format("15:04:05")
+
+		// Periodic synchronization with dynamic service registry (every 5 seconds)
+		if AuthStorage != nil && tickCounter%5 == 0 {
+			if dbServices, err := AuthStorage.ListServices(context.Background(), "", ""); err == nil && len(dbServices) > 0 {
+				for _, dbs := range dbServices {
+					if _, exists := s.Services[dbs.ID]; !exists {
+						s.Services[dbs.ID] = &Microservice{
+							ID:          dbs.ID,
+							Name:        dbs.Name,
+							Type:        dbs.Type,
+							Status:      dbs.Status,
+							Replicas:    dbs.Replicas,
+							MaxReplicas: dbs.MaxReplicas,
+							CPU:         dbs.CPU,
+							Memory:      dbs.Memory,
+							Latency:     dbs.Latency,
+							RPS:         dbs.RPS,
+							ErrorRate:   dbs.ErrorRate,
+							QueueDepth:  dbs.QueueDepth,
+							Version:     dbs.Version,
+							Uptime:      "up",
+						}
+						s.ServiceOrder = append(s.ServiceOrder, dbs.ID)
+					}
+				}
+			}
+		}
 
 		// 1. Process active chaos fault countdowns
 		for id, fault := range s.ActiveFaults {
@@ -574,10 +631,12 @@ func (s *ControlPlaneState) runTicker() {
 						svc.CacheMiss = 0.02
 					}
 				} else {
-					svc.CPU = math.Round(math.Max(10.0, math.Min(50.0, svc.CPU+rand.Float64()*2.0-1.0))*10) / 10
-					svc.Memory = math.Round(math.Max(20.0, math.Min(60.0, svc.Memory+rand.Float64()*2.0-1.0))*10) / 10
-					svc.Latency = math.Round(math.Max(8.0, math.Min(35.0, svc.Latency+rand.Float64()*2.0-1.0))*10) / 10
-					svc.RPS = math.Round(math.Max(50.0, math.Min(500.0, svc.RPS+rand.Float64()*10.0-5.0))*10) / 10
+					if s.DemoMode {
+						svc.CPU = math.Round(math.Max(10.0, math.Min(50.0, svc.CPU+rand.Float64()*2.0-1.0))*10) / 10
+						svc.Memory = math.Round(math.Max(20.0, math.Min(60.0, svc.Memory+rand.Float64()*2.0-1.0))*10) / 10
+						svc.Latency = math.Round(math.Max(8.0, math.Min(35.0, svc.Latency+rand.Float64()*2.0-1.0))*10) / 10
+						svc.RPS = math.Round(math.Max(50.0, math.Min(500.0, svc.RPS+rand.Float64()*10.0-5.0))*10) / 10
+					}
 					svc.ErrorRate = 0.001
 					svc.Status = "healthy"
 					svc.DBWait = 0.0
@@ -604,8 +663,13 @@ func (s *ControlPlaneState) runTicker() {
 			}
 		}
 
-		// 3. Keep alert list fresh based on active states
+		// 3. Keep alert list fresh based on active states while preserving escalation alerts
 		var activeAlerts []LiveAlert
+		for _, existing := range s.Alerts {
+			if strings.HasPrefix(existing.ID, "alert-esc-") && !existing.Resolved {
+				activeAlerts = append(activeAlerts, existing)
+			}
+		}
 		for _, svc := range s.Services {
 			if svc.Status == "critical" {
 				activeAlerts = append(activeAlerts, LiveAlert{
@@ -637,5 +701,35 @@ func (s *ControlPlaneState) runTicker() {
 		}
 
 		s.mu.Unlock()
+
+		// 4. Autonomous Recovery Loop (Phase 4 closed loop: chaos -> predict -> decide -> order -> recover -> observe)
+		if s.AutonomousRecovery && Safety != nil && Safety.ActiveDispatchCount() == 0 {
+			s.mu.RLock()
+			needsHealing := len(s.ActiveFaults) > 0
+			if !needsHealing {
+				for _, svc := range s.Services {
+					if svc.Status == "critical" || svc.Status == "degraded" {
+						needsHealing = true
+						break
+					}
+				}
+			}
+			s.mu.RUnlock()
+
+			if needsHealing {
+				pred := ComputePredictionOutput()
+				if len(pred.RecommendedActions) > 0 {
+					for _, rec := range pred.RecommendedActions {
+						if !rec.RequiresApproval && !Safety.IsInCooldown(rec.TargetServiceID) {
+							// Autonomous execution of DAG-ordered safe action
+							go func(tID, aType, aID string) {
+								_, _ = ExecuteAutonomousRecovery(tID, aType, aID)
+							}(rec.TargetServiceID, rec.ActionType, rec.ID)
+							break
+						}
+					}
+				}
+			}
+		}
 	}
 }

@@ -17,7 +17,11 @@ func main() {
 	if kafkaBrokers == "" {
 		kafkaBrokers = "localhost:9092"
 	}
-	publisher := NewKafkaPublisher([]string{kafkaBrokers}, "aegis-telemetry")
+	clusterID := os.Getenv("AEGIS_CLUSTER_ID")
+	if clusterID == "" {
+		clusterID = "cluster-primary"
+	}
+	publisher := NewKafkaPublisher([]string{kafkaBrokers}, "aegis-telemetry", clusterID)
 	collector := NewCollector([]string{"gateway", "node-a", "node-b", "node-c", "node-d"}, 2*time.Second, publisher)
 
 	ctx, cancel := context.WithCancel(context.Background())
