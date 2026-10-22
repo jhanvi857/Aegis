@@ -25,6 +25,8 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab: _activeTab, setActive
     resetDemoState,
     isTimeTravelActive,
     setTimeTravelActive,
+    systemMode,
+    setSystemMode,
   } = useTelemetryStore();
   const { user, logout } = useAuthStore();
 
@@ -118,6 +120,42 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab: _activeTab, setActive
               </div>
             </>
           )}
+
+          {/* Mode Indicator Pill (DEMO MODE vs LIVE CLUSTER) */}
+          <div className="h-3.5 w-px bg-[#26262B]" />
+          <div className="flex items-center space-x-1.5 text-[10px] font-sans">
+            {systemMode?.demoMode ? (
+              <div className="flex items-center space-x-1.5 bg-[#D4A017]/15 border border-[#D4A017]/60 px-2 py-0.5 rounded text-[#e5b533]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#D4A017] animate-pulse" />
+                <span className="font-semibold uppercase tracking-wider">DEMO SIMULATION</span>
+                {(user?.role === 'admin' || user?.role === 'operator') && (
+                  <button
+                    onClick={() => setSystemMode(false)}
+                    className="ml-1 text-[9px] uppercase px-1 py-0.2 bg-[#26262B] hover:bg-[#3E3E44] text-white rounded transition"
+                    title="Switch to Real Telemetry Mode"
+                  >
+                    Go Live
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center space-x-1.5 bg-[#3F8E4F]/15 border border-[#3F8E4F]/60 px-2 py-0.5 rounded text-[#52b767]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#3F8E4F]" />
+                <span className="font-semibold uppercase tracking-wider">
+                  LIVE CLUSTER ({systemMode?.clusterId || 'cluster-primary'})
+                </span>
+                {(user?.role === 'admin' || user?.role === 'operator') && (
+                  <button
+                    onClick={() => setSystemMode(true)}
+                    className="ml-1 text-[9px] uppercase px-1 py-0.2 bg-[#26262B] hover:bg-[#3E3E44] text-gray-200 rounded transition"
+                    title="Switch to Simulated Demo Mode"
+                  >
+                    Demo
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Global Toolbar Quick Controls */}

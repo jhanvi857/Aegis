@@ -20,7 +20,7 @@ export const AuthPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [role, setRole] = useState('SecOps Lead');
+  const [role] = useState('SecOps Lead');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,20 +157,14 @@ export const AuthPage: React.FC = () => {
           </div>
 
           {isSignUp && (
-            <div>
-              <label className="block text-[11px] font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
-                Authorization Role
-              </label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                className="w-full bg-[#0B0B0C] border border-[#26262B] focus:border-[#840032] focus:ring-1 focus:ring-[#840032] rounded-lg px-3 py-2 text-xs text-white outline-none transition-all"
-              >
-                <option value="SecOps Lead">SecOps Lead (Full Authorization & Approvals)</option>
-                <option value="SRE Admin">SRE Admin (Chaos & Recovery Orchestration)</option>
-                <option value="Site Reliability Engineer">Site Reliability Engineer</option>
-                <option value="Platform Admin">Platform Admin</option>
-              </select>
+            <div className="p-3 bg-[#141416] border border-[#26262B] rounded-lg text-left">
+              <div className="flex items-center space-x-2 text-[11px] font-semibold text-gray-300 uppercase tracking-wider mb-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Server-Enforced RBAC</span>
+              </div>
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                Initial account is provisioned with <strong className="text-white">Admin</strong> privileges. Subsequent operator accounts default to <strong className="text-white">Viewer</strong> role until elevated by an Administrator.
+              </p>
             </div>
           )}
 
