@@ -1,0 +1,132 @@
+name: Aegis CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-go:
+    name: Go Services & Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Run API Gateway Tests
+        working-directory: go-services/api-gateway
+        run: |
+          go test -v -race ./...
+
+      - name: Run Recovery Engine Tests
+        working-directory: go-services/recovery-engine
+        run: |
+          go test -v -race ./...
+
+      - name: Execute 500-Microservices Load Test Benchmark
+        run: |
+          go run scripts/load_test_500_services.go
+
+  test-python:
+    name: Python ML & Decision Engine Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || pip install pytest pyyaml torch networkx
+
+      - name: Run Pytest Suite
+        run: |
+          pytest -v tests/
+
+  build-frontend:
+    name: Frontend TypeScript & Vite Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build React Application
+        working-directory: frontend
+        run: npm run build
+
+  code-hygiene:
+    name: Policy & Lint Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify Zero Emojis in Source Files
+        run: |
+          echo "Verifying zero emoji policy across repository..."
+          # Python script to check for any unicode emojis
+          python3 -c "
+          import os, sys
+
+          def has_emoji(text):
+              for char in text:
+                  code = ord(char)
+                  # Standard emoji code ranges
+                  if (0x1F600 <= code <= 0x1F64F or
+                      0x1F300 <= code <= 0x1F5FF or
+                      0x1F680 <= code <= 0x1F6FF or
+                      0x2600 <= code <= 0x26FF or
+                      0x2700 <= code <= 0x27BF or
+                      0x1F900 <= code <= 0x1F9FF or
+                      0x1FA70 <= code <= 0x1FAFF):
+                      return True
+              return False
+
+          failed = False
+          for root, dirs, files in os.walk('.'):
+              if any(skip in root for skip in ['.git', 'node_modules', '.venv', 'dist', 'build', '__pycache__']):
+                  continue
+              for f in files:
+                  if f.endswith(('.go', '.py', '.ts', '.tsx', '.yaml', '.yml', '.md')):
+                      p = os.path.join(root, f)
+                      try:
+                          with open(p, 'r', encoding='utf-8') as fh:
+                              for line_num, line in enumerate(fh, 1):
+                                  if has_emoji(line):
+                                      print(f'Emoji detected in {p}:{line_num}: {line.strip()}')
+                                      failed = True
+                      except Exception:
+                          pass
+
+          if failed:
+              sys.exit(1)
+          print('Clean: Zero emojis found.')
+          "
