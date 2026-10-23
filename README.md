@@ -321,9 +321,9 @@ The core architectural decisions governing Aegis are documented as formal ADRs:
 | `memory_leak.go` | Monotonic RAM accumulation, heap thrashing | `restart.go` (Rolling worker restart) |
 | `packet_loss.go` | Dropped TCP frames, transport timeouts | `reroute_traffic.go` (Dynamic edge rerouting) |
 | `mq_lag.go` | Consumer backpressure, message accumulation | `scale.go` (Scale consumer worker replicas) |
-| `thread_exhaustion.go` | Worker pool starvation | `increase_pool.go` (Expand worker thread capacity) |
+| `thread_exhaustion.go` | Worker pool starvation | `increase_pool.go` (Expand worker thread capacity) / `scale.go` |
 | `db_lock.go` | Database lock contention, queue spikes | `increase_pool.go` (Expand database connection pool) |
-| `slow_query.go` | Leaf database query stalls | `flush_cache.go` (Flush and warm query cache) |
+| `slow_query.go` | Leaf database query stalls | `increase_pool.go` (Expand connection pool) / `restart.go` |
 | `cache_down.go` | Cache misses, downstream stampede | `flush_cache.go` / `restart.go` (Re-seed cache instance) |
 
 ---

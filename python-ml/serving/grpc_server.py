@@ -33,6 +33,23 @@ class PredictionEngine:
         self.propagation_predictor = PropagationPredictor(model_checkpoint=checkpoint_path)
         self.plan_builder = RecoveryPlanBuilder()
 
+        # Phase 6: Optional RL Agent policy network
+        self.rl_policy = None
+        try:
+            from rl_agent.policy import RecoveryPolicyNetwork
+            rl_ckpt = "python-ml/models/checkpoints/rl_policy_best.pt"
+            if os.path.exists(rl_ckpt):
+                self.rl_policy = RecoveryPolicyNetwork(state_dim=25, action_dim=21)
+                self.rl_policy.load(rl_ckpt)
+        except Exception:
+            self.rl_policy = None
+
+    def predict_rl_action(self, state_vector: Any, epsilon: float = 0.0) -> int:
+        """Selects optimal remediation action from trained RL policy network (Phase 6)."""
+        if self.rl_policy is not None:
+            return self.rl_policy.select_action(state_vector, epsilon=epsilon)
+        return 0
+
     def predict(
         self,
         graph_representation: Dict[str, Any],
