@@ -13,6 +13,7 @@ import { telemetryApi } from '../api/telemetry';
 import { chaosApi } from '../api/chaos';
 import { predictionApi } from '../api/prediction';
 import { recoveryApi } from '../api/recovery';
+import { registryApi, type SystemModeInfo } from '../api/registry';
 import { useAuthStore } from './useAuthStore';
 
 interface TelemetryState {
@@ -24,6 +25,15 @@ interface TelemetryState {
   recoveryHistory: RecoveryHistoryItem[];
   experiments: Experiment[];
   latestPrediction: PredictionOutput | null;
+  systemMode: SystemModeInfo | null;
+  autonomousStatus: {
+    enabled: boolean;
+    policy: string;
+    autoExecuteLow: boolean;
+    cooldownSec: number;
+    maxConcurrent: number;
+    activeDispatches: number;
+  } | null;
 
   isTimeTravelActive: boolean;
   timeTravelIndex: number;
@@ -51,6 +61,10 @@ interface TelemetryState {
   runExperimentScenario: (experimentId: string) => Promise<void>;
   resetSystemState: () => Promise<void>;
   resetDemoState: () => Promise<void>;
+  fetchSystemMode: () => Promise<void>;
+  setSystemMode: (demoMode: boolean) => Promise<void>;
+  fetchAutonomousStatus: () => Promise<void>;
+  setAutonomousStatus: (enabled: boolean) => Promise<void>;
 }
 
 const DEFAULT_PREDICTION: PredictionOutput = {
@@ -74,6 +88,8 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
   recoveryHistory: [],
   experiments: [],
   latestPrediction: DEFAULT_PREDICTION,
+  systemMode: null,
+  autonomousStatus: null,
 
   isTimeTravelActive: false,
   timeTravelIndex: 0,
@@ -98,7 +114,7 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
 
   fetchInitialData: async () => {
     try {
-      const [services, faults, alerts, logs, prediction, recHistory, experiments] = await Promise.allSettled([
+      const [services, faults, alerts, logs, prediction, recHistory, experiments, systemMode, autoStatus] = await Promise.allSettled([
         telemetryApi.getServices(),
         chaosApi.getActiveFaults(),
         telemetryApi.getAlerts(),
@@ -106,6 +122,8 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
         predictionApi.getLatestPrediction(),
         recoveryApi.getHistory(),
         telemetryApi.getExperiments(),
+        registryApi.getSystemMode(),
+        recoveryApi.getAutonomousStatus(),
       ]);
 
       const updates: Partial<TelemetryState> = {
@@ -134,6 +152,12 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
       if (experiments.status === 'fulfilled' && Array.isArray(experiments.value)) {
         updates.experiments = experiments.value;
       }
+      if (systemMode.status === 'fulfilled' && systemMode.value) {
+        updates.systemMode = systemMode.value;
+      }
+      if (autoStatus.status === 'fulfilled' && autoStatus.value) {
+        updates.autonomousStatus = autoStatus.value;
+      }
 
       set(updates);
     } catch (err) {
@@ -147,12 +171,14 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
     if (isTimeTravelActive) return;
 
     try {
-      const [latestServices, latestFaults, latestAlerts, latestLogs, latestPred] = await Promise.all([
+      const [latestServices, latestFaults, latestAlerts, latestLogs, latestPred, latestHist, latestAuto] = await Promise.all([
         telemetryApi.getServices(),
         chaosApi.getActiveFaults(),
         telemetryApi.getAlerts(),
         telemetryApi.getLogs(),
         predictionApi.getLatestPrediction(),
+        recoveryApi.getHistory().catch(() => get().recoveryHistory),
+        recoveryApi.getAutonomousStatus().catch(() => get().autonomousStatus),
       ]);
 
       const nowTime = new Date().toLocaleTimeString();
@@ -162,6 +188,8 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
       const safeAlerts = Array.isArray(latestAlerts) ? latestAlerts : [];
       const safeLogs = Array.isArray(latestLogs) ? latestLogs : [];
       const safePred = latestPred || get().latestPrediction || DEFAULT_PREDICTION;
+      const safeHist = Array.isArray(latestHist) ? latestHist : get().recoveryHistory;
+      const safeAuto = latestAuto || get().autonomousStatus;
 
       // Record snapshot for time-travel scrubber
       const newSnapshot = {
@@ -176,6 +204,8 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
         alerts: safeAlerts,
         logs: safeLogs,
         latestPrediction: safePred,
+        recoveryHistory: safeHist,
+        autonomousStatus: safeAuto,
         historySnapshots: updatedSnapshots,
         isConnectedToBackend: true,
         lastBackendSync: nowTime,
@@ -286,6 +316,45 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
 
   resetDemoState: async () => {
     await get().resetSystemState();
+  },
+
+  fetchSystemMode: async () => {
+    try {
+      const mode = await registryApi.getSystemMode();
+      set({ systemMode: mode });
+    } catch (err) {
+      console.warn('[useTelemetryStore] Failed to fetch system mode:', err);
+    }
+  },
+
+  setSystemMode: async (demoMode: boolean) => {
+    try {
+      const mode = await registryApi.setSystemMode(demoMode);
+      set({ systemMode: mode });
+      await get().tickTelemetry();
+    } catch (err) {
+      console.error('[useTelemetryStore] Failed to update system mode:', err);
+      throw err;
+    }
+  },
+
+  fetchAutonomousStatus: async () => {
+    try {
+      const status = await recoveryApi.getAutonomousStatus();
+      set({ autonomousStatus: status });
+    } catch (err) {
+      console.warn('[useTelemetryStore] Failed to fetch autonomous status:', err);
+    }
+  },
+
+  setAutonomousStatus: async (enabled: boolean) => {
+    try {
+      await recoveryApi.setAutonomousStatus(enabled);
+      await get().fetchAutonomousStatus();
+    } catch (err) {
+      console.error('[useTelemetryStore] Failed to update autonomous status:', err);
+      throw err;
+    }
   },
 }));
 

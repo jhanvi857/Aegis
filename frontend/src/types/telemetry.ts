@@ -114,10 +114,24 @@ export interface RecoveryHistoryItem {
   timestamp: string;
   actionTitle: string;
   targetService: string;
-  status: 'Completed' | 'Failed';
+  status: 'Completed' | 'Failed' | 'Verified' | 'Ineffective' | 'RolledBack' | 'Verifying';
   duration: string;
   riskBefore: number;
   riskAfter: number;
+}
+
+export interface PolicyAssessment {
+  actionType: string;
+  targetServiceId: string;
+  targetTier: string;
+  targetCriticality: number;
+  blastRadius: string[];
+  blastRadiusSize: number;
+  riskScore: number;
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+  requiresApproval: boolean;
+  cooldownRemainingSec: number;
+  justification: string;
 }
 
 export interface Experiment {
