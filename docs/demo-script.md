@@ -1,6 +1,6 @@
 # Aegis Live Demo Walkthrough & Operator Runbook
 
-This document provides a step-by-step walkthrough for demonstrating the Aegis Self-Healing Distributed Systems Platform end-to-end.
+This document provides a step-by-step presentation walkthrough for demonstrating the Aegis Self-Healing Distributed Systems Platform end-to-end.
 
 ---
 
@@ -8,17 +8,28 @@ This document provides a step-by-step walkthrough for demonstrating the Aegis Se
 
 | Service | Port | Description |
 |---|:---:|---|
-| **Frontend Dashboard (React + Vite)** | `:5173` | Real-time topology visualization, chaos triggers, prediction telemetry, and approval controls. |
-| **Aegis Control Plane (`api-gateway`)** | `:8000` | Orchestrates live telemetry, chaos injection, predictions, and recovery execution. |
-| **Python ML Inference Server** | `:50051` | Unified TGNN inference engine serving failure prediction, root-cause localization, and propagation paths. |
-| **Go Recovery Engine** | `:8092` | Manages container/pod actions via orchestrator adapters and executes the approval gate. |
+| **Frontend Observability Console (React + Vite)** | `:5173` | Unified Mission Control dashboard, dynamic topology graph, chaos controls, prediction telemetry, and approval gate. |
+| **Aegis Control Plane (`api-gateway`)** | `:8000` | Orchestrates telemetry, dynamic topology registry, safety limits, autonomous loops, and recovery execution. |
+| **Python ML Inference Server** | `:50051` | Unified TGNN inference engine serving failure prediction, root-cause localization, and propagation paths over gRPC. |
+| **Go Recovery Engine** | `:8092` | Manages container/pod actions via orchestrator adapters (Docker / K8s) and executes the approval gate. |
 | **Microservice Mesh (`playground`)** | `:8080`–`:8084` | Generic service mesh: `gateway` (:8080), `node-a` (:8081), `node-b` (:8082), `node-c` (:8083), `node-d` (:8084). |
+| **PostgreSQL & Redis** | `:5432`, `:6379` | Durable store for dynamic topologies, execution history, users, sessions, API keys, and audit logs. |
+
+### Operator Credentials
+- **Administrator**: `admin@aegis.local` / `AdminPass#2026` (Full privileges: chaos injection, approvals, rollbacks, API keys)
+- **Operator**: `operator@aegis.local` / `OperatorPass#2026` (Remediation execution, approvals, topology selection)
+- **Viewer**: `viewer@aegis.local` / `ViewerPass#2026` (Read-only observation)
 
 ---
 
 ## 2. Environment Startup
 
-### Step 2.1 — Start the Backend Control Plane
+### Step 2.1 — Start Infrastructure Dependencies
+```bash
+docker-compose up -d postgres redis kafka
+```
+
+### Step 2.2 — Start the Go Backend Control Plane
 In a terminal, start the Go API gateway:
 ```bash
 cd go-services
@@ -26,7 +37,7 @@ go run ./api-gateway
 ```
 *Expected log:* `[api-gateway] Control plane listening on http://localhost:8000`
 
-### Step 2.2 — Start the Python ML Inference Engine
+### Step 2.3 — Start the Python ML Inference Engine
 In a second terminal, launch the TGNN serving daemon:
 ```bash
 cd python-ml
@@ -34,103 +45,146 @@ python serving/grpc_server.py
 ```
 *Expected log:* `[grpc-server] TGNN Engine loaded and ready for inference requests.`
 
-### Step 2.3 — Launch the Frontend Observability Console
-In a third terminal, start Vite development server:
+### Step 2.4 — Launch the Frontend Observability Console
+In a third terminal, start the Vite development server:
 ```bash
 cd frontend
 npm run dev
 ```
-Open your browser at **`http://localhost:5173`**.
+Open your browser at **`http://localhost:5173`** and log in as `admin@aegis.local`.
 
 ---
 
-## 3. Demo Scenario 1: Autonomous Remediation (CPU Saturation Cascade)
+## 3. Mission Control Dashboard Overview
+
+The **Mission Control Dashboard** (`/`) is the central presentation hub uniting all core components into a single screen:
+
+1. **Interactive Demo Presets Toolbar (Top)**:
+   - `CPU Cascade`: Injects CPU core saturation on `node-c`.
+   - `Latency Gate`: Injects 950ms latency deadlock on `node-b`.
+   - `Memory SCC`: Injects memory leak on `node-d` to show bottom-up SCC DAG recovery.
+   - `Reset`: Immediately halts all faults and restores healthy baseline.
+2. **Top Metric Cards**: Real-time System Health, System Failure Risk ($[0\%, 100\%]$), TGNN Prediction Horizon countdown, Monitored Services count, and Autonomous Self-Healing status (`ACTIVE` vs `PAUSED`).
+3. **Interactive Topology Graph (`TopologyGraph`)**: Live auto-laid-out DAG graph with animated edge pulses, health halos, root-cause halos, and blast-radius rings.
+4. **Prediction Engine (`PredictionPanel`)**: Real-time failure probability gauge, confidence score, root-cause entity with telemetry evidence, propagation cascade sequence, and 1-click remediation.
+5. **Recovery Log & Autonomous Controls (`RecoveryLog`)**: Autonomous mode toggle, in-flight 10-second verification window timer, chronological recovery records with risk delta ($92\% \to 12\%$), and 1-click rollback.
+6. **Chaos Controls (`ChaosControls`)**: 10 fault injectors with target selection, duration slider, and live active countdowns.
+
+---
+
+## 4. Demo Scenario 1: Autonomous Closed-Loop Self-Healing (CPU Cascade)
 
 ### Goal
 Demonstrate how sustained CPU load causes queuing, triggers the TGNN failure prediction head, and executes an automated, dependency-safe `SCALE_UP` remediation without requiring human intervention.
 
 ### Procedure
-1. On the dashboard, navigate to **Chaos Studio** (`/chaos`).
-2. Select target service: `node-c`.
-3. Choose injector: **CPU Stress (`cpu_stress`)**.
-4. Set duration to `30s` and click **Inject Fault**.
-5. Switch to **Live Topology Graph** (`/topology`):
-   - Observe `node-c` transitioning to `degraded` (CPU $>85\%$, latency $>400\text{ms}$).
-   - Notice downstream and upstream links highlighting the propagation cascade.
-6. Open **Predictions Panel** (`/predictions`):
-   - TGNN predicts impending failure with $>90\%$ probability.
-   - Root cause identified: `node-c` (contributing metric: `cpu_usage_percent`).
-   - Decision engine matches `RULE_HIGH_CPU_CASCADE` from `rulebook.yaml`.
-   - Risk score evaluated at `0.35` (`MEDIUM` risk $\rightarrow$ auto-approved).
-7. Go to **Remediation Console** (`/recovery`):
-   - Click **Execute Recommended Remediation** (or watch autonomous trigger).
-   - Replica count increases (`replicas: 1 -> 3`).
-   - Health status recovers to `healthy` and latency normalizes back to nominal $\sim 15\text{ms}$.
+1. On the **Mission Control Dashboard**, click the **`CPU Cascade`** preset button (or inject `cpu_stress` on `node-c` via `ChaosControls`).
+2. **Watch the live transition**:
+   - `node-c` turns degraded/critical (CPU $> 85\%$, latency $> 400\text{ms}$).
+   - **`TopologyGraph`** pulses edges in amber/crimson and highlights `node-c` with a pulsing red root-cause halo.
+   - Downstream dependent nodes highlight in purple with blast-radius badges.
+3. **Observe TGNN Prediction**:
+   - **`PredictionPanel`** calculates Failure Probability $\ge 91\%$ and Confidence $\sim 98\%$.
+   - Root-cause isolated to `node-c` (telemetry evidence: CPU $95.4\%$).
+   - Decision Engine matches `RULE_HIGH_CPU_CASCADE` from `rulebook.yaml`.
+   - Risk evaluated at $0.35$ (`LOW/MEDIUM` risk $\rightarrow$ auto-approved).
+4. **Observe Autonomous Remediation**:
+   - If autonomous recovery is `ACTIVE`, Aegis automatically triggers `SCALE_UP` on `node-c`.
+   - Active chaos fault is cleared and replica count increases from $1 \to 3$.
+   - **`RecoveryLog`** displays in-flight execution and begins the real **10-second Verification Window**.
+   - After 10 seconds of verified SLA metrics, status transitions to **`Verified`**.
+   - System failure risk drops from $91\% \to 8\%$, and all nodes return to green `healthy`.
 
 ---
 
-## 4. Demo Scenario 2: High-Risk Action & Human-in-the-Loop Approval Gate
+## 5. Demo Scenario 2: High-Risk Action & Human-in-the-Loop Approval Gate
 
 ### Goal
-Demonstrate how catastrophic latency spikes or network deadlocks trigger high-impact actions (`REROUTE_TRAFFIC`), which are intercepted by the **Approval Gate** to prevent unauthorized traffic diversion.
+Demonstrate how critical network latency deadlocks trigger high-impact actions (`REROUTE_TRAFFIC`), which are intercepted by the **Approval Gate** to require explicit operator authorization before execution.
 
 ### Procedure
-1. In **Chaos Studio**, select target `gateway` or `node-a`.
-2. Choose injector: **Latency Injection (`latency`)**.
-3. Set injected delay to `1500ms` and duration to `45s`. Click **Inject Fault**.
-4. Observe the **Incident Alert** banner at the top of the navbar:
-   - Status transitions to `critical` with P99 latency $> 1000\text{ms}$.
-   - Blast radius expands to downstream nodes.
-5. In **Predictions**:
-   - Primary root cause: `node-a`.
-   - Decision engine recommends `REROUTE_TRAFFIC` to isolate the failure.
-   - Risk assessment flags **`HIGH RISK`** (score $\ge 0.70$ / critical traffic impact).
-   - Approval Gate holds action in `pending_approval` state.
-6. Check **Pending Approvals** in the Remediation view:
-   - Displays plan ID, risk justification, and affected downstream services.
-   - Click **Authorize & Execute Plan**.
-   - Action completes: traffic is rerouted, drain completes in $10\text{s}$, and overall risk drops from $92\%$ to $12\%$.
+1. On the dashboard, click **`Latency Gate`** (or select `latency` on `node-b` for 30s).
+2. P99 latency spikes above $950\text{ms}$, triggering critical alerts.
+3. **`PredictionPanel`**:
+   - Identifies `node-b` as root cause.
+   - Recommended action: `REROUTE_TRAFFIC` (Base risk: $0.50$).
+   - Blast radius penalty and Tier-1 criticality escalate overall risk to $\mathbf{0.70}$ (`HIGH RISK`).
+   - Approval policy flags: **`APPROVAL REQUIRED`**.
+4. Action holds in `PENDING_APPROVAL` status at the authority boundary gate.
+5. In **Recovery Console** (`/recovery`) or pending queue:
+   - Review plan ID, risk justification, and blast radius.
+   - Click **Authorize & Execute Plan** (authenticated as Operator/Admin).
+   - Traffic is rerouted, drain completes, 10s verification passes, and status transitions to **`Verified`**.
 
 ---
 
-## 5. Demo Scenario 3: Memory Leak & Topological Bottom-Up Recovery
+## 6. Demo Scenario 3: Memory Leak & Bottom-Up SCC Condensed DAG Recovery
 
 ### Goal
-Demonstrate how memory exhaustion causes cascading degradation and how the **SCC Condensation Topological Planner** orders remediation actions so bottom-up dependencies heal before calling services.
+Demonstrate how memory exhaustion causes cascading degradation and how the **SCC Condensation Topological Planner** orders remediation actions bottom-up so dependencies heal before calling services.
 
 ### Procedure
-1. Inject **Memory Leak (`memory_leak`)** on persistence sink `node-d`.
-2. As `node-d` memory exceeds $90\%$, upstream processors `node-c` and `node-a` degrade due to connection wait times.
-3. TGNN identifies `node-d` as root cause, with `node-c` in propagation path.
-4. Recovery plan generates 2-step dependency sequence:
+1. Click **`Memory SCC`** (injects `memory_leak` on database sink `node-d`).
+2. As `node-d` memory exceeds $90\%$, upstream callers `node-c` and `node-a` degrade due to connection pool waits.
+3. TGNN identifies `node-d` as root cause, with `node-c` in the propagation cascade.
+4. Recovery Planner decomposes the affected subgraph into Strongly Connected Components (Tarjan's SCC algorithm) and executes bottom-up topological ordering:
    - **Step 1**: Restart container `node-d` (dependency sink recovers first).
-   - **Step 2**: Reconnect / restart `node-c` (caller recovers second).
-5. Execute plan: verify in the event log that Step 1 executes strictly before Step 2.
-6. Both nodes return to green `healthy` state.
+   - **Step 2**: Reconnect / restart `node-c` (calling service recovers second).
+5. Verify in **`RecoveryLog`** that Step 1 finishes before Step 2 begins.
+6. Memory resets to nominal $<30\%$ and the entire cluster turns healthy.
 
 ---
 
-## 6. Verification Commands (CLI)
+## 7. Demo Scenario 4: Rollback & Verification Failure Handling
 
-Verify system state directly via HTTP:
+### Goal
+Demonstrate how reversible actions can be rolled back in one click, and how failed remediations automatically escalate.
+
+### Procedure
+1. Locate any completed `Verified` action in **`RecoveryLog`**.
+2. Click the **`Rollback`** button.
+3. Control plane invokes `POST /api/recovery/rollback/{id}`:
+   - Resets replica counts or restores traffic routes.
+   - Updates execution status to **`RolledBack`** (purple badge).
+   - Records an immutable security audit log entry.
+
+---
+
+## 8. Demo Scenario 5: Dynamic Scalability (Any N Services)
+
+### Goal
+Demonstrate that Aegis is completely domain-agnostic and dynamically monitors any generic cloud architecture.
+
+### Procedure
+1. Switch to **Settings / Topology** or issue the bulk import API command:
+   ```bash
+   curl -X POST http://localhost:8000/api/registry/import \
+     -H "Content-Type: application/json" \
+     -H "Cookie: aegis_session=..." \
+     -d @configs/topology.example.yaml
+   ```
+2. In the navbar, toggle the mode pill or select the imported cluster.
+3. Observe **`TopologyGraph`** instantly rendering the expanded 25+ node topology with zero code changes or restarts!
+
+---
+
+## 9. Verification Commands (CLI Quick Reference)
 
 ```bash
-# 1. Check mesh health
+# 1. Check live mesh telemetry
 curl -s http://localhost:8000/api/telemetry/services | jq .
 
-# 2. Inject latency chaos via API
+# 2. Inject chaos fault
 curl -s -X POST http://localhost:8000/api/chaos/inject \
   -H "Content-Type: application/json" \
-  -d '{"faultType":"latency","targetServiceId":"node-b","durationSeconds":30}' | jq .
+  -d '{"faultType":"cpu_stress","targetServiceId":"node-c","durationSeconds":30}' | jq .
 
 # 3. Fetch latest TGNN prediction & root cause
 curl -s http://localhost:8000/api/prediction/latest | jq .
 
-# 4. Fetch recovery recommendations and risk scores
-curl -s http://localhost:8000/api/recovery/recommendations | jq .
+# 4. Check autonomous recovery status
+curl -s http://localhost:8000/api/recovery/autonomous | jq .
 
-# 5. Execute remediation
-curl -s -X POST http://localhost:8000/api/recovery/execute \
-  -H "Content-Type: application/json" \
-  -d '{"actionType":"restart","targetServiceId":"node-b"}' | jq .
+# 5. Check audit logs
+curl -s http://localhost:8000/api/audit/logs | jq .
 ```
