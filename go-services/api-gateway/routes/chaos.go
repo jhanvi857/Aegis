@@ -28,12 +28,13 @@ func getChaosEngineURL() string {
 }
 
 func ChaosInjectHandler(w http.ResponseWriter, r *http.Request) {
-	if AppConfig != nil {
-		if !AppConfig.ChaosEnabled {
+	cfg := GetConfig()
+	if cfg != nil {
+		if !cfg.ChaosEnabled {
 			http.Error(w, `{"error":"Chaos injection is disabled. Set CHAOS_ENABLED=true in staging or development environments."}`, http.StatusForbidden)
 			return
 		}
-		if AppConfig.Environment == "production" && !AppConfig.AllowProductionChaos {
+		if cfg.Environment == "production" && !cfg.AllowProductionChaos {
 			http.Error(w, `{"error":"Chaos injection is strictly restricted to staging/development environments"}`, http.StatusForbidden)
 			return
 		}

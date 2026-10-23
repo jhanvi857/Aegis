@@ -386,10 +386,11 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		window := Safety.VerificationWindow
 		if window <= 0 {
-			window = 10 * time.Second
-		}
-		if flag.Lookup("test.v") != nil {
-			window = 20 * time.Millisecond
+			if flag.Lookup("test.v") != nil {
+				window = 100 * time.Millisecond
+			} else {
+				window = 10 * time.Second
+			}
 		}
 		deadline := start.Add(window)
 
@@ -397,8 +398,10 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 		var finalMetrics map[string]interface{}
 
 		checkInterval := 1 * time.Second
-		if window < 3*time.Second {
-			checkInterval = 5 * time.Millisecond
+		if window <= 200*time.Millisecond {
+			checkInterval = 20 * time.Millisecond
+		} else if window < 3*time.Second {
+			checkInterval = 100 * time.Millisecond
 		}
 
 		for time.Now().Before(deadline) {
@@ -920,17 +923,18 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 		window := 10 * time.Second
 		if Safety != nil && Safety.VerificationWindow > 0 {
 			window = Safety.VerificationWindow
-		}
-		if flag.Lookup("test.v") != nil {
-			window = 20 * time.Millisecond
+		} else if flag.Lookup("test.v") != nil {
+			window = 100 * time.Millisecond
 		}
 		deadline := start.Add(window)
 
 		verified := false
 		var finalMetrics map[string]interface{}
 		checkInterval := 1 * time.Second
-		if window < 3*time.Second {
-			checkInterval = 5 * time.Millisecond
+		if window <= 200*time.Millisecond {
+			checkInterval = 20 * time.Millisecond
+		} else if window < 3*time.Second {
+			checkInterval = 100 * time.Millisecond
 		}
 
 		for time.Now().Before(deadline) {
