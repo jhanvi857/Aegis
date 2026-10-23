@@ -114,6 +114,9 @@ fault_family_actions:
     primary: "REROUTE_TRAFFIC"
     secondary: ["RESTART"]
   thread_exhaustion:
-    primary: "SCALE_UP"
+    primary: "INCREASE_POOL"
+    secondary: ["SCALE_UP", "RESTART"]
+  slow_query:
+    primary: "INCREASE_POOL"
     secondary: ["RESTART"]
 
