@@ -185,8 +185,23 @@ type ControlPlaneState struct {
 	AutonomousRecovery    bool
 }
 
+func newControlPlaneState() *ControlPlaneState {
+	return &ControlPlaneState{
+		Services:              make(map[string]*Microservice),
+		ServiceOrder:          make([]string, 0),
+		ActiveFaults:          make(map[string]*ChaosInjection),
+		Alerts:                make([]LiveAlert, 0),
+		Logs:                  make([]LogEntry, 0),
+		RecoveryHistory:       make([]RecoveryHistoryItem, 0),
+		Experiments:           make([]Experiment, 0),
+		LatestRecommendations: make([]RecoveryAction, 0),
+		ApprovedPlans:         make(map[string]bool),
+		ApprovedRecords:       make(map[string]ApprovalRecord),
+	}
+}
+
 var (
-	State           *ControlPlaneState
+	State           *ControlPlaneState = newControlPlaneState()
 	stateTickerOnce sync.Once
 )
 
@@ -197,19 +212,24 @@ func InitState() {
 		autoRecovery = strings.EqualFold(env, "true")
 	}
 
-	State = &ControlPlaneState{
-		Services:              make(map[string]*Microservice),
-		ActiveFaults:          make(map[string]*ChaosInjection),
-		Alerts:                make([]LiveAlert, 0),
-		Logs:                  make([]LogEntry, 0),
-		RecoveryHistory:       make([]RecoveryHistoryItem, 0),
-		Experiments:           make([]Experiment, 0),
-		LatestRecommendations: make([]RecoveryAction, 0),
-		ApprovedPlans:         make(map[string]bool),
-		ApprovedRecords:       make(map[string]ApprovalRecord),
-		DemoMode:              demoMode,
-		AutonomousRecovery:    autoRecovery,
+	if State == nil {
+		State = newControlPlaneState()
 	}
+
+	State.mu.Lock()
+	State.Services = make(map[string]*Microservice)
+	State.ServiceOrder = make([]string, 0)
+	State.ActiveFaults = make(map[string]*ChaosInjection)
+	State.Alerts = make([]LiveAlert, 0)
+	State.Logs = make([]LogEntry, 0)
+	State.RecoveryHistory = make([]RecoveryHistoryItem, 0)
+	State.Experiments = make([]Experiment, 0)
+	State.LatestRecommendations = make([]RecoveryAction, 0)
+	State.ApprovedPlans = make(map[string]bool)
+	State.ApprovedRecords = make(map[string]ApprovalRecord)
+	State.DemoMode = demoMode
+	State.AutonomousRecovery = autoRecovery
+	State.mu.Unlock()
 
 	topoPath := os.Getenv("TOPOLOGY_PATH")
 	if topoPath == "" {
