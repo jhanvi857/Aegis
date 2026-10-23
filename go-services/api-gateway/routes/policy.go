@@ -374,7 +374,13 @@ func StatusCheckHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	id := strings.TrimPrefix(r.URL.Path, "/api/recovery/status/")
 
-	exec, err := AuthStorage.GetRecoveryExecution(r.Context(), id)
+	store := GetAuthStore()
+	if store == nil {
+		http.Error(w, `{"error":"Store unavailable"}`, http.StatusInternalServerError)
+		return
+	}
+
+	exec, err := store.GetRecoveryExecution(r.Context(), id)
 	if err != nil {
 		http.Error(w, `{"error":"Recovery execution record not found"}`, http.StatusNotFound)
 		return

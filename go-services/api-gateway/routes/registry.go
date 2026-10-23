@@ -19,7 +19,7 @@ func ListRegistryServicesHandler(w http.ResponseWriter, r *http.Request) {
 	cluster := r.URL.Query().Get("clusterId")
 	tier := r.URL.Query().Get("tier")
 
-	services, err := AuthStorage.ListServices(r.Context(), ns, cluster)
+	services, err := GetAuthStore().ListServices(r.Context(), ns, cluster)
 	if err != nil {
 		http.Error(w, `{"error":"Failed to query service registry"}`, http.StatusInternalServerError)
 		return
@@ -74,7 +74,7 @@ func CreateRegistryServiceHandler(w http.ResponseWriter, r *http.Request) {
 		svc.MaxReplicas = 10
 	}
 
-	if err := AuthStorage.UpsertService(r.Context(), &svc); err != nil {
+	if err := GetAuthStore().UpsertService(r.Context(), &svc); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"Failed to register service: %s"}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
@@ -115,7 +115,7 @@ func GetRegistryServiceHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	svc, err := AuthStorage.GetService(r.Context(), id)
+	svc, err := GetAuthStore().GetService(r.Context(), id)
 	if err != nil {
 		http.Error(w, `{"error":"Service not found"}`, http.StatusNotFound)
 		return
@@ -128,7 +128,7 @@ func UpdateRegistryServiceHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	existing, err := AuthStorage.GetService(r.Context(), id)
+	existing, err := GetAuthStore().GetService(r.Context(), id)
 	if err != nil {
 		http.Error(w, `{"error":"Service not found"}`, http.StatusNotFound)
 		return
@@ -166,7 +166,7 @@ func UpdateRegistryServiceHandler(w http.ResponseWriter, r *http.Request) {
 		existing.Status = update.Status
 	}
 
-	if err := AuthStorage.UpsertService(r.Context(), existing); err != nil {
+	if err := GetAuthStore().UpsertService(r.Context(), existing); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"Failed to update service: %s"}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
@@ -191,7 +191,7 @@ func DeleteRegistryServiceHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	if err := AuthStorage.DeleteService(r.Context(), id); err != nil {
+	if err := GetAuthStore().DeleteService(r.Context(), id); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"Failed to delete service: %s"}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
@@ -232,7 +232,7 @@ func ListRegistryEdgesHandler(w http.ResponseWriter, r *http.Request) {
 	ns := r.URL.Query().Get("namespace")
 	cluster := r.URL.Query().Get("clusterId")
 
-	edges, err := AuthStorage.ListEdges(r.Context(), ns, cluster)
+	edges, err := GetAuthStore().ListEdges(r.Context(), ns, cluster)
 	if err != nil {
 		http.Error(w, `{"error":"Failed to query topology edges"}`, http.StatusInternalServerError)
 		return
@@ -266,7 +266,7 @@ func CreateRegistryEdgeHandler(w http.ResponseWriter, r *http.Request) {
 	edge.IsManualOverride = true
 	edge.Confidence = 1.0
 
-	if err := AuthStorage.UpsertEdge(r.Context(), &edge); err != nil {
+	if err := GetAuthStore().UpsertEdge(r.Context(), &edge); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"Failed to create edge: %s"}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
@@ -301,7 +301,7 @@ func DeleteRegistryEdgeHandler(w http.ResponseWriter, r *http.Request) {
 	ns := r.URL.Query().Get("namespace")
 	cluster := r.URL.Query().Get("clusterId")
 
-	if err := AuthStorage.DeleteEdge(r.Context(), source, target, ns, cluster); err != nil {
+	if err := GetAuthStore().DeleteEdge(r.Context(), source, target, ns, cluster); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"Failed to delete edge: %s"}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
@@ -388,7 +388,7 @@ func ImportTopologyHandler(w http.ResponseWriter, r *http.Request) {
 		if s.Status == "" {
 			s.Status = "healthy"
 		}
-		_ = AuthStorage.UpsertService(r.Context(), &s)
+		_ = GetAuthStore().UpsertService(r.Context(), &s)
 	}
 
 	// 2. Upsert all imported edges
@@ -397,7 +397,7 @@ func ImportTopologyHandler(w http.ResponseWriter, r *http.Request) {
 		e.ClusterID = cluster
 		e.IsManualOverride = true
 		e.Confidence = 1.0
-		_ = AuthStorage.UpsertEdge(r.Context(), &e)
+		_ = GetAuthStore().UpsertEdge(r.Context(), &e)
 	}
 
 	// 3. Create versioned snapshot record
@@ -426,7 +426,7 @@ func ImportTopologyHandler(w http.ResponseWriter, r *http.Request) {
 		CreatedBy: creator,
 		CreatedAt: time.Now().UTC(),
 	}
-	_ = AuthStorage.CreateTopologyVersion(r.Context(), ver)
+	_ = GetAuthStore().CreateTopologyVersion(r.Context(), ver)
 
 	// 4. Synchronize in-memory State
 	State.mu.Lock()
@@ -477,7 +477,7 @@ func ImportTopologyHandler(w http.ResponseWriter, r *http.Request) {
 
 func ListTopologyVersionsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	versions, err := AuthStorage.ListTopologyVersions(r.Context(), 20)
+	versions, err := GetAuthStore().ListTopologyVersions(r.Context(), 20)
 	if err != nil {
 		http.Error(w, `{"error":"Failed to query topology versions"}`, http.StatusInternalServerError)
 		return

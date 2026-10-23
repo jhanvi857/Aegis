@@ -13,6 +13,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aegis/go-services/api-gateway/storage"
@@ -20,15 +21,28 @@ import (
 )
 
 var (
-	AuthStorage storage.Store = storage.NewMemoryStore()
+	authStorageMu sync.RWMutex
+	authStorage   storage.Store = storage.NewMemoryStore()
 )
 
 func SetAuthStore(s storage.Store) {
-	AuthStorage = s
+	authStorageMu.Lock()
+	defer authStorageMu.Unlock()
+	authStorage = s
+}
+
+func GetAuthStore() storage.Store {
+	authStorageMu.RLock()
+	defer authStorageMu.RUnlock()
+	return authStorage
 }
 
 // InitBootstrapAdmin creates an initial admin account if configured via environment variables
 func InitBootstrapAdmin(ctx context.Context) {
+	store := GetAuthStore()
+	if store == nil {
+		return
+	}
 	adminEmail := os.Getenv("AEGIS_BOOTSTRAP_ADMIN_EMAIL")
 	adminPass := os.Getenv("AEGIS_BOOTSTRAP_ADMIN_PASSWORD")
 	if adminEmail == "" || adminPass == "" {
@@ -36,7 +50,7 @@ func InitBootstrapAdmin(ctx context.Context) {
 	}
 
 	adminEmail = strings.ToLower(strings.TrimSpace(adminEmail))
-	_, err := AuthStorage.GetUserByEmail(ctx, adminEmail)
+	_, err := store.GetUserByEmail(ctx, adminEmail)
 	if err == nil {
 		// Admin already exists
 		return
@@ -65,7 +79,7 @@ func InitBootstrapAdmin(ctx context.Context) {
 		UpdatedAt:    time.Now().UTC(),
 	}
 
-	if err := AuthStorage.CreateUser(ctx, adminUser); err != nil {
+	if err := store.CreateUser(ctx, adminUser); err != nil {
 		log.Printf("[auth] Failed to persist bootstrap admin: %v", err)
 	} else {
 		log.Printf("[auth] Bootstrap admin created: %s (role: %s)", adminEmail, storage.RoleAdmin)
@@ -102,7 +116,7 @@ func generateSecureToken() (string, error) {
 func GetUserFromRequest(r *http.Request) (*storage.User, error) {
 	caller := GetCaller(r)
 	if caller != nil && !caller.IsAPIKey {
-		return AuthStorage.GetUserByID(r.Context(), caller.ActorID)
+		return GetAuthStore().GetUserByID(r.Context(), caller.ActorID)
 	}
 
 	authHeader := r.Header.Get("Authorization")
@@ -114,7 +128,7 @@ func GetUserFromRequest(r *http.Request) (*storage.User, error) {
 		return nil, errors.New("malformed or empty bearer token")
 	}
 
-	session, user, err := AuthStorage.GetSession(r.Context(), token)
+	session, user, err := GetAuthStore().GetSession(r.Context(), token)
 	if err != nil || session == nil || user == nil {
 		return nil, errors.New("invalid or expired session token")
 	}
@@ -141,7 +155,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	user, err := AuthStorage.GetUserByEmail(ctx, email)
+	user, err := GetAuthStore().GetUserByEmail(ctx, email)
 	if err != nil {
 		LogAudit(r, "auth.login", "", "", "", fmt.Sprintf("email: %s", email), "FAILED", "Invalid email or credentials")
 		w.WriteHeader(http.StatusUnauthorized)
@@ -172,7 +186,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 			LogAudit(r, "auth.login", "", "", "", fmt.Sprintf("email: %s, attempt: %d", email, failedAttempts), "FAILED", "Invalid password")
 		}
 
-		_ = AuthStorage.UpdateUserLoginAttempt(ctx, email, failedAttempts, lockedUntil)
+		_ = GetAuthStore().UpdateUserLoginAttempt(ctx, email, failedAttempts, lockedUntil)
 
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Invalid email or credentials"})
@@ -180,7 +194,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Successful login: reset failed attempts counter
-	_ = AuthStorage.UpdateUserLoginAttempt(ctx, email, 0, nil)
+	_ = GetAuthStore().UpdateUserLoginAttempt(ctx, email, 0, nil)
 
 	token, err := generateSecureToken()
 	if err != nil {
@@ -196,7 +210,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: time.Now().UTC(),
 	}
 
-	if err := AuthStorage.CreateSession(ctx, session); err != nil {
+	if err := GetAuthStore().CreateSession(ctx, session); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Failed to persist session"})
 		return
@@ -236,7 +250,7 @@ func SignupHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	if _, err := AuthStorage.GetUserByEmail(ctx, email); err == nil {
+	if _, err := GetAuthStore().GetUserByEmail(ctx, email); err == nil {
 		w.WriteHeader(http.StatusConflict)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "An operator account with this email already exists"})
 		return
@@ -245,7 +259,7 @@ func SignupHandler(w http.ResponseWriter, r *http.Request) {
 	// Server-side RBAC: Role is NEVER taken from signup input.
 	// First user = admin (or if matches bootstrap admin env var); others default to viewer.
 	role := storage.RoleViewer
-	totalUsers, err := AuthStorage.CountUsers(ctx)
+	totalUsers, err := GetAuthStore().CountUsers(ctx)
 	if err != nil {
 		log.Printf("[auth] Error checking user count: %v", err)
 	}
@@ -280,7 +294,7 @@ func SignupHandler(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:    time.Now().UTC(),
 	}
 
-	if err := AuthStorage.CreateUser(ctx, newUser); err != nil {
+	if err := GetAuthStore().CreateUser(ctx, newUser); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Failed to create user account"})
 		return
@@ -299,7 +313,7 @@ func SignupHandler(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 		CreatedAt: time.Now().UTC(),
 	}
-	_ = AuthStorage.CreateSession(ctx, session)
+	_ = GetAuthStore().CreateSession(ctx, session)
 
 	LogAudit(r, "auth.signup", "", "", "", fmt.Sprintf("user_id: %s, email: %s, role: %s", newUser.ID, newUser.Email, newUser.Role), "SUCCESS", "")
 
@@ -340,7 +354,7 @@ func GetMeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := AuthStorage.GetUserByID(r.Context(), caller.ActorID)
+	user, err := GetAuthStore().GetUserByID(r.Context(), caller.ActorID)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "User not found"})
@@ -361,7 +375,7 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer"))
 	if token != "" {
-		_ = AuthStorage.RevokeSession(r.Context(), token)
+		_ = GetAuthStore().RevokeSession(r.Context(), token)
 		LogAudit(r, "auth.logout", "", "", "", "Session revoked", "SUCCESS", "")
 	}
 
@@ -386,14 +400,14 @@ func RevokeSessionHandler(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	if req.Token != "" {
-		if err := AuthStorage.RevokeSession(ctx, req.Token); err != nil {
+		if err := GetAuthStore().RevokeSession(ctx, req.Token); err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":"Failed to revoke session: %v"}`, err), http.StatusInternalServerError)
 			return
 		}
 		LogAudit(r, "auth.revoke_token", "", "", "", req.Token, "SUCCESS", "")
 	}
 	if req.UserID != "" {
-		if err := AuthStorage.RevokeUserSessions(ctx, req.UserID); err != nil {
+		if err := GetAuthStore().RevokeUserSessions(ctx, req.UserID); err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":"Failed to revoke user sessions: %v"}`, err), http.StatusInternalServerError)
 			return
 		}
@@ -406,7 +420,7 @@ func RevokeSessionHandler(w http.ResponseWriter, r *http.Request) {
 // ListUsersHandler returns all registered users
 func ListUsersHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	users, err := AuthStorage.ListUsers(r.Context())
+	users, err := GetAuthStore().ListUsers(r.Context())
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"Failed to list users: %v"}`, err), http.StatusInternalServerError)
 		return
@@ -436,7 +450,7 @@ func UpdateUserRoleHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := AuthStorage.UpdateUserRole(r.Context(), targetUserID, role); err != nil {
+	if err := GetAuthStore().UpdateUserRole(r.Context(), targetUserID, role); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"Failed to update role: %v"}`, err), http.StatusInternalServerError)
 		return
 	}
@@ -524,7 +538,7 @@ func CreateAPIKeyHandler(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: time.Now().UTC(),
 	}
 
-	if err := AuthStorage.CreateAPIKey(r.Context(), apiKeyObj); err != nil {
+	if err := GetAuthStore().CreateAPIKey(r.Context(), apiKeyObj); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"Failed to store API key: %v"}`, err), http.StatusInternalServerError)
 		return
 	}
@@ -547,7 +561,7 @@ func CreateAPIKeyHandler(w http.ResponseWriter, r *http.Request) {
 // ListAPIKeysHandler lists all machine API keys (admin only)
 func ListAPIKeysHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	keys, err := AuthStorage.ListAPIKeys(r.Context())
+	keys, err := GetAuthStore().ListAPIKeys(r.Context())
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"Failed to list API keys: %v"}`, err), http.StatusInternalServerError)
 		return
@@ -561,7 +575,7 @@ func RevokeAPIKeyHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	keyID := vars["id"]
 
-	if err := AuthStorage.RevokeAPIKey(r.Context(), keyID); err != nil {
+	if err := GetAuthStore().RevokeAPIKey(r.Context(), keyID); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"Failed to revoke API key: %v"}`, err), http.StatusInternalServerError)
 		return
 	}
@@ -584,7 +598,7 @@ func ListAuditLogsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	entries, err := AuthStorage.ListAuditLogs(r.Context(), limit)
+	entries, err := GetAuthStore().ListAuditLogs(r.Context(), limit)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"Failed to list audit logs: %v"}`, err), http.StatusInternalServerError)
 		return

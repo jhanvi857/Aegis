@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"math"
@@ -184,7 +185,10 @@ type ControlPlaneState struct {
 	AutonomousRecovery    bool
 }
 
-var State *ControlPlaneState
+var (
+	State           *ControlPlaneState
+	stateTickerOnce sync.Once
+)
 
 func InitState() {
 	demoMode := strings.EqualFold(os.Getenv("DEMO_MODE"), "true") || strings.EqualFold(os.Getenv("AEGIS_DEMO_MODE"), "true")
@@ -225,8 +229,14 @@ func InitState() {
 
 	_ = LoadTopology(topoPath)
 
-	// Start background maintenance loop
-	go State.runTicker()
+	// Start background maintenance loop once
+	stateTickerOnce.Do(func() {
+		// Do not start background maintenance ticker during automated test runs
+		if flag.Lookup("test.v") != nil || os.Getenv("GO_TEST") == "1" {
+			return
+		}
+		go State.runTicker()
+	})
 }
 
 func LoadTopology(topoPath string) error {
@@ -417,8 +427,9 @@ func (s *ControlPlaneState) runTicker() {
 		nowTime := time.Now().Format("15:04:05")
 
 		// Periodic synchronization with dynamic service registry (every 5 seconds)
-		if AuthStorage != nil && tickCounter%5 == 0 {
-			if dbServices, err := AuthStorage.ListServices(context.Background(), "", ""); err == nil && len(dbServices) > 0 {
+		store := GetAuthStore()
+		if store != nil && tickCounter%5 == 0 {
+			if dbServices, err := store.ListServices(context.Background(), "", ""); err == nil && len(dbServices) > 0 {
 				for _, dbs := range dbServices {
 					if _, exists := s.Services[dbs.ID]; !exists {
 						s.Services[dbs.ID] = &Microservice{
