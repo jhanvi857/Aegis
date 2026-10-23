@@ -31,7 +31,8 @@ func GetCaller(r *http.Request) *storage.CallerContext {
 
 // LogAudit logs an audit entry using the current request's caller context
 func LogAudit(r *http.Request, action string, targetSvc string, risk string, approval string, payload string, result string, errMsg string) {
-	if AuthStorage == nil {
+	store := GetAuthStore()
+	if store == nil {
 		return
 	}
 	caller := GetCaller(r)
@@ -62,7 +63,7 @@ func LogAudit(r *http.Request, action string, targetSvc string, risk string, app
 		ErrorMessage:    errMsg,
 		IPAddress:       ip,
 	}
-	_ = AuthStorage.AppendAuditLog(r.Context(), entry)
+	_ = store.AppendAuditLog(r.Context(), entry)
 }
 
 // AuthMiddleware enforces authentication for all non-whitelisted routes

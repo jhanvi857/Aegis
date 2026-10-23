@@ -52,28 +52,31 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if idempotencyKey != "" {
-		existingExec, err := AuthStorage.GetRecoveryExecutionByIdempotencyKey(r.Context(), idempotencyKey)
-		if err == nil && existingExec != nil {
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"idempotent":       true,
-				"idempotentReplay": true,
-				"actionId":         existingExec.ActionID,
-				"planId":           existingExec.PlanID,
-				"status":           existingExec.Status,
-				"targetServiceId":  existingExec.TargetServiceID,
-				"actionType":       existingExec.ActionType,
-				"riskLevel":        existingExec.RiskLevel,
-				"riskScore":        existingExec.RiskScore,
-				"requiresApproval": existingExec.RequiresApproval,
-				"duration":         existingExec.DurationStr,
-				"metricsBefore":    existingExec.MetricsBefore,
-				"metricsAfter":     existingExec.MetricsAfter,
-				"riskBefore":       existingExec.RiskBefore,
-				"riskAfter":        existingExec.RiskAfter,
-				"message":          "Idempotent replay: returning previously recorded execution result.",
-			})
-			return
+		store := GetAuthStore()
+		if store != nil {
+			existingExec, err := store.GetRecoveryExecutionByIdempotencyKey(r.Context(), idempotencyKey)
+			if err == nil && existingExec != nil {
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
+					"idempotent":       true,
+					"idempotentReplay": true,
+					"actionId":         existingExec.ActionID,
+					"planId":           existingExec.PlanID,
+					"status":           existingExec.Status,
+					"targetServiceId":  existingExec.TargetServiceID,
+					"actionType":       existingExec.ActionType,
+					"riskLevel":        existingExec.RiskLevel,
+					"riskScore":        existingExec.RiskScore,
+					"requiresApproval": existingExec.RequiresApproval,
+					"duration":         existingExec.DurationStr,
+					"metricsBefore":    existingExec.MetricsBefore,
+					"metricsAfter":     existingExec.MetricsAfter,
+					"riskBefore":       existingExec.RiskBefore,
+					"riskAfter":        existingExec.RiskAfter,
+					"message":          "Idempotent replay: returning previously recorded execution result.",
+				})
+				return
+			}
 		}
 	}
 
@@ -312,7 +315,9 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 		RiskBefore:       predBefore.FailureProbability,
 		StartedAt:        now.UTC(),
 	}
-	_ = AuthStorage.CreateRecoveryExecution(r.Context(), execRecord)
+	if store := GetAuthStore(); store != nil {
+		_ = store.CreateRecoveryExecution(r.Context(), execRecord)
+	}
 
 	// Revert any active chaos faults on this service
 	stoppedFaultIDs := make([]string, 0)
@@ -467,7 +472,9 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 			EscalatedAction: escalatedAction,
 			CompletedAt:     &completedAt,
 		}
-		_ = AuthStorage.UpdateRecoveryExecution(context.Background(), updateExec)
+		if store := GetAuthStore(); store != nil {
+			_ = store.UpdateRecoveryExecution(context.Background(), updateExec)
+		}
 		Safety.CompleteDispatch(pID)
 
 		// Record in in-memory history
@@ -520,24 +527,26 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 
 func GetRecoveryHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	// First check database storage for persisted executions
-	executions, err := AuthStorage.ListRecoveryExecutions(r.Context(), 50)
-	if err == nil && len(executions) > 0 {
-		items := make([]RecoveryHistoryItem, 0, len(executions))
-		for _, e := range executions {
-			items = append(items, RecoveryHistoryItem{
-				ID:            e.ID,
-				Timestamp:     e.StartedAt.Format("15:04:05"),
-				ActionTitle:   fmt.Sprintf("Remediation: %s on %s", e.ActionType, e.TargetServiceID),
-				TargetService: e.TargetServiceID,
-				Status:        e.Status,
-				Duration:      e.DurationStr,
-				RiskBefore:    e.RiskBefore,
-				RiskAfter:     e.RiskAfter,
-			})
+	if store := GetAuthStore(); store != nil {
+		executions, err := store.ListRecoveryExecutions(r.Context(), 50)
+		if err == nil && len(executions) > 0 {
+			items := make([]RecoveryHistoryItem, 0, len(executions))
+			for _, e := range executions {
+				items = append(items, RecoveryHistoryItem{
+					ID:            e.ID,
+					Timestamp:     e.StartedAt.Format("15:04:05"),
+					ActionTitle:   fmt.Sprintf("Remediation: %s on %s", e.ActionType, e.TargetServiceID),
+					TargetService: e.TargetServiceID,
+					Status:        e.Status,
+					Duration:      e.DurationStr,
+					RiskBefore:    e.RiskBefore,
+					RiskAfter:     e.RiskAfter,
+				})
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(items)
+			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(items)
-		return
 	}
 
 	State.mu.RLock()
@@ -558,7 +567,13 @@ func RollbackRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	actionID := vars["id"]
 
-	exec, err := AuthStorage.GetRecoveryExecution(r.Context(), actionID)
+	store := GetAuthStore()
+	if store == nil {
+		http.Error(w, `{"error":"Recovery store unavailable"}`, http.StatusInternalServerError)
+		return
+	}
+
+	exec, err := store.GetRecoveryExecution(r.Context(), actionID)
 	if err != nil {
 		http.Error(w, `{"error":"Recovery execution record not found"}`, http.StatusNotFound)
 		return
@@ -589,7 +604,7 @@ func RollbackRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	exec.Status = "RolledBack"
 	exec.CompletedAt = &now
-	_ = AuthStorage.UpdateRecoveryExecution(r.Context(), exec)
+	_ = store.UpdateRecoveryExecution(r.Context(), exec)
 
 	LogAudit(r, "recovery.rollback", exec.TargetServiceID, exec.RiskLevel, "", fmt.Sprintf("action: %s, plan_id: %s", exec.ActionType, exec.ID), "SUCCESS", "")
 
@@ -822,8 +837,8 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 		RiskBefore:       predBefore.FailureProbability,
 		StartedAt:        now.UTC(),
 	}
-	if AuthStorage != nil {
-		_ = AuthStorage.CreateRecoveryExecution(context.Background(), execRecord)
+	if store := GetAuthStore(); store != nil {
+		_ = store.CreateRecoveryExecution(context.Background(), execRecord)
 	}
 
 	// Revert any active chaos faults on this service
@@ -959,8 +974,8 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 			RiskAfter:    riskAfter,
 			CompletedAt:  &completedAt,
 		}
-		if AuthStorage != nil {
-			_ = AuthStorage.UpdateRecoveryExecution(context.Background(), updateExec)
+		if store := GetAuthStore(); store != nil {
+			_ = store.UpdateRecoveryExecution(context.Background(), updateExec)
 		}
 
 		State.mu.Lock()
@@ -987,8 +1002,8 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 	}(planID, targetID, actionType, actionTitle, svcName, predBefore.FailureProbability)
 
 	// Record audit log
-	if AuthStorage != nil {
-		_ = AuthStorage.AppendAuditLog(context.Background(), &storage.AuditLogEntry{
+	if store := GetAuthStore(); store != nil {
+		_ = store.AppendAuditLog(context.Background(), &storage.AuditLogEntry{
 			Timestamp:       now.UTC(),
 			ActorID:         "system",
 			ActorEmail:      "aegis-autonomous-agent@system.internal",

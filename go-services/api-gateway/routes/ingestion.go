@@ -75,7 +75,11 @@ func IngestSpansHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		isErr := span.StatusCode >= 400 || (span.Attributes != nil && span.Attributes["error"] == true)
-		edge, err := AuthStorage.AutoDiscoverSpanEdge(r.Context(), source, target, ns, cluster, span.DurationMs, isErr)
+		store := GetAuthStore()
+		if store == nil {
+			continue
+		}
+		edge, err := store.AutoDiscoverSpanEdge(r.Context(), source, target, ns, cluster, span.DurationMs, isErr)
 		if err == nil && edge != nil {
 			discoveredCount++
 			updatedEdges = append(updatedEdges, edge)
