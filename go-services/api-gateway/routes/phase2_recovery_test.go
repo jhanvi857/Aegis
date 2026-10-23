@@ -23,6 +23,7 @@ func setupPhase2TestEnvironment() storage.Store {
 	Safety.Reset()
 
 	// Configure mock topology with clear dependency chain: gateway -> node-a -> node-b -> node-c
+	State.mu.Lock()
 	State.Services = map[string]*Microservice{
 		"gateway": {
 			ID:           "gateway",
@@ -70,6 +71,7 @@ func setupPhase2TestEnvironment() storage.Store {
 		},
 	}
 	State.ServiceOrder = []string{"gateway", "node-a", "node-b", "node-c"}
+	State.mu.Unlock()
 	return store
 }
 
@@ -320,7 +322,9 @@ func TestPhase2_Recovery_IdempotencyKeyReplay(t *testing.T) {
 
 func TestPhase2_Recovery_DryRunSimulation(t *testing.T) {
 	setupPhase2TestEnvironment()
+	State.mu.RLock()
 	initialReplicas := State.Services["node-a"].Replicas
+	State.mu.RUnlock()
 
 	payload, _ := json.Marshal(map[string]interface{}{
 		"actionId":        "rec-scale-node-a",
@@ -344,9 +348,12 @@ func TestPhase2_Recovery_DryRunSimulation(t *testing.T) {
 		t.Errorf("expected dryRun: true in response, got %v", resp["dryRun"])
 	}
 	// Service replicas must remain completely unchanged
-	if State.Services["node-a"].Replicas != initialReplicas {
+	State.mu.RLock()
+	currReplicas := State.Services["node-a"].Replicas
+	State.mu.RUnlock()
+	if currReplicas != initialReplicas {
 		t.Errorf("dry-run must not mutate service replicas: before=%d, after=%d",
-			initialReplicas, State.Services["node-a"].Replicas)
+			initialReplicas, currReplicas)
 	}
 	// Cooldown must not be triggered by dry-run
 	if Safety.GetCooldownRemainingSec("node-a") > 0 {
@@ -379,7 +386,9 @@ func TestPhase2_Recovery_RollbackAction(t *testing.T) {
 	_ = store.CreateRecoveryExecution(context.Background(), execRecord)
 
 	// Simulate current scale state (replicas scaled from 2 to 4)
+	State.mu.Lock()
 	State.Services["node-a"].Replicas = 4
+	State.mu.Unlock()
 
 	// 2. Dispatch rollback via router
 	router := mux.NewRouter()
@@ -400,8 +409,11 @@ func TestPhase2_Recovery_RollbackAction(t *testing.T) {
 	}
 
 	// Service replicas should be reduced back
-	if State.Services["node-a"].Replicas != 2 {
-		t.Errorf("expected replicas reduced back to 2, got %d", State.Services["node-a"].Replicas)
+	State.mu.RLock()
+	restoredReplicas := State.Services["node-a"].Replicas
+	State.mu.RUnlock()
+	if restoredReplicas != 2 {
+		t.Errorf("expected replicas reduced back to 2, got %d", restoredReplicas)
 	}
 
 	// Storage record updated to RolledBack
@@ -417,6 +429,7 @@ func TestPhase2_Recovery_VerificationWindowAndEscalation(t *testing.T) {
 
 	// 1. Success case: execute restart, service metrics normalize, status becomes Verified
 	actionID := "rec-restart-gateway"
+	State.mu.Lock()
 	State.ApprovedPlans[actionID] = true
 	State.ApprovedRecords[actionID] = ApprovalRecord{
 		ActionID:        actionID,
@@ -424,6 +437,7 @@ func TestPhase2_Recovery_VerificationWindowAndEscalation(t *testing.T) {
 		ActionType:      "restart",
 		Approver:        "admin@enterprise.io",
 	}
+	State.mu.Unlock()
 
 	payload, _ := json.Marshal(map[string]interface{}{
 		"actionId":        actionID,
@@ -461,6 +475,7 @@ func TestPhase2_Recovery_VerificationWindowAndEscalation(t *testing.T) {
 	Safety.Reset()
 	Safety.VerificationWindow = 1100 * time.Millisecond
 	actionID2 := "rec-scale-node-b"
+	State.mu.Lock()
 	State.ApprovedPlans[actionID2] = true
 	State.ApprovedRecords[actionID2] = ApprovalRecord{
 		ActionID:        actionID2,
@@ -468,6 +483,7 @@ func TestPhase2_Recovery_VerificationWindowAndEscalation(t *testing.T) {
 		ActionType:      "scale",
 		Approver:        "admin@enterprise.io",
 	}
+	State.mu.Unlock()
 
 	payload2, _ := json.Marshal(map[string]interface{}{
 		"actionId":        actionID2,

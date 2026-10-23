@@ -2,6 +2,7 @@ package routes
 
 import (
 	"net/http"
+	"sync"
 
 	"github.com/aegis/go-services/api-gateway/config"
 	"github.com/aegis/go-services/api-gateway/storage"
@@ -9,10 +10,21 @@ import (
 	"github.com/gorilla/mux"
 )
 
-var AppConfig *config.Config
+var (
+	appConfigMu sync.RWMutex
+	AppConfig   *config.Config
+)
 
 func SetConfig(c *config.Config) {
+	appConfigMu.Lock()
+	defer appConfigMu.Unlock()
 	AppConfig = c
+}
+
+func GetConfig() *config.Config {
+	appConfigMu.RLock()
+	defer appConfigMu.RUnlock()
+	return AppConfig
 }
 
 // CorsMiddleware enables cross-origin requests respecting the configured CORS allowlist
@@ -21,8 +33,9 @@ func CorsMiddleware(next http.Handler) http.Handler {
 		origin := r.Header.Get("Origin")
 
 		allowed := false
-		if AppConfig != nil {
-			allowed = AppConfig.IsOriginAllowed(origin)
+		cfg := GetConfig()
+		if cfg != nil {
+			allowed = cfg.IsOriginAllowed(origin)
 		} else {
 			// Development fallback allowlist
 			if origin == "" || origin == "http://localhost:5173" || origin == "http://localhost:3000" || origin == "http://127.0.0.1:5173" || origin == "*" {

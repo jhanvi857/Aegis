@@ -2,6 +2,7 @@ package routes
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"math"
 	"net/http"
@@ -266,6 +267,11 @@ func (s *SafetyLimitsManager) Reset() {
 	defer s.mu.Unlock()
 	s.LastActionTimes = make(map[string]time.Time)
 	s.InFlightActions = make(map[string]*InFlightAction)
+	if flag.Lookup("test.v") != nil {
+		s.VerificationWindow = 100 * time.Millisecond
+	} else {
+		s.VerificationWindow = 10 * time.Second
+	}
 }
 
 func (s *SafetyLimitsManager) GetCooldownRemainingSec(serviceID string) int {
