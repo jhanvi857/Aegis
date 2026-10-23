@@ -1,113 +1,106 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/aegis/go-services/api-gateway/config"
 	"github.com/aegis/go-services/api-gateway/routes"
-	"github.com/gorilla/mux"
+	"github.com/aegis/go-services/api-gateway/storage"
+	"github.com/aegis/go-services/api-gateway/telemetry"
 )
 
-// corsMiddleware enables cross-origin requests from the React frontend
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept")
-
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusOK)
-			return
+func initStorage(cfg *config.Config) storage.Store {
+	if cfg.DatabaseURL != "" {
+		pgStore, err := storage.NewPostgresStore(cfg.DatabaseURL)
+		if err == nil {
+			telemetry.Logger.Info("storage", "Connected and migrated PostgreSQL storage", map[string]interface{}{
+				"database_url_configured": true,
+			})
+			return pgStore
 		}
+		telemetry.Logger.Warn("storage", fmt.Sprintf("Could not connect to PostgreSQL (%v), falling back to in-memory store", err))
+	} else {
+		telemetry.Logger.Info("storage", "No DATABASE_URL or POSTGRES_HOST provided; using in-memory store")
+	}
 
-		next.ServeHTTP(w, r)
-	})
+	return storage.NewMemoryStore()
 }
 
 func main() {
-	log.Println("[api-gateway] Aegis Control Plane API Gateway initializing...")
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		log.Fatalf("[api-gateway] Configuration error: %v", err)
+	}
+
+	// Initialize structured logger
+	telemetry.Logger.SetLevel(telemetry.ParseLogLevel(cfg.LogLevel))
+	telemetry.Logger.Info("system", "Aegis Control Plane API Gateway initializing...", map[string]interface{}{
+		"environment": cfg.Environment,
+		"port":        cfg.ServerPort,
+		"tls_enabled": cfg.TLSEnabled,
+		"demo_mode":   cfg.DemoMode,
+	})
+
+	// Inject config into routes
+	routes.SetConfig(cfg)
 
 	// Initialize dynamic state from topology configuration
 	routes.InitState()
 
 	// Initialize Python ML gRPC client
-	pythonGRPCAddr := os.Getenv("PYTHON_GRPC_ADDR")
-	if pythonGRPCAddr == "" {
-		pythonGRPCAddr = "localhost:50051"
-	}
-	routes.InitGRPCClient(pythonGRPCAddr)
+	routes.InitGRPCClient(cfg.PythonGRPCAddr)
 
-	r := mux.NewRouter()
+	// Initialize Storage & Bootstrap Admin
+	store := initStorage(cfg)
+	defer store.Close()
+	routes.InitBootstrapAdmin(context.Background())
 
-	// Apply CORS
-	r.Use(corsMiddleware)
-
-	// Health Check
-	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"UP","service":"api-gateway"}`))
-	}).Methods("GET", "OPTIONS")
-
-	// Authentication & Identity Routes
-	r.HandleFunc("/api/auth/login", routes.LoginHandler).Methods("POST", "OPTIONS")
-	r.HandleFunc("/api/auth/signup", routes.SignupHandler).Methods("POST", "OPTIONS")
-	r.HandleFunc("/api/auth/me", routes.GetMeHandler).Methods("GET", "OPTIONS")
-
-	// Topology Routes
-	r.HandleFunc("/api/topology", routes.TopologyHandler).Methods("GET", "OPTIONS")
-	r.HandleFunc("/api/topology/list", routes.TopologyListHandler).Methods("GET", "OPTIONS")
-	r.HandleFunc("/api/topology/select", routes.TopologySelectHandler).Methods("POST", "OPTIONS")
-
-	// Telemetry Routes
-	r.HandleFunc("/api/telemetry/services", routes.GetServicesHandler).Methods("GET", "OPTIONS")
-	r.HandleFunc("/api/telemetry/services/{id}", routes.GetServiceByIDHandler).Methods("GET", "OPTIONS")
-	r.HandleFunc("/api/telemetry/alerts", routes.GetAlertsHandler).Methods("GET", "OPTIONS")
-	r.HandleFunc("/api/telemetry/logs", routes.GetLogsHandler).Methods("GET", "OPTIONS")
-	r.HandleFunc("/api/experiments", routes.GetExperimentsHandler).Methods("GET", "OPTIONS")
-
-	// Chaos Engine Routes
-	r.HandleFunc("/api/chaos", routes.ChaosHandler).Methods("GET", "POST", "OPTIONS")
-	r.HandleFunc("/api/chaos/inject", routes.ChaosInjectHandler).Methods("POST", "OPTIONS")
-	r.HandleFunc("/api/chaos/stop/{id}", routes.ChaosStopHandler).Methods("POST", "OPTIONS")
-	r.HandleFunc("/api/chaos/active", routes.ChaosActiveHandler).Methods("GET", "OPTIONS")
-
-	// Prediction Routes
-	r.HandleFunc("/api/predict", routes.PredictHandler).Methods("GET", "POST", "OPTIONS")
-	r.HandleFunc("/api/prediction/latest", routes.GetLatestPredictionHandler).Methods("GET", "OPTIONS")
-	r.HandleFunc("/api/prediction/history", routes.GetPredictionHistoryHandler).Methods("GET", "OPTIONS")
-
-	// Autonomous Recovery Routes
-	r.HandleFunc("/api/recovery", routes.RecoveryHandler).Methods("GET", "POST", "OPTIONS")
-	r.HandleFunc("/api/recovery/recommendations", routes.GetRecommendationsHandler).Methods("GET", "OPTIONS")
-	r.HandleFunc("/api/recovery/pending", routes.GetPendingRecoveryHandler).Methods("GET", "OPTIONS")
-	r.HandleFunc("/api/recovery/approve", routes.ApproveRecoveryHandler).Methods("POST", "OPTIONS")
-	r.HandleFunc("/api/recovery/reject", routes.RejectRecoveryHandler).Methods("POST", "OPTIONS")
-	r.HandleFunc("/api/recovery/execute", routes.ExecuteRecoveryHandler).Methods("POST", "OPTIONS")
-	r.HandleFunc("/api/recovery/history", routes.GetRecoveryHistoryHandler).Methods("GET", "OPTIONS")
-
-	port := os.Getenv("API_GATEWAY_PORT")
-	if port == "" {
-		port = "8000"
-	}
+	// Build router with auth and RBAC
+	r := routes.SetupRouter(store)
 
 	srv := &http.Server{
-		Addr:    ":" + port,
-		Handler: r,
+		Addr:              ":" + cfg.ServerPort,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	go func() {
-		log.Printf("[api-gateway] Control plane listening on http://localhost:%s", port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("[api-gateway] Server error: %v", err)
+		if cfg.TLSEnabled {
+			telemetry.Logger.Info("server", fmt.Sprintf("Control plane listening on https://localhost:%s (TLS enabled)", cfg.ServerPort))
+			if err := srv.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile); err != nil && err != http.ErrServerClosed {
+				telemetry.Logger.Error("server", "Fatal TLS server error", err)
+				os.Exit(1)
+			}
+		} else {
+			telemetry.Logger.Info("server", fmt.Sprintf("Control plane listening on http://localhost:%s", cfg.ServerPort))
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				telemetry.Logger.Error("server", "Fatal HTTP server error", err)
+				os.Exit(1)
+			}
 		}
 	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	log.Println("[api-gateway] Shutting down...")
+	sig := <-quit
+
+	telemetry.Logger.Info("system", fmt.Sprintf("Received shutdown signal: %v. Initiating graceful shutdown...", sig))
+
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		telemetry.Logger.Error("system", "Server graceful shutdown error", err)
+	} else {
+		telemetry.Logger.Info("system", "Server shut down cleanly")
+	}
 }
+

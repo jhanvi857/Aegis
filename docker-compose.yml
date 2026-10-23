@@ -264,9 +264,13 @@ services:
       PYTHON_GRPC_ADDR: "python-ml:50051"
       CHAOS_ENGINE_URL: "http://chaos-engine:8091"
       RECOVERY_ENGINE_URL: "http://recovery-engine:8092"
+      DATABASE_URL: "postgres://aegis:aegissecretpassword@postgres:5432/aegis_db?sslmode=disable"
+      AEGIS_BOOTSTRAP_ADMIN_EMAIL: "admin@enterprise.io"
+      AEGIS_BOOTSTRAP_ADMIN_PASSWORD: "AdminSecretPassword#2026"
     volumes:
       - ./configs/topology.yaml:/etc/aegis/topology.yaml:ro
     depends_on:
+      - postgres
       - python-ml
       - chaos-engine
       - recovery-engine

@@ -28,6 +28,17 @@ func getChaosEngineURL() string {
 }
 
 func ChaosInjectHandler(w http.ResponseWriter, r *http.Request) {
+	if AppConfig != nil {
+		if !AppConfig.ChaosEnabled {
+			http.Error(w, `{"error":"Chaos injection is disabled. Set CHAOS_ENABLED=true in staging or development environments."}`, http.StatusForbidden)
+			return
+		}
+		if AppConfig.Environment == "production" && !AppConfig.AllowProductionChaos {
+			http.Error(w, `{"error":"Chaos injection is strictly restricted to staging/development environments"}`, http.StatusForbidden)
+			return
+		}
+	}
+
 	var req ChaosInjectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"Invalid request payload"}`, http.StatusBadRequest)
@@ -125,6 +136,8 @@ func ChaosInjectHandler(w http.ResponseWriter, r *http.Request) {
 		Message:     fmt.Sprintf("CHAOS ENGINE INJECTED: %s on %s (%ds duration)", title, svc.Name, req.DurationSec),
 	})
 
+	LogAudit(r, "chaos.inject", req.TargetServiceID, "CRITICAL", "", fmt.Sprintf("fault: %s, duration: %d", req.FaultType, req.DurationSec), "SUCCESS", "")
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(injection)
@@ -184,6 +197,8 @@ func ChaosStopHandler(w http.ResponseWriter, r *http.Request) {
 		Level:       "INFO",
 		Message:     fmt.Sprintf("CHAOS ENGINE CLEARED: Fault %s on %s terminated.", fault.Title, fault.TargetServiceName),
 	})
+
+	LogAudit(r, "chaos.stop", fault.TargetServiceID, "", "", fmt.Sprintf("fault_id: %s", id), "SUCCESS", "")
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{

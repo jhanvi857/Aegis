@@ -1,0 +1,209 @@
+version: "1.0"
+system_name: "google-online-boutique"
+description: "Industry standard 11-microservice Google Cloud Online Boutique deployment topology for Aegis self-healing verification"
+
+nodes:
+  - id: "frontend"
+    name: "Web Ingress Frontend"
+    type: "gateway"
+    host: "frontend.online-boutique.svc.cluster.local"
+    port: 80
+    health_endpoint: "/_healthz"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "cartservice"
+      - "productcatalogservice"
+      - "recommendationservice"
+      - "shippingservice"
+      - "checkoutservice"
+      - "adservice"
+    metadata:
+      role: "ingress"
+      tier: "tier-1-ingress"
+      namespace: "online-boutique"
+      owner: "frontend-team"
+      capabilities:
+        - "restart"
+        - "scale"
+        - "reroute_traffic"
+
+  - id: "checkoutservice"
+    name: "Checkout Orchestrator"
+    type: "service"
+    host: "checkoutservice.online-boutique.svc.cluster.local"
+    port: 5050
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "cartservice"
+      - "productcatalogservice"
+      - "currencyservice"
+      - "paymentservice"
+      - "shippingservice"
+      - "emailservice"
+    metadata:
+      role: "checkout"
+      tier: "tier-2-gateway"
+      namespace: "online-boutique"
+      owner: "checkout-team"
+      capabilities:
+        - "restart"
+        - "scale"
+
+  - id: "cartservice"
+    name: "Shopping Cart Service"
+    type: "service"
+    host: "cartservice.online-boutique.svc.cluster.local"
+    port: 7070
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "redis-cart"
+    metadata:
+      role: "cart"
+      tier: "tier-3-business"
+      namespace: "online-boutique"
+      owner: "cart-team"
+      capabilities:
+        - "restart"
+        - "scale"
+        - "increase_pool"
+
+  - id: "productcatalogservice"
+    name: "Product Catalog"
+    type: "service"
+    host: "productcatalogservice.online-boutique.svc.cluster.local"
+    port: 3550
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies: []
+    metadata:
+      role: "catalog"
+      tier: "tier-3-business"
+      namespace: "online-boutique"
+      owner: "catalog-team"
+      capabilities:
+        - "restart"
+        - "scale"
+        - "flush_cache"
+
+  - id: "currencyservice"
+    name: "Currency Converter"
+    type: "service"
+    host: "currencyservice.online-boutique.svc.cluster.local"
+    port: 7000
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies: []
+    metadata:
+      role: "currency"
+      tier: "tier-3-business"
+      namespace: "online-boutique"
+      owner: "fintech-team"
+      capabilities:
+        - "restart"
+        - "scale"
+
+  - id: "paymentservice"
+    name: "Payment Processor"
+    type: "service"
+    host: "paymentservice.online-boutique.svc.cluster.local"
+    port: 50051
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies: []
+    metadata:
+      role: "payment"
+      tier: "tier-3-business"
+      namespace: "online-boutique"
+      owner: "payment-team"
+      capabilities:
+        - "restart"
+        - "scale"
+        - "increase_pool"
+
+  - id: "shippingservice"
+    name: "Shipping Dispatcher"
+    type: "service"
+    host: "shippingservice.online-boutique.svc.cluster.local"
+    port: 50051
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies: []
+    metadata:
+      role: "shipping"
+      tier: "tier-3-business"
+      namespace: "online-boutique"
+      owner: "logistics-team"
+      capabilities:
+        - "restart"
+        - "scale"
+
+  - id: "emailservice"
+    name: "Email Notification Service"
+    type: "service"
+    host: "emailservice.online-boutique.svc.cluster.local"
+    port: 8080
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies: []
+    metadata:
+      role: "notification"
+      tier: "tier-4-infra"
+      namespace: "online-boutique"
+      owner: "messaging-team"
+      capabilities:
+        - "restart"
+        - "scale"
+
+  - id: "recommendationservice"
+    name: "ML Recommendation Engine"
+    type: "service"
+    host: "recommendationservice.online-boutique.svc.cluster.local"
+    port: 8080
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "productcatalogservice"
+    metadata:
+      role: "recommendation"
+      tier: "tier-3-business"
+      namespace: "online-boutique"
+      owner: "ai-team"
+      capabilities:
+        - "restart"
+        - "scale"
+
+  - id: "adservice"
+    name: "Ad Server"
+    type: "service"
+    host: "adservice.online-boutique.svc.cluster.local"
+    port: 9555
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies: []
+    metadata:
+      role: "ads"
+      tier: "tier-4-infra"
+      namespace: "online-boutique"
+      owner: "monetization-team"
+      capabilities:
+        - "restart"
+        - "scale"
+
+  - id: "redis-cart"
+    name: "Cart Key-Value Cache"
+    type: "service"
+    host: "redis-cart.online-boutique.svc.cluster.local"
+    port: 6379
+    health_endpoint: "/health"
+    metrics_endpoint: "/metrics"
+    dependencies: []
+    metadata:
+      role: "cache"
+      tier: "tier-4-infra"
+      namespace: "online-boutique"
+      owner: "data-infra"
+      capabilities:
+        - "restart"
+        - "flush_cache"
