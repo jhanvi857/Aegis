@@ -119,7 +119,7 @@ export const CustomGraphNode = memo(({ data, selected }: { data: CustomNodeData;
       {isUnconnected ? (
         <div className="mb-2 px-2 py-1 bg-amber-500/10 border border-amber-500/30 rounded text-[10px] text-amber-300 flex items-center space-x-1">
           <AlertTriangle className="w-3 h-3 shrink-0" />
-          <span className="font-medium">Unconnected — No Telemetry</span>
+          <span className="font-medium">Topology-only — No Telemetry</span>
         </div>
       ) : isUnmonitored ? (
         <div className="mb-2 px-2 py-1 bg-gray-800/80 border border-gray-700 rounded text-[10px] text-gray-300 flex items-center space-x-1">

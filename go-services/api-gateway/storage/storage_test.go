@@ -274,3 +274,21 @@ func TestTopologyService_UnmarshalOwnerImportShape(t *testing.T) {
 		t.Fatalf("expected workload to map to type, got %q", svc.Type)
 	}
 }
+
+func TestTopologyEdge_UnmarshalOwnerImportShape(t *testing.T) {
+	var edge TopologyEdge
+	err := json.Unmarshal([]byte(`{
+		"from":"checkout",
+		"to":"payments",
+		"type":"async"
+	}`), &edge)
+	if err != nil {
+		t.Fatalf("expected owner edge shape to decode: %v", err)
+	}
+	if edge.SourceServiceID != "checkout" || edge.TargetServiceID != "payments" {
+		t.Fatalf("expected from/to to map to service IDs, got %q -> %q", edge.SourceServiceID, edge.TargetServiceID)
+	}
+	if edge.EdgeType != "async" || edge.Relationship != "dependency" {
+		t.Fatalf("expected edge type and relationship defaults, got type=%q relationship=%q", edge.EdgeType, edge.Relationship)
+	}
+}

@@ -247,6 +247,34 @@ type TopologyEdge struct {
 	UpdatedAt        time.Time `json:"updatedAt"`
 }
 
+func (e *TopologyEdge) UnmarshalJSON(data []byte) error {
+	type edgeAlias TopologyEdge
+	aux := struct {
+		*edgeAlias
+		From string `json:"from"`
+		To   string `json:"to"`
+		Type string `json:"type"`
+	}{
+		edgeAlias: (*edgeAlias)(e),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if e.SourceServiceID == "" {
+		e.SourceServiceID = aux.From
+	}
+	if e.TargetServiceID == "" {
+		e.TargetServiceID = aux.To
+	}
+	if e.EdgeType == "" {
+		e.EdgeType = aux.Type
+	}
+	if e.Relationship == "" {
+		e.Relationship = "dependency"
+	}
+	return nil
+}
+
 type TopologyVersion struct {
 	ID          string                 `json:"id"`
 	Version     int                    `json:"version"`
