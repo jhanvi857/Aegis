@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -252,3 +253,24 @@ func TestMemoryStore_Phase3_TopologyAndAutoDiscovery(t *testing.T) {
 	}
 }
 
+func TestTopologyService_UnmarshalOwnerImportShape(t *testing.T) {
+	var svc TopologyService
+	err := json.Unmarshal([]byte(`{
+		"id":"checkout",
+		"name":"Checkout Service",
+		"tier":0,
+		"workload":"microservice",
+		"port":9003,
+		"owner":"shopkart-team@shopkart.internal",
+		"tags":["checkout"]
+	}`), &svc)
+	if err != nil {
+		t.Fatalf("expected owner import shape to decode: %v", err)
+	}
+	if svc.Tier != "tier-0" {
+		t.Fatalf("expected numeric tier to normalize to tier-0, got %q", svc.Tier)
+	}
+	if svc.Type != "microservice" {
+		t.Fatalf("expected workload to map to type, got %q", svc.Type)
+	}
+}

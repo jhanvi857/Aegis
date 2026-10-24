@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -149,32 +151,63 @@ type RecoveryBinding struct {
 }
 
 type TopologyService struct {
-	ID                string            `json:"id"`
-	Name              string            `json:"name"`
-	Type              string            `json:"type"` // gateway, service, database, cache, queue
-	Namespace         string            `json:"namespace"`
-	ClusterID         string            `json:"clusterId"`
-	Tier              string            `json:"tier"` // tier-1-ingress, tier-1-storage, tier-2, tier-3
-	Capabilities      string            `json:"capabilities"`
-	Owner             string            `json:"owner"`
-	Version           string            `json:"version"`
-	Replicas          int               `json:"replicas"`
-	MaxReplicas       int               `json:"maxReplicas"`
-	Status            string            `json:"status"` // unconnected | healthy_data | no_data | stale
-	CPU               float64           `json:"cpu"`
-	Memory            float64           `json:"memory"`
-	Latency           float64           `json:"latency"`
-	RPS               float64           `json:"rps"`
-	ErrorRate         float64           `json:"errorRate"`
-	QueueDepth        int               `json:"queueDepth"`
-	MonitoringMode    string            `json:"monitoringMode"` // ignore | observe | recommend | auto_remediate
-	TelemetrySource   *TelemetrySource  `json:"telemetrySource,omitempty"`
-	RecoveryBinding   *RecoveryBinding  `json:"recoveryBinding,omitempty"`
-	Description       string            `json:"description,omitempty"`
-	Tags              []string          `json:"tags,omitempty"`
-	LastTelemetryTime *time.Time        `json:"lastTelemetryTime,omitempty"`
-	CreatedAt         time.Time         `json:"createdAt"`
-	UpdatedAt         time.Time         `json:"updatedAt"`
+	ID                string           `json:"id"`
+	Name              string           `json:"name"`
+	Type              string           `json:"type"` // gateway, service, database, cache, queue
+	Namespace         string           `json:"namespace"`
+	ClusterID         string           `json:"clusterId"`
+	Tier              string           `json:"tier"` // tier-1-ingress, tier-1-storage, tier-2, tier-3
+	Capabilities      string           `json:"capabilities"`
+	Owner             string           `json:"owner"`
+	Version           string           `json:"version"`
+	Replicas          int              `json:"replicas"`
+	MaxReplicas       int              `json:"maxReplicas"`
+	Status            string           `json:"status"` // unconnected | healthy_data | no_data | stale
+	CPU               float64          `json:"cpu"`
+	Memory            float64          `json:"memory"`
+	Latency           float64          `json:"latency"`
+	RPS               float64          `json:"rps"`
+	ErrorRate         float64          `json:"errorRate"`
+	QueueDepth        int              `json:"queueDepth"`
+	MonitoringMode    string           `json:"monitoringMode"` // ignore | observe | recommend | auto_remediate
+	TelemetrySource   *TelemetrySource `json:"telemetrySource,omitempty"`
+	RecoveryBinding   *RecoveryBinding `json:"recoveryBinding,omitempty"`
+	Description       string           `json:"description,omitempty"`
+	Tags              []string         `json:"tags,omitempty"`
+	LastTelemetryTime *time.Time       `json:"lastTelemetryTime,omitempty"`
+	CreatedAt         time.Time        `json:"createdAt"`
+	UpdatedAt         time.Time        `json:"updatedAt"`
+}
+
+func (s *TopologyService) UnmarshalJSON(data []byte) error {
+	type serviceAlias TopologyService
+	aux := struct {
+		*serviceAlias
+		Tier     json.RawMessage `json:"tier"`
+		Workload string          `json:"workload"`
+	}{
+		serviceAlias: (*serviceAlias)(s),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	if len(aux.Tier) > 0 && string(aux.Tier) != "null" {
+		var tierName string
+		if err := json.Unmarshal(aux.Tier, &tierName); err == nil {
+			s.Tier = tierName
+		} else {
+			var tierNumber int
+			if err := json.Unmarshal(aux.Tier, &tierNumber); err != nil {
+				return fmt.Errorf("tier must be a string or integer: %w", err)
+			}
+			s.Tier = fmt.Sprintf("tier-%d", tierNumber)
+		}
+	}
+	if s.Type == "" {
+		s.Type = aux.Workload
+	}
+	return nil
 }
 
 func (s *TopologyService) ComputeStatus() string {
@@ -206,9 +239,9 @@ type TopologyEdge struct {
 	LatencyMs        float64   `json:"latencyMs"`
 	ErrorRate        float64   `json:"errorRate"`
 	SampleCount      int64     `json:"sampleCount"`
-	Source           string    `json:"source"`    // manual | suggested | discovered
-	State            string    `json:"state"`     // active | suggested | rejected
-	EdgeType         string    `json:"edgeType"`  // sync | async | db | cache
+	Source           string    `json:"source"`   // manual | suggested | discovered
+	State            string    `json:"state"`    // active | suggested | rejected
+	EdgeType         string    `json:"edgeType"` // sync | async | db | cache
 	CreatedBy        string    `json:"createdBy"`
 	CreatedAt        time.Time `json:"createdAt"`
 	UpdatedAt        time.Time `json:"updatedAt"`

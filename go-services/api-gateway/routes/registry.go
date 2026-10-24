@@ -877,6 +877,7 @@ type TopologyImportPayload struct {
 	Namespace   string                    `json:"namespace,omitempty"`
 	ClusterID   string                    `json:"clusterId,omitempty"`
 	Description string                    `json:"description,omitempty"`
+	Owner       string                    `json:"owner,omitempty"`
 	Services    []storage.TopologyService `json:"services,omitempty"`
 	Nodes       []struct {
 		storage.TopologyService
@@ -954,13 +955,13 @@ func ImportTopologyHandler(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 
-				if payload.RawYAML != "" && len(payload.Services) == 0 && len(payload.Nodes) == 0 {
-					if err := yaml.Unmarshal([]byte(payload.RawYAML), &payload); err != nil {
-						http.Error(w, fmt.Sprintf(`{"error":"Invalid YAML payload: %s"}`, err.Error()), http.StatusBadRequest)
-						return
-					}
-				}
 			}
+		}
+	}
+	if payload.RawYAML != "" && len(payload.Services) == 0 && len(payload.Nodes) == 0 {
+		if err := yaml.Unmarshal([]byte(payload.RawYAML), &payload); err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":"Invalid YAML payload: %s"}`, err.Error()), http.StatusBadRequest)
+			return
 		}
 	}
 
@@ -1071,6 +1072,9 @@ func ImportTopologyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if s.ClusterID == "" {
 			s.ClusterID = cluster
+		}
+		if s.Owner == "" {
+			s.Owner = payload.Owner
 		}
 		if s.Status == "" {
 			s.Status = s.ComputeStatus()
