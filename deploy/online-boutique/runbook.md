@@ -1,5 +1,8 @@
 # Aegis Runbook: End-to-End Validation on Google Online Boutique (Kubernetes)
 
+> [!NOTE]
+> **Validation Status:** This directory contains manifests and a runbook; it is **not yet validated on a live cluster** until a real run is recorded.
+
 This runbook guides operators through validating the complete Aegis self-healing pipeline on a real local Kubernetes cluster (`kind` or `minikube`) running Google's 11-service Online Boutique.
 
 ---
@@ -46,7 +49,7 @@ Import the Online Boutique topology into Aegis:
 # Obtain Admin JWT token
 export TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@aegis.local","password":"AdminPass#2026"}' | jq -r .token)
+  -d "{\"email\":\"${AEGIS_BOOTSTRAP_ADMIN_EMAIL:-admin@enterprise.io}\",\"password\":\"${AEGIS_BOOTSTRAP_ADMIN_PASSWORD}\"}" | jq -r .token)
 
 # Import the 11-node Online Boutique topology
 curl -s -X POST http://localhost:8000/api/registry/import \

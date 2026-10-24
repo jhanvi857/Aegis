@@ -11,6 +11,9 @@ Phase 6 completes the advanced stretch capabilities of Aegis:
 
 ## 1. Reinforcement Learning Recovery Architecture (`python-ml/rl_agent/`)
 
+> [!IMPORTANT]
+> **Simulation Scope Notice:** The RL recovery agent is trained and evaluated on a simulated environment (`MicroserviceChaosEnv`); it is **not validated on real clusters** and makes no claims of production validation. Production deployments rely on the deterministic DAG-ordered rulebook decision engine.
+
 ### Environment: `MicroserviceChaosEnv` (`env.py`)
 A simulated, Gym-compatible environment that models microservice network topology, dynamic cascading latency, and remediation responses.
 
