@@ -131,6 +131,9 @@ func SetupRouter(store storage.Store) *mux.Router {
 	r.HandleFunc("/api/registry/services", RequireRole(storage.RoleViewer, ListRegistryServicesHandler)).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/registry/services/{id}", RequireRole(storage.RoleViewer, GetRegistryServiceHandler)).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/registry/edges", RequireRole(storage.RoleViewer, ListRegistryEdgesHandler)).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/registry/suggestions", RequireRole(storage.RoleViewer, ListRegistrySuggestionsHandler)).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/registry/validate", RequireRole(storage.RoleViewer, ValidateTopologyHandler)).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/registry/export", RequireRole(storage.RoleViewer, ExportTopologyHandler)).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/registry/versions", RequireRole(storage.RoleViewer, ListTopologyVersionsHandler)).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/system/mode", RequireRole(storage.RoleViewer, GetSystemModeHandler)).Methods("GET", "OPTIONS")
 
@@ -147,8 +150,13 @@ func SetupRouter(store storage.Store) *mux.Router {
 	// Dynamic Service Registry Management (Operator)
 	r.HandleFunc("/api/registry/services", RequireRole(storage.RoleOperator, CreateRegistryServiceHandler)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/registry/services/{id}", RequireRole(storage.RoleOperator, UpdateRegistryServiceHandler)).Methods("PUT", "OPTIONS")
+	r.HandleFunc("/api/registry/services/{id}", RequireRole(storage.RoleOperator, DeleteRegistryServiceHandler)).Methods("DELETE", "OPTIONS")
+	r.HandleFunc("/api/registry/services/{id}/test-connection", RequireRole(storage.RoleOperator, TestConnectionHandler)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/registry/edges", RequireRole(storage.RoleOperator, CreateRegistryEdgeHandler)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/registry/edges/{source}/{target}", RequireRole(storage.RoleOperator, DeleteRegistryEdgeHandler)).Methods("DELETE", "OPTIONS")
+	r.HandleFunc("/api/registry/suggestions/{id}/accept", RequireRole(storage.RoleOperator, AcceptRegistrySuggestionHandler)).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/registry/suggestions/{id}/reject", RequireRole(storage.RoleOperator, RejectRegistrySuggestionHandler)).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/registry/import", RequireRole(storage.RoleOperator, ImportTopologyHandler)).Methods("POST", "OPTIONS")
 
 	// Real Telemetry Ingestion (OpenTelemetry Spans & Prometheus Metrics)
 	r.HandleFunc("/api/telemetry/spans", RequireRole(storage.RoleOperator, IngestSpansHandler)).Methods("POST", "OPTIONS")
@@ -162,10 +170,6 @@ func SetupRouter(store storage.Store) *mux.Router {
 	r.HandleFunc("/api/chaos/inject", RequireRole(storage.RoleAdmin, ChaosInjectHandler)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/chaos/stop/{id}", RequireRole(storage.RoleAdmin, ChaosStopHandler)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/auth/revoke", RequireRole(storage.RoleAdmin, RevokeSessionHandler)).Methods("POST", "OPTIONS")
-
-	// Dynamic Registry Administration & Bulk Topology Import (Admin)
-	r.HandleFunc("/api/registry/services/{id}", RequireRole(storage.RoleAdmin, DeleteRegistryServiceHandler)).Methods("DELETE", "OPTIONS")
-	r.HandleFunc("/api/registry/import", RequireRole(storage.RoleAdmin, ImportTopologyHandler)).Methods("POST", "OPTIONS")
 
 	// User Management
 	r.HandleFunc("/api/users", RequireRole(storage.RoleAdmin, ListUsersHandler)).Methods("GET", "OPTIONS")

@@ -3,7 +3,9 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 )
@@ -27,6 +29,7 @@ type MemoryStore struct {
 	recoveryList  []*RecoveryExecution
 	servicesByID  map[string]*TopologyService
 	edgesByKey    map[string]*TopologyEdge
+	edgesByID     map[string]*TopologyEdge
 	versionList   []*TopologyVersion
 }
 
@@ -43,6 +46,7 @@ func NewMemoryStore() *MemoryStore {
 		recoveryList:  make([]*RecoveryExecution, 0),
 		servicesByID:  make(map[string]*TopologyService),
 		edgesByKey:    make(map[string]*TopologyEdge),
+		edgesByID:     make(map[string]*TopologyEdge),
 		versionList:   make([]*TopologyVersion, 0),
 	}
 }
@@ -385,6 +389,22 @@ func (m *MemoryStore) UpsertService(ctx context.Context, svc *TopologyService) e
 	if cp.Capabilities == "" {
 		cp.Capabilities = "scale,restart"
 	}
+	if cp.MonitoringMode == "" {
+		cp.MonitoringMode = "observe"
+	}
+	if cp.TelemetrySource != nil {
+		srcCopy := *cp.TelemetrySource
+		if srcCopy.AuthToken != "" && !strings.HasPrefix(srcCopy.AuthToken, "enc::") {
+			srcCopy.AuthToken, _ = EncryptCredential(srcCopy.AuthToken)
+		}
+		if srcCopy.AuthPassword != "" && !strings.HasPrefix(srcCopy.AuthPassword, "enc::") {
+			srcCopy.AuthPassword, _ = EncryptCredential(srcCopy.AuthPassword)
+		}
+		cp.TelemetrySource = &srcCopy
+	}
+	if cp.Status == "" {
+		cp.Status = cp.ComputeStatus()
+	}
 	m.servicesByID[cp.ID] = &cp
 	return nil
 }
@@ -408,6 +428,7 @@ func (m *MemoryStore) DeleteService(ctx context.Context, id string) error {
 	for k, edge := range m.edgesByKey {
 		if edge.SourceServiceID == id || edge.TargetServiceID == id {
 			delete(m.edgesByKey, k)
+			delete(m.edgesByID, edge.ID)
 		}
 	}
 	return nil
@@ -450,19 +471,60 @@ func (m *MemoryStore) UpsertEdge(ctx context.Context, edge *TopologyEdge) error 
 	if cp.ClusterID == "" {
 		cp.ClusterID = "cluster-primary"
 	}
+	if cp.ID == "" {
+		cp.ID = fmt.Sprintf("edge-%s-%s", cp.SourceServiceID, cp.TargetServiceID)
+	}
+	if cp.Source == "" {
+		cp.Source = "manual"
+	}
+	if cp.State == "" {
+		cp.State = "active"
+	}
+	if cp.EdgeType == "" {
+		cp.EdgeType = "sync"
+	}
+	if cp.CreatedBy == "" {
+		cp.CreatedBy = "system"
+	}
+	if cp.Source == "manual" {
+		cp.IsManualOverride = true
+		cp.Confidence = 1.0
+	}
 	if cp.CreatedAt.IsZero() {
 		cp.CreatedAt = time.Now().UTC()
 	}
 	cp.UpdatedAt = time.Now().UTC()
 	k := m.edgeKey(cp.SourceServiceID, cp.TargetServiceID, cp.Namespace, cp.ClusterID)
 	m.edgesByKey[k] = &cp
+	m.edgesByID[cp.ID] = &cp
 	return nil
+}
+
+func (m *MemoryStore) GetEdgeByID(ctx context.Context, id string) (*TopologyEdge, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	e, exists := m.edgesByID[id]
+	if !exists {
+		// Fallback search through edgesByKey in case ID differed
+		for _, edge := range m.edgesByKey {
+			if edge.ID == id {
+				cp := *edge
+				return &cp, nil
+			}
+		}
+		return nil, ErrNotFound
+	}
+	cp := *e
+	return &cp, nil
 }
 
 func (m *MemoryStore) DeleteEdge(ctx context.Context, sourceID, targetID, namespace, clusterID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	k := m.edgeKey(sourceID, targetID, namespace, clusterID)
+	if existing, ok := m.edgesByKey[k]; ok {
+		delete(m.edgesByID, existing.ID)
+	}
 	delete(m.edgesByKey, k)
 	return nil
 }
@@ -484,6 +546,25 @@ func (m *MemoryStore) ListEdges(ctx context.Context, namespace, clusterID string
 	return res, nil
 }
 
+func (m *MemoryStore) ListSuggestions(ctx context.Context, namespace, clusterID string) ([]*TopologyEdge, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	res := make([]*TopologyEdge, 0)
+	for _, e := range m.edgesByKey {
+		if namespace != "" && e.Namespace != namespace {
+			continue
+		}
+		if clusterID != "" && e.ClusterID != clusterID {
+			continue
+		}
+		if e.State == "suggested" {
+			cp := *e
+			res = append(res, &cp)
+		}
+	}
+	return res, nil
+}
+
 func (m *MemoryStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, targetID, namespace, clusterID string, latencyMs float64, isError bool) (*TopologyEdge, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -499,31 +580,33 @@ func (m *MemoryStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, target
 	if _, exists := m.servicesByID[sourceID]; !exists {
 		now := time.Now().UTC()
 		m.servicesByID[sourceID] = &TopologyService{
-			ID:           sourceID,
-			Name:         sourceID,
-			Type:         "service",
-			Namespace:    namespace,
-			ClusterID:    clusterID,
-			Tier:         "tier-2",
-			Capabilities: "scale,restart",
-			Status:       "healthy",
-			CreatedAt:    now,
-			UpdatedAt:    now,
+			ID:             sourceID,
+			Name:           sourceID,
+			Type:           "service",
+			Namespace:      namespace,
+			ClusterID:      clusterID,
+			Tier:           "tier-2",
+			Capabilities:   "scale,restart",
+			Status:         "unconnected",
+			MonitoringMode: "observe",
+			CreatedAt:      now,
+			UpdatedAt:      now,
 		}
 	}
 	if _, exists := m.servicesByID[targetID]; !exists {
 		now := time.Now().UTC()
 		m.servicesByID[targetID] = &TopologyService{
-			ID:           targetID,
-			Name:         targetID,
-			Type:         "service",
-			Namespace:    namespace,
-			ClusterID:    clusterID,
-			Tier:         "tier-2",
-			Capabilities: "scale,restart",
-			Status:       "healthy",
-			CreatedAt:    now,
-			UpdatedAt:    now,
+			ID:             targetID,
+			Name:           targetID,
+			Type:           "service",
+			Namespace:      namespace,
+			ClusterID:      clusterID,
+			Tier:           "tier-2",
+			Capabilities:   "scale,restart",
+			Status:         "unconnected",
+			MonitoringMode: "observe",
+			CreatedAt:      now,
+			UpdatedAt:      now,
 		}
 	}
 
@@ -537,6 +620,12 @@ func (m *MemoryStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, target
 	}
 
 	if exists {
+		// Principle: Rejected suggestions must not reappear unless the user resets them!
+		if edge.State == "rejected" {
+			cp := *edge
+			return &cp, nil
+		}
+
 		// Update sample statistics
 		edge.SampleCount++
 		// Exponential moving average for latency & error rate
@@ -546,7 +635,7 @@ func (m *MemoryStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, target
 		edge.UpdatedAt = now
 
 		// If manual override was specified by human operator, preserve override flag and maximum confidence
-		if !edge.IsManualOverride {
+		if !edge.IsManualOverride && edge.Source != "manual" {
 			// Increase confidence asymptotically toward 0.99
 			edge.Confidence = math.Min(0.99, 0.70+float64(edge.SampleCount)*0.02)
 		}
@@ -554,9 +643,10 @@ func (m *MemoryStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, target
 		return &cp, nil
 	}
 
-	// Create new auto-discovered edge
+	// Create new auto-discovered edge as SUGGESTED
+	edgeID := "edge-" + sourceID + "-" + targetID
 	newEdge := &TopologyEdge{
-		ID:               "edge-" + sourceID + "-" + targetID,
+		ID:               edgeID,
 		SourceServiceID:  sourceID,
 		TargetServiceID:  targetID,
 		Relationship:     "calls",
@@ -568,10 +658,15 @@ func (m *MemoryStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, target
 		LatencyMs:        latencyMs,
 		ErrorRate:        errRateVal,
 		SampleCount:      1,
+		Source:           "suggested",
+		State:            "suggested",
+		EdgeType:         "sync",
+		CreatedBy:        "discovery",
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
 	m.edgesByKey[k] = newEdge
+	m.edgesByID[edgeID] = newEdge
 	cp := *newEdge
 	return &cp, nil
 }

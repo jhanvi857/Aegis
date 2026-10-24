@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -190,6 +191,21 @@ func (p *PostgresStore) autoMigrate(ctx context.Context) error {
 		created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 	);
 	CREATE INDEX IF NOT EXISTS idx_topology_versions_ver ON topology_versions(version DESC);
+
+	ALTER TABLE topology_services ADD COLUMN IF NOT EXISTS monitoring_mode VARCHAR(32) NOT NULL DEFAULT 'observe';
+	ALTER TABLE topology_services ADD COLUMN IF NOT EXISTS telemetry_source JSONB NULL;
+	ALTER TABLE topology_services ADD COLUMN IF NOT EXISTS recovery_binding JSONB NULL;
+	ALTER TABLE topology_services ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+	ALTER TABLE topology_services ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]';
+	ALTER TABLE topology_services ADD COLUMN IF NOT EXISTS last_telemetry_time TIMESTAMP WITH TIME ZONE NULL;
+	CREATE INDEX IF NOT EXISTS idx_topology_services_mode ON topology_services(monitoring_mode);
+
+	ALTER TABLE topology_edges ADD COLUMN IF NOT EXISTS source VARCHAR(32) NOT NULL DEFAULT 'manual';
+	ALTER TABLE topology_edges ADD COLUMN IF NOT EXISTS state VARCHAR(32) NOT NULL DEFAULT 'active';
+	ALTER TABLE topology_edges ADD COLUMN IF NOT EXISTS edge_type VARCHAR(32) NOT NULL DEFAULT 'sync';
+	ALTER TABLE topology_edges ADD COLUMN IF NOT EXISTS created_by VARCHAR(255) NOT NULL DEFAULT 'system';
+	CREATE INDEX IF NOT EXISTS idx_topology_edges_state ON topology_edges(state);
+	CREATE INDEX IF NOT EXISTS idx_topology_edges_source ON topology_edges(source);
 	`
 	_, err := p.db.ExecContext(ctx, schema)
 	return err
@@ -639,8 +655,9 @@ func (p *PostgresStore) UpsertService(ctx context.Context, svc *TopologyService)
 		INSERT INTO topology_services (
 			id, name, type, namespace, cluster_id, tier, capabilities, owner, version,
 			replicas, max_replicas, status, cpu, memory, latency, rps, error_rate, queue_depth,
+			monitoring_mode, telemetry_source, recovery_binding, description, tags, last_telemetry_time,
 			created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
 		ON CONFLICT (id) DO UPDATE SET
 			name = EXCLUDED.name,
 			type = EXCLUDED.type,
@@ -659,6 +676,12 @@ func (p *PostgresStore) UpsertService(ctx context.Context, svc *TopologyService)
 			rps = EXCLUDED.rps,
 			error_rate = EXCLUDED.error_rate,
 			queue_depth = EXCLUDED.queue_depth,
+			monitoring_mode = EXCLUDED.monitoring_mode,
+			telemetry_source = EXCLUDED.telemetry_source,
+			recovery_binding = EXCLUDED.recovery_binding,
+			description = EXCLUDED.description,
+			tags = EXCLUDED.tags,
+			last_telemetry_time = EXCLUDED.last_telemetry_time,
 			updated_at = EXCLUDED.updated_at
 	`
 	now := time.Now().UTC()
@@ -678,11 +701,38 @@ func (p *PostgresStore) UpsertService(ctx context.Context, svc *TopologyService)
 	if svc.Capabilities == "" {
 		svc.Capabilities = "scale,restart"
 	}
+	if svc.MonitoringMode == "" {
+		svc.MonitoringMode = "observe"
+	}
+	if svc.Status == "" {
+		svc.Status = svc.ComputeStatus()
+	}
+
+	var telemetryJSON []byte
+	if svc.TelemetrySource != nil {
+		srcCopy := *svc.TelemetrySource
+		if srcCopy.AuthToken != "" && !strings.HasPrefix(srcCopy.AuthToken, "enc::") {
+			srcCopy.AuthToken, _ = EncryptCredential(srcCopy.AuthToken)
+		}
+		if srcCopy.AuthPassword != "" && !strings.HasPrefix(srcCopy.AuthPassword, "enc::") {
+			srcCopy.AuthPassword, _ = EncryptCredential(srcCopy.AuthPassword)
+		}
+		telemetryJSON, _ = json.Marshal(srcCopy)
+	}
+
+	var recoveryJSON []byte
+	if svc.RecoveryBinding != nil {
+		recoveryJSON, _ = json.Marshal(svc.RecoveryBinding)
+	}
+
+	tagsJSON, _ := json.Marshal(svc.Tags)
 
 	_, err := p.db.ExecContext(ctx, query,
 		svc.ID, svc.Name, svc.Type, svc.Namespace, svc.ClusterID, svc.Tier, svc.Capabilities,
 		svc.Owner, svc.Version, svc.Replicas, svc.MaxReplicas, svc.Status, svc.CPU, svc.Memory,
-		svc.Latency, svc.RPS, svc.ErrorRate, svc.QueueDepth, svc.CreatedAt, svc.UpdatedAt,
+		svc.Latency, svc.RPS, svc.ErrorRate, svc.QueueDepth,
+		svc.MonitoringMode, telemetryJSON, recoveryJSON, svc.Description, tagsJSON, svc.LastTelemetryTime,
+		svc.CreatedAt, svc.UpdatedAt,
 	)
 	return err
 }
@@ -691,20 +741,41 @@ func (p *PostgresStore) GetService(ctx context.Context, id string) (*TopologySer
 	query := `
 		SELECT id, name, type, namespace, cluster_id, tier, capabilities, owner, version,
 		       replicas, max_replicas, status, cpu, memory, latency, rps, error_rate, queue_depth,
+		       COALESCE(monitoring_mode, 'observe'), telemetry_source, recovery_binding,
+		       COALESCE(description, ''), tags, last_telemetry_time,
 		       created_at, updated_at
 		FROM topology_services WHERE id = $1
 	`
 	var s TopologyService
+	var telemJSON, recovJSON, tagsJSON []byte
 	err := p.db.QueryRowContext(ctx, query, id).Scan(
 		&s.ID, &s.Name, &s.Type, &s.Namespace, &s.ClusterID, &s.Tier, &s.Capabilities,
 		&s.Owner, &s.Version, &s.Replicas, &s.MaxReplicas, &s.Status, &s.CPU, &s.Memory,
-		&s.Latency, &s.RPS, &s.ErrorRate, &s.QueueDepth, &s.CreatedAt, &s.UpdatedAt,
+		&s.Latency, &s.RPS, &s.ErrorRate, &s.QueueDepth,
+		&s.MonitoringMode, &telemJSON, &recovJSON,
+		&s.Description, &tagsJSON, &s.LastTelemetryTime,
+		&s.CreatedAt, &s.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
+	}
+	if len(telemJSON) > 0 {
+		var src TelemetrySource
+		if err := json.Unmarshal(telemJSON, &src); err == nil {
+			s.TelemetrySource = &src
+		}
+	}
+	if len(recovJSON) > 0 {
+		var recov RecoveryBinding
+		if err := json.Unmarshal(recovJSON, &recov); err == nil {
+			s.RecoveryBinding = &recov
+		}
+	}
+	if len(tagsJSON) > 0 {
+		_ = json.Unmarshal(tagsJSON, &s.Tags)
 	}
 	return &s, nil
 }
@@ -720,6 +791,8 @@ func (p *PostgresStore) ListServices(ctx context.Context, namespace, clusterID s
 	query := `
 		SELECT id, name, type, namespace, cluster_id, tier, capabilities, owner, version,
 		       replicas, max_replicas, status, cpu, memory, latency, rps, error_rate, queue_depth,
+		       COALESCE(monitoring_mode, 'observe'), telemetry_source, recovery_binding,
+		       COALESCE(description, ''), tags, last_telemetry_time,
 		       created_at, updated_at
 		FROM topology_services
 		WHERE ($1 = '' OR namespace = $1)
@@ -735,13 +808,32 @@ func (p *PostgresStore) ListServices(ctx context.Context, namespace, clusterID s
 	list := make([]*TopologyService, 0)
 	for rows.Next() {
 		var s TopologyService
+		var telemJSON, recovJSON, tagsJSON []byte
 		err := rows.Scan(
 			&s.ID, &s.Name, &s.Type, &s.Namespace, &s.ClusterID, &s.Tier, &s.Capabilities,
 			&s.Owner, &s.Version, &s.Replicas, &s.MaxReplicas, &s.Status, &s.CPU, &s.Memory,
-			&s.Latency, &s.RPS, &s.ErrorRate, &s.QueueDepth, &s.CreatedAt, &s.UpdatedAt,
+			&s.Latency, &s.RPS, &s.ErrorRate, &s.QueueDepth,
+			&s.MonitoringMode, &telemJSON, &recovJSON,
+			&s.Description, &tagsJSON, &s.LastTelemetryTime,
+			&s.CreatedAt, &s.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
+		}
+		if len(telemJSON) > 0 {
+			var src TelemetrySource
+			if err := json.Unmarshal(telemJSON, &src); err == nil {
+				s.TelemetrySource = &src
+			}
+		}
+		if len(recovJSON) > 0 {
+			var recov RecoveryBinding
+			if err := json.Unmarshal(recovJSON, &recov); err == nil {
+				s.RecoveryBinding = &recov
+			}
+		}
+		if len(tagsJSON) > 0 {
+			_ = json.Unmarshal(tagsJSON, &s.Tags)
 		}
 		list = append(list, &s)
 	}
@@ -753,8 +845,9 @@ func (p *PostgresStore) UpsertEdge(ctx context.Context, edge *TopologyEdge) erro
 		INSERT INTO topology_edges (
 			id, source_service_id, target_service_id, relationship, namespace, cluster_id,
 			confidence, is_manual_override, calls_per_sec, latency_ms, error_rate, sample_count,
+			source, state, edge_type, created_by,
 			created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		ON CONFLICT (source_service_id, target_service_id, namespace, cluster_id) DO UPDATE SET
 			relationship = EXCLUDED.relationship,
 			confidence = EXCLUDED.confidence,
@@ -763,6 +856,10 @@ func (p *PostgresStore) UpsertEdge(ctx context.Context, edge *TopologyEdge) erro
 			latency_ms = EXCLUDED.latency_ms,
 			error_rate = EXCLUDED.error_rate,
 			sample_count = EXCLUDED.sample_count,
+			source = EXCLUDED.source,
+			state = EXCLUDED.state,
+			edge_type = EXCLUDED.edge_type,
+			created_by = EXCLUDED.created_by,
 			updated_at = EXCLUDED.updated_at
 	`
 	now := time.Now().UTC()
@@ -779,14 +876,56 @@ func (p *PostgresStore) UpsertEdge(ctx context.Context, edge *TopologyEdge) erro
 	if edge.ID == "" {
 		edge.ID = fmt.Sprintf("edge-%s-%s", edge.SourceServiceID, edge.TargetServiceID)
 	}
+	if edge.Source == "" {
+		edge.Source = "manual"
+	}
+	if edge.State == "" {
+		edge.State = "active"
+	}
+	if edge.EdgeType == "" {
+		edge.EdgeType = "sync"
+	}
+	if edge.CreatedBy == "" {
+		edge.CreatedBy = "system"
+	}
+	if edge.Source == "manual" {
+		edge.IsManualOverride = true
+		edge.Confidence = 1.0
+	}
 
 	_, err := p.db.ExecContext(ctx, query,
 		edge.ID, edge.SourceServiceID, edge.TargetServiceID, edge.Relationship,
 		edge.Namespace, edge.ClusterID, edge.Confidence, edge.IsManualOverride,
 		edge.CallsPerSec, edge.LatencyMs, edge.ErrorRate, edge.SampleCount,
+		edge.Source, edge.State, edge.EdgeType, edge.CreatedBy,
 		edge.CreatedAt, edge.UpdatedAt,
 	)
 	return err
+}
+
+func (p *PostgresStore) GetEdgeByID(ctx context.Context, id string) (*TopologyEdge, error) {
+	query := `
+		SELECT id, source_service_id, target_service_id, relationship, namespace, cluster_id,
+		       confidence, is_manual_override, calls_per_sec, latency_ms, error_rate, sample_count,
+		       COALESCE(source, 'manual'), COALESCE(state, 'active'), COALESCE(edge_type, 'sync'), COALESCE(created_by, 'system'),
+		       created_at, updated_at
+		FROM topology_edges
+		WHERE id = $1
+	`
+	var e TopologyEdge
+	err := p.db.QueryRowContext(ctx, query, id).Scan(
+		&e.ID, &e.SourceServiceID, &e.TargetServiceID, &e.Relationship, &e.Namespace, &e.ClusterID,
+		&e.Confidence, &e.IsManualOverride, &e.CallsPerSec, &e.LatencyMs, &e.ErrorRate, &e.SampleCount,
+		&e.Source, &e.State, &e.EdgeType, &e.CreatedBy,
+		&e.CreatedAt, &e.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &e, nil
 }
 
 func (p *PostgresStore) DeleteEdge(ctx context.Context, sourceID, targetID, namespace, clusterID string) error {
@@ -809,6 +948,7 @@ func (p *PostgresStore) ListEdges(ctx context.Context, namespace, clusterID stri
 	query := `
 		SELECT id, source_service_id, target_service_id, relationship, namespace, cluster_id,
 		       confidence, is_manual_override, calls_per_sec, latency_ms, error_rate, sample_count,
+		       COALESCE(source, 'manual'), COALESCE(state, 'active'), COALESCE(edge_type, 'sync'), COALESCE(created_by, 'system'),
 		       created_at, updated_at
 		FROM topology_edges
 		WHERE ($1 = '' OR namespace = $1)
@@ -827,6 +967,42 @@ func (p *PostgresStore) ListEdges(ctx context.Context, namespace, clusterID stri
 		err := rows.Scan(
 			&e.ID, &e.SourceServiceID, &e.TargetServiceID, &e.Relationship, &e.Namespace, &e.ClusterID,
 			&e.Confidence, &e.IsManualOverride, &e.CallsPerSec, &e.LatencyMs, &e.ErrorRate, &e.SampleCount,
+			&e.Source, &e.State, &e.EdgeType, &e.CreatedBy,
+			&e.CreatedAt, &e.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, &e)
+	}
+	return list, rows.Err()
+}
+
+func (p *PostgresStore) ListSuggestions(ctx context.Context, namespace, clusterID string) ([]*TopologyEdge, error) {
+	query := `
+		SELECT id, source_service_id, target_service_id, relationship, namespace, cluster_id,
+		       confidence, is_manual_override, calls_per_sec, latency_ms, error_rate, sample_count,
+		       COALESCE(source, 'suggested'), COALESCE(state, 'suggested'), COALESCE(edge_type, 'sync'), COALESCE(created_by, 'discovery'),
+		       created_at, updated_at
+		FROM topology_edges
+		WHERE state = 'suggested'
+		  AND ($1 = '' OR namespace = $1)
+		  AND ($2 = '' OR cluster_id = $2)
+		ORDER BY created_at DESC
+	`
+	rows, err := p.db.QueryContext(ctx, query, namespace, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	list := make([]*TopologyEdge, 0)
+	for rows.Next() {
+		var e TopologyEdge
+		err := rows.Scan(
+			&e.ID, &e.SourceServiceID, &e.TargetServiceID, &e.Relationship, &e.Namespace, &e.ClusterID,
+			&e.Confidence, &e.IsManualOverride, &e.CallsPerSec, &e.LatencyMs, &e.ErrorRate, &e.SampleCount,
+			&e.Source, &e.State, &e.EdgeType, &e.CreatedBy,
 			&e.CreatedAt, &e.UpdatedAt,
 		)
 		if err != nil {
@@ -848,8 +1024,8 @@ func (p *PostgresStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, targ
 	// Auto-provision services in topology_services if not already present
 	now := time.Now().UTC()
 	provQuery := `
-		INSERT INTO topology_services (id, name, type, namespace, cluster_id, tier, capabilities, status, created_at, updated_at)
-		VALUES ($1, $1, 'service', $2, $3, 'tier-2', 'scale,restart', 'healthy', $4, $4)
+		INSERT INTO topology_services (id, name, type, namespace, cluster_id, tier, capabilities, status, monitoring_mode, created_at, updated_at)
+		VALUES ($1, $1, 'service', $2, $3, 'tier-2', 'scale,restart', 'unconnected', 'observe', $4, $4)
 		ON CONFLICT (id) DO NOTHING
 	`
 	_, _ = p.db.ExecContext(ctx, provQuery, sourceID, namespace, clusterID, now)
@@ -859,6 +1035,7 @@ func (p *PostgresStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, targ
 	checkQuery := `
 		SELECT id, source_service_id, target_service_id, relationship, namespace, cluster_id,
 		       confidence, is_manual_override, calls_per_sec, latency_ms, error_rate, sample_count,
+		       COALESCE(source, 'manual'), COALESCE(state, 'active'), COALESCE(edge_type, 'sync'), COALESCE(created_by, 'system'),
 		       created_at, updated_at
 		FROM topology_edges
 		WHERE source_service_id = $1 AND target_service_id = $2 AND namespace = $3 AND cluster_id = $4
@@ -868,6 +1045,7 @@ func (p *PostgresStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, targ
 		&existing.ID, &existing.SourceServiceID, &existing.TargetServiceID, &existing.Relationship,
 		&existing.Namespace, &existing.ClusterID, &existing.Confidence, &existing.IsManualOverride,
 		&existing.CallsPerSec, &existing.LatencyMs, &existing.ErrorRate, &existing.SampleCount,
+		&existing.Source, &existing.State, &existing.EdgeType, &existing.CreatedBy,
 		&existing.CreatedAt, &existing.UpdatedAt,
 	)
 
@@ -877,6 +1055,11 @@ func (p *PostgresStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, targ
 	}
 
 	if err == nil {
+		// Principle: Rejected suggestions must not reappear unless the user resets them!
+		if existing.State == "rejected" {
+			return &existing, nil
+		}
+
 		// Existing edge: update statistics
 		existing.SampleCount++
 		alpha := 0.2
@@ -884,7 +1067,7 @@ func (p *PostgresStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, targ
 		existing.ErrorRate = (1-alpha)*existing.ErrorRate + alpha*errVal
 		existing.UpdatedAt = now
 
-		if !existing.IsManualOverride {
+		if !existing.IsManualOverride && existing.Source != "manual" {
 			existing.Confidence = math.Min(0.99, 0.70+float64(existing.SampleCount)*0.02)
 		}
 
@@ -897,7 +1080,7 @@ func (p *PostgresStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, targ
 		return &existing, nil
 	}
 
-	// Insert new discovered edge
+	// Insert new discovered edge as suggested
 	newEdge := TopologyEdge{
 		ID:               fmt.Sprintf("edge-%s-%s", sourceID, targetID),
 		SourceServiceID:  sourceID,
@@ -911,6 +1094,10 @@ func (p *PostgresStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, targ
 		LatencyMs:        latencyMs,
 		ErrorRate:        errVal,
 		SampleCount:      1,
+		Source:           "suggested",
+		State:            "suggested",
+		EdgeType:         "sync",
+		CreatedBy:        "discovery",
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
@@ -919,8 +1106,9 @@ func (p *PostgresStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, targ
 		INSERT INTO topology_edges (
 			id, source_service_id, target_service_id, relationship, namespace, cluster_id,
 			confidence, is_manual_override, calls_per_sec, latency_ms, error_rate, sample_count,
+			source, state, edge_type, created_by,
 			created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		ON CONFLICT (source_service_id, target_service_id, namespace, cluster_id) DO UPDATE SET
 			sample_count = topology_edges.sample_count + 1,
 			latency_ms = EXCLUDED.latency_ms,
@@ -931,6 +1119,7 @@ func (p *PostgresStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, targ
 		newEdge.ID, newEdge.SourceServiceID, newEdge.TargetServiceID, newEdge.Relationship,
 		newEdge.Namespace, newEdge.ClusterID, newEdge.Confidence, newEdge.IsManualOverride,
 		newEdge.CallsPerSec, newEdge.LatencyMs, newEdge.ErrorRate, newEdge.SampleCount,
+		newEdge.Source, newEdge.State, newEdge.EdgeType, newEdge.CreatedBy,
 		newEdge.CreatedAt, newEdge.UpdatedAt,
 	)
 	if insertErr != nil {

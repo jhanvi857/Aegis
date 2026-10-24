@@ -113,17 +113,19 @@ func IngestSpansHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Add target to source dependencies if not already present
-			srcSvc := State.Services[source]
-			hasDep := false
-			for _, d := range srcSvc.Dependencies {
-				if d == target {
-					hasDep = true
-					break
+			// Add target to source dependencies only if edge is active
+			if edge.State == "active" {
+				srcSvc := State.Services[source]
+				hasDep := false
+				for _, d := range srcSvc.Dependencies {
+					if d == target {
+						hasDep = true
+						break
+					}
 				}
-			}
-			if !hasDep {
-				srcSvc.Dependencies = append(srcSvc.Dependencies, target)
+				if !hasDep {
+					srcSvc.Dependencies = append(srcSvc.Dependencies, target)
+				}
 			}
 			State.mu.Unlock()
 		}
@@ -187,6 +189,35 @@ func IngestMetricsHandler(w http.ResponseWriter, r *http.Request) {
 	for _, m := range payload.Metrics {
 		if m.ServiceID == "" {
 			continue
+		}
+
+		store := GetAuthStore()
+		var regSvc *storage.TopologyService
+		svcCount := 0
+		if store != nil {
+			regSvc, _ = store.GetService(r.Context(), m.ServiceID)
+			allSvcs, _ := store.ListServices(r.Context(), "", "")
+			svcCount = len(allSvcs)
+		}
+
+		// Drop data for ignore-mode services
+		if regSvc != nil && regSvc.MonitoringMode == "ignore" {
+			continue
+		}
+
+		isDemo := State.DemoMode
+
+		// Drop unknown services when registry is configured with services and not demo mode
+		if svcCount > 0 && regSvc == nil && !isDemo {
+			continue
+		}
+
+		// If registered, update last telemetry timestamp and healthy status
+		if regSvc != nil && store != nil {
+			nowUTC := time.Now().UTC()
+			regSvc.LastTelemetryTime = &nowUTC
+			regSvc.Status = regSvc.ComputeStatus()
+			_ = store.UpsertService(r.Context(), regSvc)
 		}
 
 		svc, exists := State.Services[m.ServiceID]

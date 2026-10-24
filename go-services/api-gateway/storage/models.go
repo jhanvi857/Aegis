@@ -125,27 +125,72 @@ type RecoveryExecution struct {
 	CompletedAt      *time.Time             `json:"completedAt,omitempty"`
 }
 
+type TelemetrySource struct {
+	Type            string            `json:"type"` // prometheus | kubernetes | agent_push
+	BaseURL         string            `json:"baseUrl,omitempty"`
+	JobSelector     string            `json:"jobSelector,omitempty"`
+	LabelSelector   string            `json:"labelSelector,omitempty"`
+	PromQLTemplates map[string]string `json:"promqlTemplates,omitempty"`
+	ClusterID       string            `json:"clusterId,omitempty"`
+	Namespace       string            `json:"namespace,omitempty"`
+	WorkloadKind    string            `json:"workloadKind,omitempty"`
+	WorkloadName    string            `json:"workloadName,omitempty"`
+	ServiceID       string            `json:"serviceId,omitempty"`
+	APIKeyRef       string            `json:"apiKeyRef,omitempty"`
+	AuthToken       string            `json:"authToken,omitempty"` // encrypted at rest, redacted on output
+	AuthUsername    string            `json:"authUsername,omitempty"`
+	AuthPassword    string            `json:"authPassword,omitempty"` // encrypted at rest, redacted on output
+}
+
+type RecoveryBinding struct {
+	Runtime        string   `json:"runtime"`        // kubernetes | docker
+	Target         string   `json:"target"`         // namespace/deployment or container/project
+	AllowedActions []string `json:"allowedActions"` // scale, restart, increase_pool, flush_cache, reroute
+}
+
 type TopologyService struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	Type         string    `json:"type"` // gateway, service, database, cache, queue
-	Namespace    string    `json:"namespace"`
-	ClusterID    string    `json:"clusterId"`
-	Tier         string    `json:"tier"` // tier-1-ingress, tier-1-storage, tier-2, tier-3
-	Capabilities string    `json:"capabilities"`
-	Owner        string    `json:"owner"`
-	Version      string    `json:"version"`
-	Replicas     int       `json:"replicas"`
-	MaxReplicas  int       `json:"maxReplicas"`
-	Status       string    `json:"status"` // healthy, degraded, critical, unknown
-	CPU          float64   `json:"cpu"`
-	Memory       float64   `json:"memory"`
-	Latency      float64   `json:"latency"`
-	RPS          float64   `json:"rps"`
-	ErrorRate    float64   `json:"errorRate"`
-	QueueDepth   int       `json:"queueDepth"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	ID                string            `json:"id"`
+	Name              string            `json:"name"`
+	Type              string            `json:"type"` // gateway, service, database, cache, queue
+	Namespace         string            `json:"namespace"`
+	ClusterID         string            `json:"clusterId"`
+	Tier              string            `json:"tier"` // tier-1-ingress, tier-1-storage, tier-2, tier-3
+	Capabilities      string            `json:"capabilities"`
+	Owner             string            `json:"owner"`
+	Version           string            `json:"version"`
+	Replicas          int               `json:"replicas"`
+	MaxReplicas       int               `json:"maxReplicas"`
+	Status            string            `json:"status"` // unconnected | healthy_data | no_data | stale
+	CPU               float64           `json:"cpu"`
+	Memory            float64           `json:"memory"`
+	Latency           float64           `json:"latency"`
+	RPS               float64           `json:"rps"`
+	ErrorRate         float64           `json:"errorRate"`
+	QueueDepth        int               `json:"queueDepth"`
+	MonitoringMode    string            `json:"monitoringMode"` // ignore | observe | recommend | auto_remediate
+	TelemetrySource   *TelemetrySource  `json:"telemetrySource,omitempty"`
+	RecoveryBinding   *RecoveryBinding  `json:"recoveryBinding,omitempty"`
+	Description       string            `json:"description,omitempty"`
+	Tags              []string          `json:"tags,omitempty"`
+	LastTelemetryTime *time.Time        `json:"lastTelemetryTime,omitempty"`
+	CreatedAt         time.Time         `json:"createdAt"`
+	UpdatedAt         time.Time         `json:"updatedAt"`
+}
+
+func (s *TopologyService) ComputeStatus() string {
+	if s.MonitoringMode == "ignore" {
+		return "unconnected"
+	}
+	if s.TelemetrySource == nil || strings.TrimSpace(s.TelemetrySource.Type) == "" {
+		return "unconnected"
+	}
+	if s.LastTelemetryTime == nil || s.LastTelemetryTime.IsZero() {
+		return "no_data"
+	}
+	if time.Since(*s.LastTelemetryTime) > 5*time.Minute {
+		return "stale"
+	}
+	return "healthy_data"
 }
 
 type TopologyEdge struct {
@@ -161,6 +206,10 @@ type TopologyEdge struct {
 	LatencyMs        float64   `json:"latencyMs"`
 	ErrorRate        float64   `json:"errorRate"`
 	SampleCount      int64     `json:"sampleCount"`
+	Source           string    `json:"source"`    // manual | suggested | discovered
+	State            string    `json:"state"`     // active | suggested | rejected
+	EdgeType         string    `json:"edgeType"`  // sync | async | db | cache
+	CreatedBy        string    `json:"createdBy"`
 	CreatedAt        time.Time `json:"createdAt"`
 	UpdatedAt        time.Time `json:"updatedAt"`
 }

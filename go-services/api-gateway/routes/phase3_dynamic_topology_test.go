@@ -90,7 +90,7 @@ func setupPhase3TestRouter(t *testing.T) (*storage.MemoryStore, http.Handler, st
 }
 
 func TestPhase3_DynamicServiceRegistryCRUD(t *testing.T) {
-	_, router, adminToken, opToken, viewToken := setupPhase3TestRouter(t)
+	_, router, _, opToken, viewToken := setupPhase3TestRouter(t)
 
 	// 1. Viewer cannot create a service (403)
 	svcPayload := map[string]interface{}{
@@ -157,22 +157,22 @@ func TestPhase3_DynamicServiceRegistryCRUD(t *testing.T) {
 		t.Fatalf("Expected 200 OK updating service, got %d: %s", w.Code, w.Body.String())
 	}
 
-	// 5. Operator CANNOT delete service (Requires Admin)
+	// 5. Viewer CANNOT delete service (Requires Operator/Admin)
+	req = httptest.NewRequest("DELETE", "/api/registry/services/order-service", nil)
+	req.Header.Set("Authorization", "Bearer "+viewToken)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("Expected 403 Forbidden for Viewer deleting service, got %d", w.Code)
+	}
+
+	// 6. Operator CAN delete service
 	req = httptest.NewRequest("DELETE", "/api/registry/services/order-service", nil)
 	req.Header.Set("Authorization", "Bearer "+opToken)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("Expected 403 Forbidden for Operator deleting service, got %d", w.Code)
-	}
-
-	// 6. Admin CAN delete service
-	req = httptest.NewRequest("DELETE", "/api/registry/services/order-service", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
-	w = httptest.NewRecorder()
-	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
-		t.Fatalf("Expected 200 OK for Admin deleting service, got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("Expected 200 OK for Operator deleting service, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

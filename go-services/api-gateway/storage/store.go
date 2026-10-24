@@ -46,8 +46,10 @@ type Store interface {
 	ListServices(ctx context.Context, namespace, clusterID string) ([]*TopologyService, error)
 
 	UpsertEdge(ctx context.Context, edge *TopologyEdge) error
+	GetEdgeByID(ctx context.Context, id string) (*TopologyEdge, error)
 	DeleteEdge(ctx context.Context, sourceID, targetID, namespace, clusterID string) error
 	ListEdges(ctx context.Context, namespace, clusterID string) ([]*TopologyEdge, error)
+	ListSuggestions(ctx context.Context, namespace, clusterID string) ([]*TopologyEdge, error)
 
 	AutoDiscoverSpanEdge(ctx context.Context, sourceID, targetID, namespace, clusterID string, latencyMs float64, isError bool) (*TopologyEdge, error)
 
