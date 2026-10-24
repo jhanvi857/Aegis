@@ -135,17 +135,17 @@ func TestPhase4_AutonomousSelfHealing_FullLoop(t *testing.T) {
 		t.Fatalf("Unexpected execution record: %+v", exec)
 	}
 
-	// Verify target service restored to healthy
+	// Verify target service active fault remains active (not falsely cleared by recovery)
 	State.mu.RLock()
 	svcB := State.Services["node-b"]
 	activeFaultsCount := len(State.ActiveFaults)
 	State.mu.RUnlock()
 
-	if svcB.Status != "healthy" {
-		t.Fatalf("Expected node-b status to be healthy, got %s", svcB.Status)
+	if activeFaultsCount != 1 {
+		t.Fatalf("Expected active faults to remain active (not auto-cleared), got %d", activeFaultsCount)
 	}
-	if activeFaultsCount != 0 {
-		t.Fatalf("Expected active faults to be cleared, got %d", activeFaultsCount)
+	if svcB.Status == "healthy" {
+		t.Fatalf("Expected node-b status to remain degraded while fault is ongoing")
 	}
 
 	// Verify persistent audit log

@@ -286,8 +286,26 @@ func (m *MemoryStore) UpdateRecoveryExecution(ctx context.Context, exec *Recover
 	if !ok {
 		return ErrNotFound
 	}
-	*existing = *exec
+	if exec.Status != "" {
+		existing.Status = exec.Status
+	}
+	existing.DurationMs = exec.DurationMs
+	existing.DurationStr = exec.DurationStr
+	if exec.MetricsAfter != nil {
+		existing.MetricsAfter = exec.MetricsAfter
+	}
+	existing.RiskAfter = exec.RiskAfter
+	if exec.EscalatedAction != "" {
+		existing.EscalatedAction = exec.EscalatedAction
+	}
+	if exec.ErrorMessage != "" {
+		existing.ErrorMessage = exec.ErrorMessage
+	}
+	if exec.CompletedAt != nil {
+		existing.CompletedAt = exec.CompletedAt
+	}
 	if exec.IdempotencyKey != "" {
+		existing.IdempotencyKey = exec.IdempotencyKey
 		m.recoveryByKey[exec.IdempotencyKey] = existing
 	}
 	return nil

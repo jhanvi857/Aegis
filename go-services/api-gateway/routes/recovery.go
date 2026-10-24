@@ -329,20 +329,21 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 		_ = store.CreateRecoveryExecution(r.Context(), execRecord)
 	}
 
-	// Revert any active chaos faults on this service
-	stoppedFaultIDs := make([]string, 0)
-	for fid, f := range State.ActiveFaults {
-		if f.TargetServiceID == targetID {
-			stoppedFaultIDs = append(stoppedFaultIDs, fid)
-			delete(State.ActiveFaults, fid)
+	hasActiveFault := false
+	for _, f := range State.ActiveFaults {
+		if f.TargetServiceID == targetID && f.RemainingSeconds > 0 && f.Status != "completed" {
+			hasActiveFault = true
+			break
 		}
 	}
 
-	// Apply physical state changes
-	svc.Status = "healthy"
-	svc.CPU = 25.0
-	svc.Latency = 20.0
-	svc.ErrorRate = 0.001
+	// Apply physical state changes: only reset metrics if no ongoing fault is active
+	if !hasActiveFault {
+		svc.Status = "healthy"
+		svc.CPU = 25.0
+		svc.Latency = 20.0
+		svc.ErrorRate = 0.001
+	}
 	if actionType == "scale" || actionType == "scale_up" {
 		svc.Replicas = svc.Replicas + 2
 	}
@@ -351,18 +352,6 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 	svcName := svc.Name
 
 	State.mu.Unlock()
-
-	// Forward stop to Chaos Engine for cleared faults
-	for _, fid := range stoppedFaultIDs {
-		if flag.Lookup("test.v") != nil && os.Getenv("CHAOS_ENGINE_URL") == "" {
-			continue
-		}
-		go func(t, id string) {
-			client := &http.Client{Timeout: 2 * time.Second}
-			payload, _ := json.Marshal(map[string]interface{}{"target_node": t, "fault_id": id})
-			_, _ = client.Post(fmt.Sprintf("%s/stop", getChaosEngineURL()), "application/json", bytes.NewBuffer(payload))
-		}(targetID, fid)
-	}
 
 	// Dispatch recovery plan to physical Recovery Engine
 	if flag.Lookup("test.v") == nil || os.Getenv("RECOVERY_ENGINE_URL") != "" {
@@ -450,8 +439,19 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		duration := time.Since(start)
-		durationStr := fmt.Sprintf("%.1fs", duration.Seconds())
 		durationMs := duration.Milliseconds()
+		if durationMs <= 0 {
+			durationMs = 1
+		}
+		var durationStr string
+		if duration < time.Second {
+			durationStr = fmt.Sprintf("%.2fs", duration.Seconds())
+			if durationStr == "0.00s" {
+				durationStr = "0.01s"
+			}
+		} else {
+			durationStr = fmt.Sprintf("%.1fs", duration.Seconds())
+		}
 
 		status := "Verified"
 		var escalatedAction string
@@ -871,20 +871,21 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 		_ = store.CreateRecoveryExecution(context.Background(), execRecord)
 	}
 
-	// Revert any active chaos faults on this service
-	stoppedFaultIDs := make([]string, 0)
-	for fid, f := range State.ActiveFaults {
-		if f.TargetServiceID == targetID {
-			stoppedFaultIDs = append(stoppedFaultIDs, fid)
-			delete(State.ActiveFaults, fid)
+	hasActiveFault := false
+	for _, f := range State.ActiveFaults {
+		if f.TargetServiceID == targetID && f.RemainingSeconds > 0 && f.Status != "completed" {
+			hasActiveFault = true
+			break
 		}
 	}
 
-	// Apply physical remediation
-	svc.Status = "healthy"
-	svc.CPU = 25.0
-	svc.Latency = 20.0
-	svc.ErrorRate = 0.001
+	// Apply physical remediation: only reset metrics if no ongoing fault is active
+	if !hasActiveFault {
+		svc.Status = "healthy"
+		svc.CPU = 25.0
+		svc.Latency = 20.0
+		svc.ErrorRate = 0.001
+	}
 	if actionType == "scale" || actionType == "scale_up" {
 		svc.Replicas = svc.Replicas + 2
 	}
@@ -901,18 +902,6 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 		Message:     fmt.Sprintf("[AUTONOMOUS SELF-HEALING] Dispatched %s on %s automatically (Risk: %s, Score: %.2f)", actionType, svcName, assessment.RiskLevel, assessment.RiskScore),
 	})
 	State.mu.Unlock()
-
-	// Forward stop to Chaos Engine for cleared faults
-	for _, fid := range stoppedFaultIDs {
-		if flag.Lookup("test.v") != nil && os.Getenv("CHAOS_ENGINE_URL") == "" {
-			continue
-		}
-		go func(t, id string) {
-			client := &http.Client{Timeout: 2 * time.Second}
-			payload, _ := json.Marshal(map[string]interface{}{"target_node": t, "fault_id": id})
-			_, _ = client.Post(fmt.Sprintf("%s/stop", getChaosEngineURL()), "application/json", bytes.NewBuffer(payload))
-		}(targetID, fid)
-	}
 
 	// Dispatch recovery plan to physical Recovery Engine
 	if flag.Lookup("test.v") == nil || os.Getenv("RECOVERY_ENGINE_URL") != "" {
@@ -993,30 +982,75 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 		}
 
 		duration := time.Since(start)
-		durationStr := fmt.Sprintf("%.1fs", duration.Seconds())
 		durationMs := duration.Milliseconds()
+		if durationMs <= 0 {
+			durationMs = 1
+		}
+		var durationStr string
+		if duration < time.Second {
+			durationStr = fmt.Sprintf("%.2fs", duration.Seconds())
+			if durationStr == "0.00s" {
+				durationStr = "0.01s"
+			}
+		} else {
+			durationStr = fmt.Sprintf("%.1fs", duration.Seconds())
+		}
 
 		status := "Verified"
+		var escalatedAction string
+		riskAfter := 12.0
 		if !verified {
 			status = "Ineffective"
+			riskAfter = rBefore
+
+			// Query secondary action from rulebook
+			family := "cpu_saturation"
+			for fam, esc := range FaultFamilyEscalations {
+				if esc.Primary == NormalizeActionType(actType) {
+					family = fam
+					break
+				}
+			}
+			esc, hasEsc := FaultFamilyEscalations[family]
+			if hasEsc {
+				escalatedAction = esc.Secondary
+			} else {
+				escalatedAction = "RESTART"
+			}
+
+			// Add human escalation alert
+			State.mu.Lock()
+			State.Alerts = append(State.Alerts, LiveAlert{
+				ID:          fmt.Sprintf("alert-esc-%d", time.Now().UnixNano()),
+				Timestamp:   time.Now().Format("15:04:05"),
+				ServiceID:   targetNode,
+				ServiceName: tName,
+				Severity:    "critical",
+				Message:     fmt.Sprintf("AUTONOMOUS REMEDIATION INEFFECTIVE: Action '%s' on %s failed verification window. Escalating to: %s", actType, tName, escalatedAction),
+				Resolved:    false,
+			})
+			State.mu.Unlock()
 		}
 
 		if Safety != nil {
 			Safety.CompleteDispatch(pID)
 		}
 
-		predAfter := ComputePredictionOutput()
-		riskAfter := predAfter.FailureProbability
+		if verified {
+			predAfter := ComputePredictionOutput()
+			riskAfter = predAfter.FailureProbability
+		}
 
 		completedAt := time.Now().UTC()
 		updateExec := &storage.RecoveryExecution{
-			ID:           pID,
-			Status:       status,
-			DurationMs:   durationMs,
-			DurationStr:  durationStr,
-			MetricsAfter: finalMetrics,
-			RiskAfter:    riskAfter,
-			CompletedAt:  &completedAt,
+			ID:              pID,
+			Status:          status,
+			DurationMs:      durationMs,
+			DurationStr:     durationStr,
+			MetricsAfter:    finalMetrics,
+			RiskAfter:       riskAfter,
+			EscalatedAction: escalatedAction,
+			CompletedAt:     &completedAt,
 		}
 		if store := GetAuthStore(); store != nil {
 			_ = store.UpdateRecoveryExecution(context.Background(), updateExec)

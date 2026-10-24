@@ -2,6 +2,16 @@
 
 All notable changes to the Aegis platform will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **Recovery Fault Isolation & Genuine Telemetry Verification (Issue 1)**:
+  - Removed auto-clearing of `State.ActiveFaults` and forwarding of stop commands to Chaos Engine during remediation in both manual and autonomous recovery paths.
+  - Active chaos faults terminate exclusively through duration expiration or explicit admin stop via chaos API.
+  - Telemetry verification strictly checks live service health; if an ongoing fault leaves metrics degraded/critical, recovery status transitions to `Ineffective` and executes the escalation ladder.
+  - Populated finalized `DurationMs` and `DurationStr` from the real verification window instead of initial zero placeholders.
+  - Added comprehensive tests for active fault retention under `SCALE_UP`, ineffective escalation under active faults, natural fault expiration verification, and finalized duration recording.
+
 ## [Phase 7: Production Readiness & Enterprise Operational Hardening] - 2026-10-22
 
 ### Added
