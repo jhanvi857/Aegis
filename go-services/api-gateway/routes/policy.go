@@ -267,11 +267,62 @@ func (s *SafetyLimitsManager) Reset() {
 	defer s.mu.Unlock()
 	s.LastActionTimes = make(map[string]time.Time)
 	s.InFlightActions = make(map[string]*InFlightAction)
+	s.ServiceCooldown = 30 * time.Second
+	s.MaxConcurrent = 2
+	s.BlastRadiusBudget = 5
 	if flag.Lookup("test.v") != nil {
 		s.VerificationWindow = 100 * time.Millisecond
 	} else {
 		s.VerificationWindow = 10 * time.Second
 	}
+}
+
+func (s *SafetyLimitsManager) GetVerificationWindow() time.Duration {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.VerificationWindow
+}
+
+func (s *SafetyLimitsManager) SetVerificationWindow(w time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.VerificationWindow = w
+}
+
+func (s *SafetyLimitsManager) GetServiceCooldown() time.Duration {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.ServiceCooldown
+}
+
+func (s *SafetyLimitsManager) SetServiceCooldown(c time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ServiceCooldown = c
+}
+
+func (s *SafetyLimitsManager) GetMaxConcurrent() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.MaxConcurrent
+}
+
+func (s *SafetyLimitsManager) SetMaxConcurrent(m int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.MaxConcurrent = m
+}
+
+func (s *SafetyLimitsManager) GetBlastRadiusBudget() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.BlastRadiusBudget
+}
+
+func (s *SafetyLimitsManager) SetBlastRadiusBudget(b int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.BlastRadiusBudget = b
 }
 
 func (s *SafetyLimitsManager) GetCooldownRemainingSec(serviceID string) int {

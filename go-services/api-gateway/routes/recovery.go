@@ -9,11 +9,20 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aegis/go-services/api-gateway/storage"
 	"github.com/gorilla/mux"
 )
+
+var (
+	recoveryWG sync.WaitGroup
+)
+
+func WaitForRecoveryVerifications() {
+	recoveryWG.Wait()
+}
 
 type ExecuteRecoveryRequest struct {
 	ActionID        string `json:"actionId"`
@@ -345,6 +354,9 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Forward stop to Chaos Engine for cleared faults
 	for _, fid := range stoppedFaultIDs {
+		if flag.Lookup("test.v") != nil && os.Getenv("CHAOS_ENGINE_URL") == "" {
+			continue
+		}
 		go func(t, id string) {
 			client := &http.Client{Timeout: 2 * time.Second}
 			payload, _ := json.Marshal(map[string]interface{}{"target_node": t, "fault_id": id})
@@ -353,38 +365,48 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Dispatch recovery plan to physical Recovery Engine
-	go func(pID, rLevel string, rScore float64, aType, tNode string) {
-		recEngineURL := os.Getenv("RECOVERY_ENGINE_URL")
-		if recEngineURL == "" {
-			recEngineURL = "http://localhost:8092"
-		}
+	if flag.Lookup("test.v") == nil || os.Getenv("RECOVERY_ENGINE_URL") != "" {
+		go func(pID, rLevel string, rScore float64, aType, tNode string) {
+			recEngineURL := os.Getenv("RECOVERY_ENGINE_URL")
+			if recEngineURL == "" {
+				recEngineURL = "http://localhost:8092"
+			}
 
-		client := &http.Client{Timeout: 3 * time.Second}
-		planPayload, _ := json.Marshal(map[string]interface{}{
-			"plan_id":    pID,
-			"risk_level": rLevel,
-			"risk_score": rScore,
-			"steps": []map[string]interface{}{
-				{
-					"action_id":       fmt.Sprintf("act-%d", time.Now().UnixNano()),
-					"action_type":     aType,
-					"target_node":     tNode,
-					"execution_order": 1,
-					"parameters":      map[string]string{},
+			client := &http.Client{Timeout: 3 * time.Second}
+			planPayload, _ := json.Marshal(map[string]interface{}{
+				"plan_id":    pID,
+				"risk_level": rLevel,
+				"risk_score": rScore,
+				"steps": []map[string]interface{}{
+					{
+						"action_id":       fmt.Sprintf("act-%d", time.Now().UnixNano()),
+						"action_type":     aType,
+						"target_node":     tNode,
+						"execution_order": 1,
+						"parameters":      map[string]string{},
+					},
 				},
-			},
-		})
+			})
 
-		resp, err := client.Post(fmt.Sprintf("%s/plan/submit", recEngineURL), "application/json", bytes.NewBuffer(planPayload))
-		if err == nil {
-			_ = resp.Body.Close()
-		}
-	}(planID, riskLevel, riskScore, actionType, targetID)
+			resp, err := client.Post(fmt.Sprintf("%s/plan/submit", recEngineURL), "application/json", bytes.NewBuffer(planPayload))
+			if err == nil {
+				_ = resp.Body.Close()
+			}
+		}(planID, riskLevel, riskScore, actionType, targetID)
+	}
 
 	// 5. Asynchronous Real Telemetry Verification Window (Replacing fake verify)
+	recoveryWG.Add(1)
 	go func(pID, targetNode, actType, aTitle, tName string, rBefore float64) {
+		defer recoveryWG.Done()
 		start := time.Now()
-		window := Safety.VerificationWindow
+		window := 10 * time.Second
+		if Safety != nil {
+			vw := Safety.GetVerificationWindow()
+			if vw > 0 {
+				window = vw
+			}
+		}
 		if window <= 0 {
 			if flag.Lookup("test.v") != nil {
 				window = 100 * time.Millisecond
@@ -634,8 +656,6 @@ func RecoveryHandler(w http.ResponseWriter, r *http.Request) {
 
 func GetPendingRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 	State.mu.RLock()
-	defer State.mu.RUnlock()
-
 	pending := make([]RecoveryAction, 0)
 	// Check latest Python recommendations first
 	for _, rec := range State.LatestRecommendations {
@@ -644,16 +664,19 @@ func GetPendingRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 			pending = append(pending, rec)
 		}
 	}
+	State.mu.RUnlock()
 
 	if len(pending) == 0 {
 		// If no cached recommendations, evaluate live model
 		pred := ComputePredictionOutput()
+		State.mu.RLock()
 		for _, rec := range pred.RecommendedActions {
 			if rec.RequiresApproval && !State.ApprovedPlans[rec.ID] {
 				rec.Status = "pending_approval"
 				pending = append(pending, rec)
 			}
 		}
+		State.mu.RUnlock()
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -881,6 +904,9 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 
 	// Forward stop to Chaos Engine for cleared faults
 	for _, fid := range stoppedFaultIDs {
+		if flag.Lookup("test.v") != nil && os.Getenv("CHAOS_ENGINE_URL") == "" {
+			continue
+		}
 		go func(t, id string) {
 			client := &http.Client{Timeout: 2 * time.Second}
 			payload, _ := json.Marshal(map[string]interface{}{"target_node": t, "fault_id": id})
@@ -889,40 +915,47 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 	}
 
 	// Dispatch recovery plan to physical Recovery Engine
-	go func(pID, rLevel string, rScore float64, aType, tNode string) {
-		recEngineURL := os.Getenv("RECOVERY_ENGINE_URL")
-		if recEngineURL == "" {
-			recEngineURL = "http://localhost:8092"
-		}
+	if flag.Lookup("test.v") == nil || os.Getenv("RECOVERY_ENGINE_URL") != "" {
+		go func(pID, rLevel string, rScore float64, aType, tNode string) {
+			recEngineURL := os.Getenv("RECOVERY_ENGINE_URL")
+			if recEngineURL == "" {
+				recEngineURL = "http://localhost:8092"
+			}
 
-		client := &http.Client{Timeout: 3 * time.Second}
-		planPayload, _ := json.Marshal(map[string]interface{}{
-			"plan_id":    pID,
-			"risk_level": rLevel,
-			"risk_score": rScore,
-			"steps": []map[string]interface{}{
-				{
-					"action_id":       actionID,
-					"action_type":     aType,
-					"target_node":     tNode,
-					"execution_order": 1,
-					"parameters":      map[string]string{},
+			client := &http.Client{Timeout: 3 * time.Second}
+			planPayload, _ := json.Marshal(map[string]interface{}{
+				"plan_id":    pID,
+				"risk_level": rLevel,
+				"risk_score": rScore,
+				"steps": []map[string]interface{}{
+					{
+						"action_id":       actionID,
+						"action_type":     aType,
+						"target_node":     tNode,
+						"execution_order": 1,
+						"parameters":      map[string]string{},
+					},
 				},
-			},
-		})
+			})
 
-		resp, err := client.Post(fmt.Sprintf("%s/plan/submit", recEngineURL), "application/json", bytes.NewBuffer(planPayload))
-		if err == nil {
-			_ = resp.Body.Close()
-		}
-	}(planID, assessment.RiskLevel, assessment.RiskScore, actionType, targetID)
+			resp, err := client.Post(fmt.Sprintf("%s/plan/submit", recEngineURL), "application/json", bytes.NewBuffer(planPayload))
+			if err == nil {
+				_ = resp.Body.Close()
+			}
+		}(planID, assessment.RiskLevel, assessment.RiskScore, actionType, targetID)
+	}
 
 	// Verification window goroutine
+	recoveryWG.Add(1)
 	go func(pID, targetNode, actType, aTitle, tName string, rBefore float64) {
+		defer recoveryWG.Done()
 		start := time.Now()
 		window := 10 * time.Second
-		if Safety != nil && Safety.VerificationWindow > 0 {
-			window = Safety.VerificationWindow
+		if Safety != nil {
+			vw := Safety.GetVerificationWindow()
+			if vw > 0 {
+				window = vw
+			}
 		} else if flag.Lookup("test.v") != nil {
 			window = 100 * time.Millisecond
 		}
@@ -1042,8 +1075,8 @@ func GetAutonomousRecoveryStatusHandler(w http.ResponseWriter, r *http.Request) 
 	maxConcurrent := 2
 	if Safety != nil {
 		activeCount = Safety.ActiveDispatchCount()
-		cooldown = int(Safety.ServiceCooldown.Seconds())
-		maxConcurrent = Safety.MaxConcurrent
+		cooldown = int(Safety.GetServiceCooldown().Seconds())
+		maxConcurrent = Safety.GetMaxConcurrent()
 	}
 
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{

@@ -157,10 +157,11 @@ func TestPhase2_PolicyCheckHandler_Endpoint(t *testing.T) {
 
 func TestPhase2_Safety_ServiceCooldownEnforcement(t *testing.T) {
 	setupPhase2TestEnvironment()
-	Safety.ServiceCooldown = 30 * time.Second
+	Safety.SetServiceCooldown(30 * time.Second)
 
 	// Pre-approve action on node-a
 	actionID := "rec-scale-node-a"
+	State.mu.Lock()
 	State.ApprovedPlans[actionID] = true
 	State.ApprovedRecords[actionID] = ApprovalRecord{
 		ActionID:        actionID,
@@ -168,6 +169,7 @@ func TestPhase2_Safety_ServiceCooldownEnforcement(t *testing.T) {
 		ActionType:      "scale",
 		Approver:        "admin@enterprise.io",
 	}
+	State.mu.Unlock()
 
 	// First execution should succeed
 	payload, _ := json.Marshal(map[string]interface{}{
@@ -185,6 +187,7 @@ func TestPhase2_Safety_ServiceCooldownEnforcement(t *testing.T) {
 
 	// Immediate second execution on node-a should trigger cooldown (429 Too Many Requests)
 	actionID2 := "rec-restart-node-a"
+	State.mu.Lock()
 	State.ApprovedPlans[actionID2] = true
 	State.ApprovedRecords[actionID2] = ApprovalRecord{
 		ActionID:        actionID2,
@@ -192,6 +195,7 @@ func TestPhase2_Safety_ServiceCooldownEnforcement(t *testing.T) {
 		ActionType:      "restart",
 		Approver:        "admin@enterprise.io",
 	}
+	State.mu.Unlock()
 
 	payload2, _ := json.Marshal(map[string]interface{}{
 		"actionId":        actionID2,
@@ -216,7 +220,7 @@ func TestPhase2_Safety_ServiceCooldownEnforcement(t *testing.T) {
 
 func TestPhase2_Safety_MaxConcurrentInFlightActions(t *testing.T) {
 	setupPhase2TestEnvironment()
-	Safety.MaxConcurrent = 2
+	Safety.SetMaxConcurrent(2)
 
 	// Register 2 in-flight actions to hit the max concurrent limit
 	Safety.RegisterDispatch("plan-1", "node-b", "restart", 1)
@@ -238,7 +242,7 @@ func TestPhase2_Safety_MaxConcurrentInFlightActions(t *testing.T) {
 
 func TestPhase2_Safety_GlobalBlastRadiusBudget(t *testing.T) {
 	setupPhase2TestEnvironment()
-	Safety.BlastRadiusBudget = 5
+	Safety.SetBlastRadiusBudget(5)
 
 	// Action with blast radius 4 is currently running
 	Safety.RegisterDispatch("plan-big", "node-c", "reroute_traffic", 4)
@@ -262,6 +266,7 @@ func TestPhase2_Recovery_IdempotencyKeyReplay(t *testing.T) {
 
 	// Pre-approve action on node-b
 	actionID := "rec-restart-node-b"
+	State.mu.Lock()
 	State.ApprovedPlans[actionID] = true
 	State.ApprovedRecords[actionID] = ApprovalRecord{
 		ActionID:        actionID,
@@ -269,6 +274,7 @@ func TestPhase2_Recovery_IdempotencyKeyReplay(t *testing.T) {
 		ActionType:      "restart",
 		Approver:        "admin@enterprise.io",
 	}
+	State.mu.Unlock()
 
 	payload, _ := json.Marshal(map[string]interface{}{
 		"actionId":        actionID,
@@ -425,7 +431,7 @@ func TestPhase2_Recovery_RollbackAction(t *testing.T) {
 
 func TestPhase2_Recovery_VerificationWindowAndEscalation(t *testing.T) {
 	store := setupPhase2TestEnvironment()
-	Safety.VerificationWindow = 1100 * time.Millisecond
+	Safety.SetVerificationWindow(1100 * time.Millisecond)
 
 	// 1. Success case: execute restart, service metrics normalize, status becomes Verified
 	actionID := "rec-restart-gateway"
@@ -473,7 +479,7 @@ func TestPhase2_Recovery_VerificationWindowAndEscalation(t *testing.T) {
 
 	// 2. Ineffective case: if metrics fail to normalize, transitions to Ineffective with escalation
 	Safety.Reset()
-	Safety.VerificationWindow = 1100 * time.Millisecond
+	Safety.SetVerificationWindow(1100 * time.Millisecond)
 	actionID2 := "rec-scale-node-b"
 	State.mu.Lock()
 	State.ApprovedPlans[actionID2] = true
@@ -504,20 +510,27 @@ func TestPhase2_Recovery_VerificationWindowAndEscalation(t *testing.T) {
 	planID2 := resp2["planId"].(string)
 
 	// Keep node-b degraded immediately so verification fails
+	stopDegrade := make(chan struct{})
 	go func() {
-		for i := 0; i < 15; i++ {
-			State.mu.Lock()
-			if s, ok := State.Services["node-b"]; ok {
-				s.Status = "critical"
-				s.ErrorRate = 0.50
-				s.Latency = 999.0
+		for {
+			select {
+			case <-stopDegrade:
+				return
+			default:
+				State.mu.Lock()
+				if s, ok := State.Services["node-b"]; ok {
+					s.Status = "critical"
+					s.ErrorRate = 0.50
+					s.Latency = 999.0
+				}
+				State.mu.Unlock()
+				time.Sleep(50 * time.Millisecond)
 			}
-			State.mu.Unlock()
-			time.Sleep(100 * time.Millisecond)
 		}
 	}()
 
 	time.Sleep(1600 * time.Millisecond)
+	close(stopDegrade)
 
 	execFailed, err := store.GetRecoveryExecution(context.Background(), planID2)
 	if err != nil || execFailed == nil {
@@ -541,5 +554,6 @@ func TestPhase2_Recovery_VerificationWindowAndEscalation(t *testing.T) {
 	if !foundEscalation {
 		t.Errorf("expected critical escalation alert emitted for ineffective remediation on node-b")
 	}
+	WaitForRecoveryVerifications()
 }
 

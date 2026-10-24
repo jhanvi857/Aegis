@@ -165,6 +165,7 @@ func TestPhase4_AutonomousSelfHealing_FullLoop(t *testing.T) {
 	if !foundAutoLog {
 		t.Fatalf("Audit log did not record recovery.autonomous_execute")
 	}
+	WaitForRecoveryVerifications()
 }
 
 func TestPhase4_AutonomousSelfHealing_ApprovalGate_HoldHighRisk(t *testing.T) {

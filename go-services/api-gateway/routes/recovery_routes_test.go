@@ -124,18 +124,21 @@ func TestExecuteRecovery_ApprovalGateEnforcement(t *testing.T) {
 	if resp["approvalType"] != "Human-Approved by secops-lead@aegis" {
 		t.Errorf("expected approvalType 'Human-Approved by secops-lead@aegis', got '%v'", resp["approvalType"])
 	}
+	WaitForRecoveryVerifications()
 }
 
 func TestRejectRecovery_RevokesApproval(t *testing.T) {
 	setupTestState()
 
 	actionID := "rec-scale-node-a"
+	State.mu.Lock()
 	State.ApprovedPlans[actionID] = true
 	State.ApprovedRecords[actionID] = ApprovalRecord{
 		ActionID:        actionID,
 		TargetServiceID: "node-a",
 		Approver:        "secops@aegis",
 	}
+	State.mu.Unlock()
 
 	rejectPayload, _ := json.Marshal(map[string]interface{}{
 		"actionId": actionID,
@@ -149,7 +152,12 @@ func TestRejectRecovery_RevokesApproval(t *testing.T) {
 		t.Fatalf("expected 200 from reject handler, got %d", rejRr.Code)
 	}
 
-	if State.ApprovedPlans[actionID] || len(State.ApprovedRecords[actionID].ActionID) > 0 {
+	State.mu.RLock()
+	hasPlan := State.ApprovedPlans[actionID]
+	recIDLen := len(State.ApprovedRecords[actionID].ActionID)
+	State.mu.RUnlock()
+
+	if hasPlan || recIDLen > 0 {
 		t.Errorf("expected approval to be removed after rejection")
 	}
 }
@@ -201,12 +209,14 @@ func TestExecuteRecovery_TargetMismatchBlocked(t *testing.T) {
 
 	actionID := "rec-scale-node-b"
 	// Approved specifically for node-b
+	State.mu.Lock()
 	State.ApprovedRecords[actionID] = ApprovalRecord{
 		ActionID:        actionID,
 		TargetServiceID: "node-b",
 		ActionType:      "scale",
 		Approver:        "admin@aegis",
 	}
+	State.mu.Unlock()
 
 	// Client attempts to execute this token against node-a
 	payload, _ := json.Marshal(map[string]interface{}{
