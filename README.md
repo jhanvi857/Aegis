@@ -414,6 +414,52 @@ aegis/
 
 ### 2. Run the Full Stack Locally
 
+### Lightweight Docker workflow
+
+For a 16 GB laptop without an NVIDIA GPU, use the CPU-only core profile. Build explicitly
+when dependencies or Dockerfiles change; normal runs reuse the existing images and do not
+rebuild:
+
+```powershell
+make build
+make up-lean
+# Dashboard: http://localhost:5173
+make down
+```
+
+The `core` profile runs the API gateway, CPU-only ML server, PostgreSQL, and the static
+frontend. The `full` profile adds Kafka, Redis, the playground services, telemetry, chaos,
+and recovery infrastructure:
+
+```powershell
+make up-full
+```
+
+Model checkpoints are mounted from `python-ml/models/checkpoints`; they are not copied into
+the image. See [`docs/build-performance.md`](docs/build-performance.md) for build and memory
+measurements.
+
+### Native development without Docker
+
+The native path avoids Docker image builds while keeping the same CPU-only ML dependencies:
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -r python-ml\requirements-serve.txt
+cd go-services
+go run .\api-gateway\main.go
+# In another terminal:
+cd frontend
+npm install
+npm run dev
+# In another terminal:
+cd python-ml
+..\.venv\Scripts\python.exe serving\grpc_server.py
+```
+
+Set `DATABASE_URL` to a reachable PostgreSQL instance when running the API gateway natively.
+
 #### A. Start the Go Control Plane (API Gateway)
 ```powershell
 cd go-services

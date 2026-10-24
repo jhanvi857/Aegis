@@ -1,0 +1,8 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.5.1+cpu
+networkx==3.4.2
+kafka-python==2.0.2
+grpcio==1.68.1
+protobuf==5.29.3
+pyyaml==6.0.2
+numpy==2.1.3

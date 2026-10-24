@@ -15,6 +15,7 @@ services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: aegis-zookeeper
+    profiles: ["full"]
     networks:
       - aegis-net
     environment:
@@ -26,6 +27,7 @@ services:
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     container_name: aegis-kafka
+    profiles: ["full"]
     networks:
       - aegis-net
     depends_on:
@@ -44,6 +46,7 @@ services:
   redis:
     image: redis:7.2-alpine
     container_name: aegis-redis
+    profiles: ["full"]
     networks:
       - aegis-net
     ports:
@@ -54,6 +57,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: aegis-postgres
+    profiles: ["core", "full"]
     networks:
       - aegis-net
     ports:
@@ -64,6 +68,8 @@ services:
       POSTGRES_DB: aegis_db
     volumes:
       - pgdata:/var/lib/postgresql/data
+    mem_limit: 512m
+    cpus: 0.5
 
   # ─────────────────────────────────────────────────────────────
   # Playground Distributed Services
@@ -76,6 +82,7 @@ services:
       args:
         SERVICE_DIR: playground/gateway
     container_name: aegis-gateway
+    profiles: ["full"]
     networks:
       - aegis-net
     ports:
@@ -99,6 +106,7 @@ services:
       args:
         SERVICE_DIR: playground/node-a
     container_name: aegis-node-a
+    profiles: ["full"]
     networks:
       - aegis-net
     ports:
@@ -117,6 +125,7 @@ services:
       args:
         SERVICE_DIR: playground/node-b
     container_name: aegis-node-b
+    profiles: ["full"]
     networks:
       - aegis-net
     ports:
@@ -135,6 +144,7 @@ services:
       args:
         SERVICE_DIR: playground/node-c
     container_name: aegis-node-c
+    profiles: ["full"]
     networks:
       - aegis-net
     ports:
@@ -153,6 +163,7 @@ services:
       args:
         SERVICE_DIR: playground/node-d
     container_name: aegis-node-d
+    profiles: ["full"]
     networks:
       - aegis-net
     ports:
@@ -175,6 +186,7 @@ services:
       args:
         SERVICE_DIR: chaos-engine
     container_name: aegis-chaos-engine
+    profiles: ["full"]
     networks:
       - aegis-net
     ports:
@@ -198,6 +210,7 @@ services:
       args:
         SERVICE_DIR: telemetry-agent
     container_name: aegis-telemetry-agent
+    profiles: ["full"]
     networks:
       - aegis-net
     ports:
@@ -220,6 +233,7 @@ services:
       args:
         SERVICE_DIR: recovery-engine
     container_name: aegis-recovery-engine
+    profiles: ["full"]
     networks:
       - aegis-net
     ports:
@@ -235,6 +249,7 @@ services:
       context: .
       dockerfile: python-ml/Dockerfile
     container_name: aegis-python-ml
+    profiles: ["core", "full"]
     networks:
       - aegis-net
     ports:
@@ -242,10 +257,14 @@ services:
     environment:
       PORT: "50051"
       TOPOLOGY_PATH: /app/configs/topology.yaml
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-2}
+      AEGIS_TORCH_NUM_THREADS: ${AEGIS_TORCH_NUM_THREADS:-2}
+      AEGIS_CHECKPOINT_PATH: /app/python-ml/models/checkpoints/tgnn_best.pt
     volumes:
       - ./configs/topology.yaml:/app/configs/topology.yaml:ro
-    depends_on:
-      - kafka
+      - ./python-ml/models/checkpoints:/app/python-ml/models/checkpoints:ro
+    mem_limit: 2g
+    cpus: 2
 
   api-gateway:
     build:
@@ -254,6 +273,7 @@ services:
       args:
         SERVICE_DIR: api-gateway
     container_name: aegis-api-gateway
+    profiles: ["core", "full"]
     networks:
       - aegis-net
     ports:
@@ -264,7 +284,7 @@ services:
       PYTHON_GRPC_ADDR: "python-ml:50051"
       CHAOS_ENGINE_URL: "http://chaos-engine:8091"
       RECOVERY_ENGINE_URL: "http://recovery-engine:8092"
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL environment variable must be set in .env}
+      DATABASE_URL: postgresql://aegis:${POSTGRES_PASSWORD}@postgres:5432/aegis_db?sslmode=disable
       AEGIS_BOOTSTRAP_ADMIN_EMAIL: ${AEGIS_BOOTSTRAP_ADMIN_EMAIL:-admin@enterprise.io}
       AEGIS_BOOTSTRAP_ADMIN_PASSWORD: ${AEGIS_BOOTSTRAP_ADMIN_PASSWORD:?AEGIS_BOOTSTRAP_ADMIN_PASSWORD environment variable must be set in .env}
     volumes:
@@ -272,5 +292,20 @@ services:
     depends_on:
       - postgres
       - python-ml
-      - chaos-engine
-      - recovery-engine
+    mem_limit: 512m
+    cpus: 1
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: aegis-frontend
+    profiles: ["core", "full"]
+    networks:
+      - aegis-net
+    ports:
+      - "5173:80"
+    depends_on:
+      - api-gateway
+    mem_limit: 256m
+    cpus: 0.5

@@ -1,24 +1,30 @@
-.PHONY: help up down build proto test lint clean logs status notebooks-smoke
+.PHONY: help up up-lean up-full down build proto test lint clean logs status notebooks-smoke
 
 help:
 	@echo "Aegis Development Commands:"
-	@echo "  make up          - Start playground cluster with docker-compose"
-	@echo "  make down        - Tear down playground cluster"
-	@echo "  make build       - Build all Go services and Docker images"
+	@echo "  make build       - Build all images once (run this explicitly after code changes)"
+	@echo "  make up-lean     - Start the lightweight core profile without rebuilding"
+	@echo "  make up-full     - Start the full playground and infrastructure without rebuilding"
+	@echo "  make down        - Tear down the Compose stack"
 	@echo "  make proto       - Regenerate Protobuf stubs for Go and Python"
 	@echo "  make test        - Run test suite"
 	@echo "  make logs        - Tail logs from all cluster containers"
 	@echo "  make status      - Check health endpoints of all running nodes"
 
-up:
-	docker-compose up -d
+up: up-lean
+
+up-lean:
+	docker compose --profile core up -d
 
 down:
-	docker-compose down
+	docker compose down
 
 build:
 	cd go-services && go build ./...
-	docker-compose build
+	docker compose --profile core --profile full build
+
+up-full:
+	docker compose --profile full up -d
 
 proto:
 	bash scripts/gen_proto.sh
@@ -27,7 +33,7 @@ test:
 	cd go-services && go test ./...
 
 logs:
-	docker-compose logs -f
+	docker compose logs -f
 
 status:
 	@echo "Checking cluster health..."

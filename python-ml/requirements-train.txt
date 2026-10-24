@@ -1,0 +1,9 @@
+-r requirements-serve.txt
+grpcio-tools==1.68.1
+scikit-learn==1.6.1
+pandas==2.2.3
+scipy==1.14.1
+matplotlib==3.9.3
+tqdm==4.67.1
+jupyter==1.1.1
+notebook==7.3.2

@@ -9,7 +9,7 @@ import sys
 import time
 import logging
 from concurrent import futures
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -18,6 +18,7 @@ from tasks.root_cause import RootCauseAnalyzer
 from tasks.propagation_prediction import PropagationPredictor
 from recovery_planner.plan_builder import RecoveryPlanBuilder
 import networkx as nx
+import torch
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,11 @@ class PredictionEngine:
     for graphs > AEGIS_SPARSE_THRESHOLD (default 20), and dense TGNN for small graphs.
     """
 
-    def __init__(self, checkpoint_path: str = "python-ml/models/checkpoints/tgnn_best.pt"):
+    def __init__(self, checkpoint_path: Optional[str] = None):
+        checkpoint_path = checkpoint_path or os.getenv(
+            "AEGIS_CHECKPOINT_PATH",
+            "/app/python-ml/models/checkpoints/tgnn_best.pt",
+        )
         self.sparse_threshold = int(os.getenv("AEGIS_SPARSE_THRESHOLD", "20"))
         self.failure_predictor = FailurePredictor(model_checkpoint=checkpoint_path)
         self.root_cause_analyzer = RootCauseAnalyzer(model_checkpoint=checkpoint_path)
@@ -49,7 +54,10 @@ class PredictionEngine:
         self.rl_policy = None
         try:
             from rl_agent.policy import RecoveryPolicyNetwork
-            rl_ckpt = "python-ml/models/checkpoints/rl_policy_best.pt"
+            rl_ckpt = os.getenv(
+                "AEGIS_RL_CHECKPOINT_PATH",
+                "/app/python-ml/models/checkpoints/rl_policy_best.pt",
+            )
             if os.path.exists(rl_ckpt):
                 self.rl_policy = RecoveryPolicyNetwork(state_dim=25, action_dim=21)
                 self.rl_policy.load(rl_ckpt)
@@ -608,6 +616,7 @@ except ImportError as e:
 
 def serve(port: int = 50051):
     """Starts PredictionService gRPC server or fallback HTTP/socket listener."""
+    torch.set_num_threads(int(os.getenv("AEGIS_TORCH_NUM_THREADS", os.getenv("OMP_NUM_THREADS", "2"))))
     logger.info(f"[grpc-server] Aegis ML Inference Server initializing on port {port}...")
     engine = PredictionEngine()
     logger.info("[grpc-server] TGNN Engine loaded and ready for inference requests.")

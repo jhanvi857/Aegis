@@ -1,0 +1,16 @@
+.git
+.gitignore
+**/node_modules
+node_modules
+notebooks
+dataset
+**/checkpoints
+docs
+tests
+**/__pycache__
+**/.pytest_cache
+frontend/dist
+frontend/.vite
+*.pt
+*.pth
+*.pyc

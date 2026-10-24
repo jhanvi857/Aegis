@@ -5,6 +5,9 @@ All notable changes to the Aegis platform will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Lean CPU Development Stack**:
+  - Split Python serving and training requirements, pinned a CPU-only PyTorch wheel, and removed CUDA packages, training libraries, and `grpcio-tools` from the serving runtime image.
+  - Added cached multi-stage Python, Go, and frontend images, non-root runtimes, Compose `core`/`full` profiles, resource limits, model volume mounts, and explicit `make up-lean`/`make up-full` workflows.
 - **Service & Dependency Builder Platform (Phases 1-3)**:
   - **Data Model & Schema Migration (`004_service_dependency_builder.sql`)**: Extended `topology_services` with `monitoring_mode` (`ignore`, `observe`, `recommend`, `auto_remediate`), `telemetry_source` (Prometheus, Kubernetes, Agent Push), `recovery_binding` (Kubernetes, Docker), `status`, `owner`, `tier`, and `tags`. Extended `topology_edges` with `source` (`manual`, `suggested`, `discovered`), `state` (`active`, `suggested`, `rejected`), `edge_type` (`sync`, `async`, `db`, `cache`), `confidence`, and `created_by`.
   - **Cryptographic Protection & SSRF Shield (`crypto.go`, `ssrf.go`)**: Encrypted sensitive telemetry tokens and passwords at rest with AES-256-GCM. Implemented SSRF blocklist prohibiting private CIDRs, link-local, and cloud metadata (`169.254.169.254`), with strict timeouts and size caps. Redacted all credentials from API responses, export manifests, and audit logs.
