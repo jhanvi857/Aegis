@@ -243,7 +243,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                   onClick={handleDryRunPreview}
                   className="px-4 py-2 rounded-md bg-[#26262B] hover:bg-[#34343B] text-white font-semibold disabled:opacity-40 transition-colors"
                 >
-                  {dryRunLoading ? 'Analyzing diff...' : '🔍 Run Dry-Run Preview'}
+                  {dryRunLoading ? 'Analyzing diff...' : 'Run Dry-Run Preview'}
                 </button>
                 {dryRunDiff && (
                   <button
@@ -252,7 +252,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                     onClick={handleApplyImport}
                     className="px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-40 transition-colors shadow"
                   >
-                    {importing ? 'Applying to Live Graph...' : '✓ Apply Changes to Topology'}
+                    {importing ? 'Applying to Live Graph...' : 'Apply Changes to Topology'}
                   </button>
                 )}
               </div>
@@ -353,7 +353,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
               </div>
 
               <div className="p-2.5 rounded bg-amber-950/15 border border-amber-900/30 text-[11px] text-amber-300/80">
-                🔒 Security Note: All sensitive telemetry authentication tokens and passwords are redacted from export files.
+                Security Note: All sensitive telemetry authentication tokens and passwords are redacted from export files.
               </div>
 
               <textarea

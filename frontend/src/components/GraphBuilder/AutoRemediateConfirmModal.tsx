@@ -88,9 +88,10 @@ export const AutoRemediateConfirmModal: React.FC<AutoRemediateConfirmModalProps>
                 allowedActions.map((action) => (
                   <span
                     key={action}
-                    className="px-2 py-1 rounded bg-[#26262B] border border-gray-700 font-mono text-[11px] text-gray-200"
+                    className="px-2 py-1 rounded bg-[#26262B] border border-gray-700 font-mono text-[11px] text-gray-200 flex items-center space-x-1"
                   >
-                    ⚡ {action}
+                    <Zap className="w-3 h-3 text-emerald-400" />
+                    <span>{action}</span>
                   </span>
                 ))
               ) : (

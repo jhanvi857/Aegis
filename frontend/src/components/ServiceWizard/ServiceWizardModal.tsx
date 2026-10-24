@@ -321,7 +321,7 @@ docker run -d \\
                     : 'bg-[#26262B] text-gray-400'
                 }`}
               >
-                {step > s.num ? '✓' : s.num}
+                {step > s.num ? <Check className="w-3 h-3 text-white" /> : s.num}
               </div>
               <span>{s.label}</span>
             </div>
@@ -484,7 +484,7 @@ docker run -d \\
                       className="w-full bg-[#151517] border border-[#26262B] rounded-md px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-[#840032]"
                     />
                     <p className="text-[10px] text-gray-400 mt-0.5">
-                      🔒 SSRF protected: internal metadata/loopbacks are blocked unless admin bypass is enabled.
+                      Security Notice: SSRF protected. Internal metadata and loopbacks are blocked unless admin bypass is enabled.
                     </p>
                   </div>
 
