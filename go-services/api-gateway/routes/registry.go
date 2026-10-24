@@ -722,13 +722,28 @@ func TestConnectionHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	svc, err := GetAuthStore().GetService(r.Context(), id)
-	if err != nil {
-		http.Error(w, `{"error":"Service not found"}`, http.StatusNotFound)
-		return
+	var reqBody struct {
+		TelemetrySource *storage.TelemetrySource `json:"telemetrySource"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&reqBody)
+
+	var svc *storage.TopologyService
+	if id != "test" && id != "preview" {
+		svc, _ = GetAuthStore().GetService(r.Context(), id)
 	}
 
-	if svc.TelemetrySource == nil || strings.TrimSpace(svc.TelemetrySource.Type) == "" {
+	var src *storage.TelemetrySource
+	if reqBody.TelemetrySource != nil {
+		src = reqBody.TelemetrySource
+	} else if svc != nil {
+		src = svc.TelemetrySource
+	}
+
+	if src == nil || strings.TrimSpace(src.Type) == "" {
+		if svc == nil && id != "test" && id != "preview" {
+			http.Error(w, `{"error":"Service not found"}`, http.StatusNotFound)
+			return
+		}
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(TestConnectionResponse{
 			Success: false,
@@ -736,8 +751,6 @@ func TestConnectionHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-
-	src := svc.TelemetrySource
 	switch strings.ToLower(src.Type) {
 	case "prometheus":
 		// SSRF verification
@@ -781,9 +794,11 @@ func TestConnectionHandler(w http.ResponseWriter, r *http.Request) {
 		// Connection succeeded
 		nowStr := time.Now().UTC().Format(time.RFC3339)
 		nowUTC := time.Now().UTC()
-		svc.LastTelemetryTime = &nowUTC
-		svc.Status = "healthy_data"
-		_ = GetAuthStore().UpsertService(r.Context(), svc)
+		if svc != nil {
+			svc.LastTelemetryTime = &nowUTC
+			svc.Status = "healthy_data"
+			_ = GetAuthStore().UpsertService(r.Context(), svc)
+		}
 
 		_ = json.NewEncoder(w).Encode(TestConnectionResponse{
 			Success:        true,
@@ -802,9 +817,11 @@ func TestConnectionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		nowStr := time.Now().UTC().Format(time.RFC3339)
 		nowUTC := time.Now().UTC()
-		svc.LastTelemetryTime = &nowUTC
-		svc.Status = "healthy_data"
-		_ = GetAuthStore().UpsertService(r.Context(), svc)
+		if svc != nil {
+			svc.LastTelemetryTime = &nowUTC
+			svc.Status = "healthy_data"
+			_ = GetAuthStore().UpsertService(r.Context(), svc)
+		}
 
 		_ = json.NewEncoder(w).Encode(TestConnectionResponse{
 			Success:        true,
@@ -814,14 +831,16 @@ func TestConnectionHandler(w http.ResponseWriter, r *http.Request) {
 		})
 
 	case "agent_push":
-		if strings.TrimSpace(src.ServiceID) == "" {
+		if strings.TrimSpace(src.ServiceID) == "" && svc != nil {
 			src.ServiceID = svc.ID
 		}
 		nowStr := time.Now().UTC().Format(time.RFC3339)
 		nowUTC := time.Now().UTC()
-		svc.LastTelemetryTime = &nowUTC
-		svc.Status = "healthy_data"
-		_ = GetAuthStore().UpsertService(r.Context(), svc)
+		if svc != nil {
+			svc.LastTelemetryTime = &nowUTC
+			svc.Status = "healthy_data"
+			_ = GetAuthStore().UpsertService(r.Context(), svc)
+		}
 
 		_ = json.NewEncoder(w).Encode(TestConnectionResponse{
 			Success:        true,

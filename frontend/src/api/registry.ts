@@ -1,5 +1,39 @@
 import { apiFetch } from './client';
 
+export type MonitoringMode = 'ignore' | 'observe' | 'recommend' | 'auto_remediate';
+export type ServiceStatus = 'unconnected' | 'healthy_data' | 'no_data' | 'stale' | 'healthy' | 'degraded' | 'critical';
+export type EdgeSource = 'manual' | 'suggested' | 'discovered';
+export type EdgeState = 'active' | 'suggested' | 'rejected';
+export type EdgeType = 'sync' | 'async' | 'db' | 'cache';
+
+export interface TelemetrySource {
+  type: 'prometheus' | 'kubernetes' | 'agent_push' | string;
+  baseUrl?: string;
+  job?: string;
+  selector?: string;
+  cpuQuery?: string;
+  memoryQuery?: string;
+  latencyQuery?: string;
+  errorRateQuery?: string;
+  queueDepthQuery?: string;
+  clusterId?: string;
+  namespace?: string;
+  workloadKind?: string;
+  workloadName?: string;
+  serviceId?: string;
+  apiKey?: string;
+  authToken?: string;
+  authUsername?: string;
+  authPassword?: string;
+  hasAuth?: boolean;
+}
+
+export interface RecoveryBinding {
+  runtime: 'kubernetes' | 'docker' | string;
+  target: string;
+  allowedActions: string[];
+}
+
 export interface TopologyServiceItem {
   id: string;
   name: string;
@@ -12,7 +46,13 @@ export interface TopologyServiceItem {
   version?: string;
   replicas?: number;
   maxReplicas?: number;
-  status?: string;
+  monitoringMode?: MonitoringMode;
+  telemetrySource?: TelemetrySource;
+  recoveryBinding?: RecoveryBinding;
+  status?: ServiceStatus | string;
+  description?: string;
+  tags?: string[];
+  lastTelemetryTime?: string;
   cpu?: number;
   memory?: number;
   latency?: number;
@@ -28,7 +68,11 @@ export interface TopologyEdgeItem {
   relationship?: string;
   namespace?: string;
   clusterId?: string;
+  source?: EdgeSource;
+  state?: EdgeState;
+  edgeType?: EdgeType;
   confidence?: number;
+  createdBy?: string;
   isManualOverride?: boolean;
   sampleCount?: number;
 }
@@ -48,6 +92,53 @@ export interface SystemModeInfo {
   modeLabel: string;
   clusterId: string;
   namespace: string;
+}
+
+export interface ValidationIssue {
+  type: 'error' | 'warning' | 'info';
+  code: string;
+  message: string;
+  serviceId?: string;
+  sourceId?: string;
+  targetId?: string;
+  details?: string[];
+}
+
+export interface ValidationSummary {
+  serviceCount: number;
+  edgeCount: number;
+  errorCount: number;
+  warningCount: number;
+  sccCycles: number;
+}
+
+export interface ValidationResponse {
+  valid: boolean;
+  issues: ValidationIssue[];
+  summary: ValidationSummary;
+}
+
+export interface TestConnectionResponse {
+  success: boolean;
+  metricsFound?: string[];
+  lastSampleTime?: string;
+  errors?: string[];
+}
+
+export interface ImportPreviewDiff {
+  additions: any[];
+  modifications: any[];
+  deletions: any[];
+}
+
+export interface ImportResponse {
+  success: boolean;
+  dryRun?: boolean;
+  version?: number;
+  servicesCount?: number;
+  edgesCount?: number;
+  preview?: ImportPreviewDiff;
+  message?: string;
 }
 
 export const registryApi = {
@@ -95,6 +186,13 @@ export const registryApi = {
     });
   },
 
+  testConnection: async (id: string, sourceOverride?: TelemetrySource): Promise<TestConnectionResponse> => {
+    return await apiFetch<TestConnectionResponse>(`/registry/services/${encodeURIComponent(id)}/test-connection`, {
+      method: 'POST',
+      body: JSON.stringify(sourceOverride ? { telemetrySource: sourceOverride } : {}),
+    });
+  },
+
   listEdges: async (namespace?: string, clusterId?: string): Promise<TopologyEdgeItem[]> => {
     const params = new URLSearchParams();
     if (namespace) params.set('namespace', namespace);
@@ -116,22 +214,58 @@ export const registryApi = {
     });
   },
 
+  listSuggestions: async (): Promise<TopologyEdgeItem[]> => {
+    return await apiFetch<TopologyEdgeItem[]>('/registry/suggestions');
+  },
+
+  acceptSuggestion: async (id: string): Promise<{ success: boolean; message: string; edge: TopologyEdgeItem }> => {
+    return await apiFetch<{ success: boolean; message: string; edge: TopologyEdgeItem }>(`/registry/suggestions/${encodeURIComponent(id)}/accept`, {
+      method: 'POST',
+    });
+  },
+
+  rejectSuggestion: async (id: string): Promise<{ success: boolean; message: string }> => {
+    return await apiFetch<{ success: boolean; message: string }>(`/registry/suggestions/${encodeURIComponent(id)}/reject`, {
+      method: 'POST',
+    });
+  },
+
+  validateTopology: async (payload?: { services?: TopologyServiceItem[]; edges?: TopologyEdgeItem[] }): Promise<ValidationResponse> => {
+    return await apiFetch<ValidationResponse>('/registry/validate', {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+  },
+
   listVersions: async (): Promise<TopologyVersionItem[]> => {
     return await apiFetch<TopologyVersionItem[]>('/registry/versions');
   },
 
-  importTopology: async (payload: {
-    systemName?: string;
-    description?: string;
-    namespace?: string;
-    clusterId?: string;
-    services?: TopologyServiceItem[];
-    nodes?: any[];
-    edges?: TopologyEdgeItem[];
-  }): Promise<{ success: boolean; version: number; servicesCount: number; edgesCount: number }> => {
-    return await apiFetch('/registry/import', {
+  rollbackVersion: async (version: number): Promise<{ success: boolean; message: string; version: number }> => {
+    return await apiFetch<{ success: boolean; message: string; version: number }>('/registry/rollback', {
+      method: 'POST',
+      body: JSON.stringify({ version }),
+    });
+  },
+
+  importTopology: async (payload: any, dryRun = false): Promise<ImportResponse> => {
+    const qs = dryRun ? '?dryRun=true' : '';
+    return await apiFetch<ImportResponse>(`/registry/import${qs}`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+  },
+
+  exportTopology: async (format: 'yaml' | 'json' | 'csv' = 'yaml'): Promise<string> => {
+    const token = localStorage.getItem('aegis_auth_token');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+    const res = await fetch(`${baseUrl}/registry/export?format=${format}`, { headers });
+    if (!res.ok) {
+      throw new Error(`Export failed: HTTP ${res.status}`);
+    }
+    return await res.text();
   },
 };
