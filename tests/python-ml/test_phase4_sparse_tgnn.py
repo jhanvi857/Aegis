@@ -161,6 +161,53 @@ class TestSparseTGNN(unittest.TestCase):
         self.assertLess(fault_res["subgraph_size"], 20)  # localized to k-hop
         self.assertGreater(fault_res["confidence"], 0.70)
 
+    def test_prediction_engine_dense_vs_sparse_routing(self):
+        """Test PredictionEngine dynamic routing between dense_tgnn and sparse_two_stage."""
+        from serving.grpc_server import PredictionEngine
+        engine = PredictionEngine()
+        engine.sparse_threshold = 20
+
+        # Small graph (5 nodes) -> dense_tgnn
+        small_nodes = [{"id": f"node-{c}", "metrics": {"cpu": 25.0, "latency": 20.0}} for c in ["a", "b", "c", "d", "e"]]
+        small_edges = [{"source": "node-a", "target": "node-b"}]
+        small_graph = {
+            "node_ids": [n["id"] for n in small_nodes],
+            "snapshot": {"nodes": small_nodes, "edges": small_edges},
+            "feature_matrix": {n["id"]: [0.25, 0.3, 0.02, 0.001, 1.0, 1.0, 0.5, 0.1] for n in small_nodes},
+        }
+
+        small_res = engine.predict(small_graph)
+        self.assertEqual(small_res["engine"], "dense_tgnn")
+        self.assertEqual(small_res["model_version"], "1.0.0-dense")
+
+        # Large graph (200 nodes) -> sparse_two_stage with localized root cause
+        large_nodes = []
+        large_edges = []
+        for i in range(200):
+            sid = f"svc-{i:03d}"
+            cpu = 95.0 if sid == "svc-042" else 25.0
+            lat = 650.0 if sid == "svc-042" else 20.0
+            err = 0.15 if sid == "svc-042" else 0.001
+            large_nodes.append({"id": sid, "metrics": {"cpu": cpu, "latency": lat, "error_rate": err}})
+            if i > 0:
+                large_edges.append({"source": f"svc-{i-1:03d}", "target": sid})
+
+        large_graph = {
+            "node_ids": [n["id"] for n in large_nodes],
+            "snapshot": {"nodes": large_nodes, "edges": large_edges},
+            "feature_matrix": {
+                n["id"]: [n["metrics"]["cpu"]/100.0, 0.3, n["metrics"]["latency"]/1000.0, n["metrics"]["error_rate"], 1.0, 1.0, 0.5, 0.1]
+                for n in large_nodes
+            },
+        }
+
+        large_res = engine.predict(large_graph)
+        self.assertEqual(large_res["engine"], "sparse_two_stage")
+        self.assertEqual(large_res["model_version"], "2.1.0-sparse")
+        self.assertGreater(large_res["calibrated_confidence"], 0.70)
+        self.assertTrue(len(large_res["root_causes"]) > 0)
+        self.assertEqual(large_res["root_causes"][0]["node_id"], "svc-042")
+
 
 if __name__ == "__main__":
     unittest.main()

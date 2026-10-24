@@ -25,13 +25,25 @@ logger = logging.getLogger(__name__)
 class PredictionEngine:
     """
     Unified ML inference orchestrator for Phase 3 and Phase 4.
+    Supports dynamic N topologies via two-stage pipeline (sparse TGNN)
+    for graphs > AEGIS_SPARSE_THRESHOLD (default 20), and dense TGNN for small graphs.
     """
 
     def __init__(self, checkpoint_path: str = "python-ml/models/checkpoints/tgnn_best.pt"):
+        self.sparse_threshold = int(os.getenv("AEGIS_SPARSE_THRESHOLD", "20"))
         self.failure_predictor = FailurePredictor(model_checkpoint=checkpoint_path)
         self.root_cause_analyzer = RootCauseAnalyzer(model_checkpoint=checkpoint_path)
         self.propagation_predictor = PropagationPredictor(model_checkpoint=checkpoint_path)
         self.plan_builder = RecoveryPlanBuilder()
+
+        # Load Two-Stage Sparse-TGNN Pipeline
+        from models.two_stage_pipeline import TwoStageInferencePipeline
+        self.two_stage_pipeline = TwoStageInferencePipeline(
+            node_in_features=8,
+            hidden_dim=32,
+            k_hops=2,
+            anomaly_threshold=0.35,
+        )
 
         # Phase 6: Optional RL Agent policy network
         self.rl_policy = None
@@ -59,12 +71,158 @@ class PredictionEngine:
     ) -> Dict[str, Any]:
         """
         Executes unified TGNN inference:
-        1. Failure Prediction
-        2. Root Cause Localization
-        3. Cascade Propagation Risk
-        4. Dependency-Ordered Recovery Plan (Phase 4)
+        - For graphs with > AEGIS_SPARSE_THRESHOLD nodes: Two-Stage Pipeline (Stage 1 O(N) anomaly filter + Stage 2 Sparse TGNN on k-hop neighborhood).
+        - For small graphs: Dense TGNN.
         """
         now_ns = int(time.time() * 1e9)
+        node_ids = graph_representation.get("node_ids", [])
+        if not node_ids:
+            snapshot_nodes = graph_representation.get("snapshot", {}).get("nodes", [])
+            node_ids = [n.get("id") for n in snapshot_nodes if n.get("id")]
+
+        use_sparse = len(node_ids) > self.sparse_threshold
+
+        if use_sparse:
+            import torch
+            # 1. Build adjacency maps
+            adj_out: Dict[str, List[str]] = {nid: [] for nid in node_ids}
+            adj_in: Dict[str, List[str]] = {nid: [] for nid in node_ids}
+            snapshot_edges = graph_representation.get("snapshot", {}).get("edges", [])
+            for e in snapshot_edges:
+                src, tgt = e.get("source"), e.get("target")
+                if src in adj_out and tgt in adj_out:
+                    adj_out[src].append(tgt)
+                if tgt in adj_in and src in adj_in:
+                    adj_in[tgt].append(src)
+
+            # 2. Build latest_metrics
+            latest_metrics: Dict[str, Dict[str, float]] = {}
+            snapshot_nodes = graph_representation.get("snapshot", {}).get("nodes", [])
+            for snode in snapshot_nodes:
+                nid = snode.get("id")
+                if nid:
+                    m = snode.get("metrics", {})
+                    latest_metrics[nid] = {
+                        "cpu": float(m.get("cpu", 20.0)),
+                        "memory": float(m.get("memory", 30.0)),
+                        "latency": float(m.get("latency_ms", m.get("latency", 20.0))),
+                        "error_rate": float(m.get("error_rate", 0.001)),
+                    }
+
+            if telemetry_batch:
+                for metric in telemetry_batch.get("metrics", []):
+                    svc = metric.get("service_id")
+                    name = metric.get("metric_name")
+                    val = metric.get("value")
+                    if svc in latest_metrics and name and val is not None:
+                        if name in ["cpu", "cpu_usage", "cpu_usage_percent"]:
+                            latest_metrics[svc]["cpu"] = float(val)
+                        elif name in ["memory", "memory_usage", "memory_usage_percent"]:
+                            latest_metrics[svc]["memory"] = float(val)
+                        elif name in ["latency", "latency_ms", "p95_latency_ms", "p99_latency_ms"]:
+                            latest_metrics[svc]["latency"] = float(val)
+                        elif name in ["error_rate", "errorRate"]:
+                            latest_metrics[svc]["error_rate"] = float(val)
+
+            # 3. Build node_features_seq
+            feature_matrix = graph_representation.get("feature_matrix", {})
+            feature_list = []
+            for nid in node_ids:
+                if nid in feature_matrix:
+                    feature_list.append(feature_matrix[nid])
+                else:
+                    lm = latest_metrics.get(nid, {})
+                    feature_list.append([
+                        lm.get("cpu", 20.0) / 100.0,
+                        lm.get("memory", 30.0) / 100.0,
+                        lm.get("latency", 20.0) / 1000.0,
+                        lm.get("error_rate", 0.001),
+                        float(len(adj_in.get(nid, []))),
+                        float(len(adj_out.get(nid, []))),
+                        0.5,
+                        0.1,
+                    ])
+            feats_tensor = torch.tensor(feature_list, dtype=torch.float32).unsqueeze(0).repeat(5, 1, 1)
+
+            # 4. Predict with TwoStageInferencePipeline
+            two_stage_res = self.two_stage_pipeline.predict(
+                service_ids=node_ids,
+                node_features_seq=feats_tensor,
+                adj_out=adj_out,
+                adj_in=adj_in,
+                latest_metrics=latest_metrics,
+            )
+
+            fail_prob = float(two_stage_res["failure_probability"])
+            confidence = float(two_stage_res["confidence"])
+            is_anomalous = bool(two_stage_res["is_anomalous"])
+            root_cause_node = two_stage_res["root_cause"]
+            root_cause_scores = two_stage_res.get("root_cause_scores", {})
+
+            failure_preds = []
+            for nid in node_ids:
+                rc_score = root_cause_scores.get(nid, 0.0)
+                node_fail_p = fail_prob if (nid == root_cause_node or rc_score > 0.3) else (fail_prob * 0.15 if is_anomalous else 0.05)
+                ttf = 30 if node_fail_p > 0.5 else 600
+                failure_preds.append({
+                    "node_id": nid,
+                    "failure_probability": float(node_fail_p),
+                    "confidence": confidence,
+                    "estimated_time_to_failure_sec": ttf,
+                })
+
+            root_causes = []
+            if is_anomalous and root_cause_node:
+                rc_m = latest_metrics.get(root_cause_node, {})
+                root_causes.append({
+                    "node_id": root_cause_node,
+                    "probability": float(root_cause_scores.get(root_cause_node, 0.95)),
+                    "explanation": f"Sparse TGNN localized anomaly on {root_cause_node} (CPU: {rc_m.get('cpu', 0)}%, Latency: {rc_m.get('latency', 0)}ms, ErrorRate: {rc_m.get('error_rate', 0)})",
+                    "contributing_metrics": [k for k, v in rc_m.items() if (k != "error_rate" and v > 50) or (k == "error_rate" and v > 0.05)],
+                    "fault_family": "cpu_stress" if rc_m.get("cpu", 0) > 80 else ("latency" if rc_m.get("latency", 0) > 200 else "degraded"),
+                    "evidence": [
+                        {"metric": "cpu", "value": float(rc_m.get("cpu", 0.0)), "threshold": 75.0, "unit": "%"},
+                        {"metric": "latency", "value": float(rc_m.get("latency", 0.0)), "threshold": 250.0, "unit": "ms"},
+                    ],
+                })
+
+            propagation_paths = []
+            for pe in two_stage_res.get("propagation_edges", []):
+                propagation_paths.append({
+                    "path_nodes": [pe["source"], pe["target"]],
+                    "propagation_risk": float(pe["probability"]),
+                })
+
+            plan = None
+            if generate_plan and root_causes:
+                g = nx.DiGraph()
+                for nid in node_ids:
+                    g.add_node(nid, telemetry=latest_metrics.get(nid, {}), metrics=latest_metrics.get(nid, {}))
+                for src, tgts in adj_out.items():
+                    for tgt in tgts:
+                        g.add_edge(src, tgt)
+
+                all_prop_nodes = []
+                for p in propagation_paths:
+                    all_prop_nodes.extend(p.get("path_nodes", []))
+
+                plan = self.plan_builder.build_plan(
+                    graph=g,
+                    root_causes=root_causes,
+                    propagation_set=list(set(all_prop_nodes)),
+                    telemetry_by_node=latest_metrics,
+                )
+
+            return {
+                "failure_predictions": failure_preds,
+                "root_causes": root_causes,
+                "propagation_paths": propagation_paths,
+                "recovery_plan": plan,
+                "timestamp_unix_nano": now_ns,
+                "engine": "sparse_two_stage",
+                "model_version": self.two_stage_pipeline.version,
+                "calibrated_confidence": confidence,
+            }
 
         # 1. Failure predictions
         failure_preds = self.failure_predictor.predict(
@@ -89,17 +247,14 @@ class PredictionEngine:
         # 4. Optional recovery plan generation
         plan = None
         if generate_plan:
-            # Construct telemetry_by_node from live telemetry_batch and graph representation
             telemetry_by_node: Dict[str, Dict[str, float]] = {}
 
-            # A. Extract metrics from graph representation snapshot
             snapshot_nodes = graph_representation.get("snapshot", {}).get("nodes", [])
             for snode in snapshot_nodes:
                 nid = snode.get("id")
                 if nid and "metrics" in snode:
                     telemetry_by_node[nid] = {str(k): float(v) for k, v in snode["metrics"].items()}
 
-            # B. Extract metrics from live telemetry_batch
             if telemetry_batch:
                 for metric in telemetry_batch.get("metrics", []):
                     svc = metric.get("service_id")
@@ -109,7 +264,6 @@ class PredictionEngine:
                         if svc not in telemetry_by_node:
                             telemetry_by_node[svc] = {}
                         telemetry_by_node[svc][name] = float(val)
-                        # Normalize common metric name variants for rule evaluation
                         if name == "cpu_usage":
                             telemetry_by_node[svc]["cpu_usage_percent"] = float(val)
                         elif name == "memory_usage":
@@ -118,10 +272,9 @@ class PredictionEngine:
                             telemetry_by_node[svc]["latency_p99_ms"] = float(val)
                             telemetry_by_node[svc]["p99_latency_ms"] = float(val)
 
-            # Reconstruct DiGraph from representation with attached node telemetry
             g = nx.DiGraph()
-            node_ids = graph_representation.get("node_ids", [])
-            for nid in node_ids:
+            node_ids_g = graph_representation.get("node_ids", [])
+            for nid in node_ids_g:
                 node_telem = telemetry_by_node.get(nid, {})
                 g.add_node(nid, telemetry=node_telem, metrics=node_telem)
 
@@ -141,12 +294,19 @@ class PredictionEngine:
                 telemetry_by_node=telemetry_by_node,
             )
 
+        calibrated_conf = 0.95
+        if failure_preds:
+            calibrated_conf = float(failure_preds[0].get("confidence", 0.95))
+
         return {
             "failure_predictions": failure_preds,
             "root_causes": root_causes,
             "propagation_paths": propagation_paths,
             "recovery_plan": plan,
             "timestamp_unix_nano": now_ns,
+            "engine": "dense_tgnn",
+            "model_version": "1.0.0-dense",
+            "calibrated_confidence": calibrated_conf,
         }
 
 
@@ -349,6 +509,9 @@ try:
                         )
 
                 resp.timestamp_unix_nano = int(result.get("timestamp_unix_nano", int(time.time() * 1e9)))
+                resp.engine = str(result.get("engine", "dense_tgnn"))
+                resp.model_version = str(result.get("model_version", "1.0.0-dense"))
+                resp.calibrated_confidence = float(result.get("calibrated_confidence", 0.95))
                 return resp
             except Exception as e:
                 logger.error(f"[grpc-server] Error handling Predict: {e}", exc_info=True)

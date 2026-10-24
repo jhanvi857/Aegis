@@ -93,6 +93,9 @@ export interface PredictionOutput {
   recommendedAction: string;
   recommendedActionId: string;
   recommendedActions?: RecoveryAction[];
+  engine?: 'dense_tgnn' | 'sparse_two_stage' | 'heuristic_fallback' | string;
+  modelVersion?: string;
+  calibratedConfidence?: number;
 }
 
 export interface RecoveryAction {

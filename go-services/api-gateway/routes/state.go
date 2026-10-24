@@ -86,6 +86,9 @@ type PredictionOutput struct {
 	RecommendedAction    string             `json:"recommendedAction"`
 	RecommendedActionID  string             `json:"recommendedActionId"`
 	RecommendedActions   []RecoveryAction   `json:"recommendedActions,omitempty"`
+	Engine               string             `json:"engine"`
+	ModelVersion         string             `json:"modelVersion"`
+	CalibratedConfidence float64            `json:"calibratedConfidence"`
 }
 
 type RecoveryAction struct {

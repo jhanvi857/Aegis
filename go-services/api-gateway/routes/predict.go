@@ -49,7 +49,22 @@ func ComputePredictionOutput() PredictionOutput {
 	}
 
 	// 2. Build graph snapshot and node features for TGNN inference
-	totalNodes := float64(len(State.ServiceOrder))
+	serviceIDs := make([]string, 0, len(State.Services))
+	seenIDs := make(map[string]bool)
+	for _, id := range State.ServiceOrder {
+		if _, exists := State.Services[id]; exists && !seenIDs[id] {
+			serviceIDs = append(serviceIDs, id)
+			seenIDs[id] = true
+		}
+	}
+	for id := range State.Services {
+		if !seenIDs[id] {
+			serviceIDs = append(serviceIDs, id)
+			seenIDs[id] = true
+		}
+	}
+
+	totalNodes := float64(len(serviceIDs))
 	if totalNodes == 0 {
 		totalNodes = 1.0
 	}
@@ -64,17 +79,17 @@ func ComputePredictionOutput() PredictionOutput {
 	}
 
 	centralityScores := make(map[string]float64)
-	for _, id := range State.ServiceOrder {
+	for _, id := range serviceIDs {
 		centralityScores[id] = (inDegrees[id] + outDegrees[id]) / totalNodes
 	}
 
-	snapshotNodes := make([]*graphpb.Node, 0, len(State.ServiceOrder))
+	snapshotNodes := make([]*graphpb.Node, 0, len(serviceIDs))
 	snapshotEdges := make([]*graphpb.Edge, 0)
 	metricPoints := make([]*telemetrypb.MetricPoint, 0)
 
 	nowNs := time.Now().UnixNano()
 
-	for _, id := range State.ServiceOrder {
+	for _, id := range serviceIDs {
 		svc := State.Services[id]
 		nodeMetrics := map[string]float64{
 			"cpu":                   svc.CPU,
@@ -308,6 +323,19 @@ func ComputePredictionOutput() PredictionOutput {
 
 			State.LatestRecommendations = recommendedActions
 
+			engine := resp.Engine
+			if engine == "" {
+				engine = "dense_tgnn"
+			}
+			modelVersion := resp.ModelVersion
+			if modelVersion == "" {
+				modelVersion = "1.0.0-dense"
+			}
+			calibratedConf := resp.CalibratedConfidence
+			if calibratedConf == 0 {
+				calibratedConf = topConf / 100.0
+			}
+
 			pred = PredictionOutput{
 				FailureProbability:   maxFailProb,
 				Confidence:           topConf,
@@ -321,6 +349,9 @@ func ComputePredictionOutput() PredictionOutput {
 				RecommendedAction:    recAction,
 				RecommendedActionID:  recID,
 				RecommendedActions:   recommendedActions,
+				Engine:               engine,
+				ModelVersion:         modelVersion,
+				CalibratedConfidence: calibratedConf,
 			}
 		}
 	}
@@ -425,6 +456,9 @@ func ComputePredictionOutput() PredictionOutput {
 				RecommendedAction:    recAction,
 				RecommendedActionID:  recID,
 				RecommendedActions:   recs,
+				Engine:               "heuristic_fallback",
+				ModelVersion:         "heuristic",
+				CalibratedConfidence: 0.85,
 			}
 		} else {
 			pred = PredictionOutput{
@@ -437,6 +471,9 @@ func ComputePredictionOutput() PredictionOutput {
 				BlastRadius:          []string{},
 				RecommendedAction:    "Cluster nominal; maintain continuous observation",
 				RecommendedActionID:  "act-none",
+				Engine:               "heuristic_fallback",
+				ModelVersion:         "heuristic",
+				CalibratedConfidence: 0.98,
 			}
 		}
 	}

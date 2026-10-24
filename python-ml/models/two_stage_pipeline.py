@@ -160,7 +160,7 @@ class TwoStageInferencePipeline:
         if not seeds:
             max_score = max(anomaly_scores.values()) if anomaly_scores else 0.0
             return {
-                "engine": "sparse_tgnn_v2",
+                "engine": "sparse_two_stage",
                 "version": self.version,
                 "stage": "stage_1_nominal",
                 "failure_probability": float(max_score * 0.10),
@@ -224,7 +224,7 @@ class TwoStageInferencePipeline:
         confidence = min(0.99, max(0.70, float(0.80 + 0.19 * max_rc_prob)))
 
         return {
-            "engine": "sparse_tgnn_v2",
+            "engine": "sparse_two_stage",
             "version": self.version,
             "stage": "stage_2_sparse_tgnn",
             "failure_probability": round(fail_prob, 3),

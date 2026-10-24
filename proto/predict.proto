@@ -67,6 +67,9 @@ message PredictResponse {
   int64 timestamp_unix_nano = 4;
   repeated AffectedNode affected_nodes = 5;
   repeated ActionRecommendation recommended_actions = 6;
+  string engine = 7;
+  string model_version = 8;
+  double calibrated_confidence = 9;
 }
 
 service PredictionService {

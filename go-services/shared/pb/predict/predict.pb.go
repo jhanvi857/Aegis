@@ -532,15 +532,18 @@ func (x *PredictRequest) GetTargetNodeId() string {
 }
 
 type PredictResponse struct {
-	state              protoimpl.MessageState  `protogen:"open.v1"`
-	FailurePredictions []*FailurePrediction    `protobuf:"bytes,1,rep,name=failure_predictions,json=failurePredictions,proto3" json:"failure_predictions,omitempty"`
-	RootCauses         []*RootCause            `protobuf:"bytes,2,rep,name=root_causes,json=rootCauses,proto3" json:"root_causes,omitempty"`
-	PropagationPaths   []*PropagationPath      `protobuf:"bytes,3,rep,name=propagation_paths,json=propagationPaths,proto3" json:"propagation_paths,omitempty"`
-	TimestampUnixNano  int64                   `protobuf:"varint,4,opt,name=timestamp_unix_nano,json=timestampUnixNano,proto3" json:"timestamp_unix_nano,omitempty"`
-	AffectedNodes      []*AffectedNode         `protobuf:"bytes,5,rep,name=affected_nodes,json=affectedNodes,proto3" json:"affected_nodes,omitempty"`
-	RecommendedActions []*ActionRecommendation `protobuf:"bytes,6,rep,name=recommended_actions,json=recommendedActions,proto3" json:"recommended_actions,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state                protoimpl.MessageState  `protogen:"open.v1"`
+	FailurePredictions   []*FailurePrediction    `protobuf:"bytes,1,rep,name=failure_predictions,json=failurePredictions,proto3" json:"failure_predictions,omitempty"`
+	RootCauses           []*RootCause            `protobuf:"bytes,2,rep,name=root_causes,json=rootCauses,proto3" json:"root_causes,omitempty"`
+	PropagationPaths     []*PropagationPath      `protobuf:"bytes,3,rep,name=propagation_paths,json=propagationPaths,proto3" json:"propagation_paths,omitempty"`
+	TimestampUnixNano    int64                   `protobuf:"varint,4,opt,name=timestamp_unix_nano,json=timestampUnixNano,proto3" json:"timestamp_unix_nano,omitempty"`
+	AffectedNodes        []*AffectedNode         `protobuf:"bytes,5,rep,name=affected_nodes,json=affectedNodes,proto3" json:"affected_nodes,omitempty"`
+	RecommendedActions   []*ActionRecommendation `protobuf:"bytes,6,rep,name=recommended_actions,json=recommendedActions,proto3" json:"recommended_actions,omitempty"`
+	Engine               string                  `protobuf:"bytes,7,opt,name=engine,proto3" json:"engine,omitempty"`
+	ModelVersion         string                  `protobuf:"bytes,8,opt,name=model_version,json=modelVersion,proto3" json:"model_version,omitempty"`
+	CalibratedConfidence float64                 `protobuf:"fixed64,9,opt,name=calibrated_confidence,json=calibratedConfidence,proto3" json:"calibrated_confidence,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *PredictResponse) Reset() {
@@ -615,6 +618,27 @@ func (x *PredictResponse) GetRecommendedActions() []*ActionRecommendation {
 	return nil
 }
 
+func (x *PredictResponse) GetEngine() string {
+	if x != nil {
+		return x.Engine
+	}
+	return ""
+}
+
+func (x *PredictResponse) GetModelVersion() string {
+	if x != nil {
+		return x.ModelVersion
+	}
+	return ""
+}
+
+func (x *PredictResponse) GetCalibratedConfidence() float64 {
+	if x != nil {
+		return x.CalibratedConfidence
+	}
+	return 0
+}
+
 var File_predict_proto protoreflect.FileDescriptor
 
 const file_predict_proto_rawDesc = "" +
@@ -672,7 +696,7 @@ const file_predict_proto_rawDesc = "" +
 	"\x0ePredictRequest\x126\n" +
 	"\x05graph\x18\x01 \x01(\v2 .aegis.graph.GraphRepresentationR\x05graph\x12J\n" +
 	"\x10recent_telemetry\x18\x02 \x01(\v2\x1f.aegis.telemetry.TelemetryBatchR\x0frecentTelemetry\x12$\n" +
-	"\x0etarget_node_id\x18\x03 \x01(\tR\ftargetNodeId\"\xb6\x03\n" +
+	"\x0etarget_node_id\x18\x03 \x01(\tR\ftargetNodeId\"\xa8\x04\n" +
 	"\x0fPredictResponse\x12Q\n" +
 	"\x13failure_predictions\x18\x01 \x03(\v2 .aegis.predict.FailurePredictionR\x12failurePredictions\x129\n" +
 	"\vroot_causes\x18\x02 \x03(\v2\x18.aegis.predict.RootCauseR\n" +
@@ -680,7 +704,10 @@ const file_predict_proto_rawDesc = "" +
 	"\x11propagation_paths\x18\x03 \x03(\v2\x1e.aegis.predict.PropagationPathR\x10propagationPaths\x12.\n" +
 	"\x13timestamp_unix_nano\x18\x04 \x01(\x03R\x11timestampUnixNano\x12B\n" +
 	"\x0eaffected_nodes\x18\x05 \x03(\v2\x1b.aegis.predict.AffectedNodeR\raffectedNodes\x12T\n" +
-	"\x13recommended_actions\x18\x06 \x03(\v2#.aegis.predict.ActionRecommendationR\x12recommendedActions2]\n" +
+	"\x13recommended_actions\x18\x06 \x03(\v2#.aegis.predict.ActionRecommendationR\x12recommendedActions\x12\x16\n" +
+	"\x06engine\x18\a \x01(\tR\x06engine\x12#\n" +
+	"\rmodel_version\x18\b \x01(\tR\fmodelVersion\x123\n" +
+	"\x15calibrated_confidence\x18\t \x01(\x01R\x14calibratedConfidence2]\n" +
 	"\x11PredictionService\x12H\n" +
 	"\aPredict\x12\x1d.aegis.predict.PredictRequest\x1a\x1e.aegis.predict.PredictResponseB:Z8github.com/aegis/go-services/shared/pb/predict;predictpbb\x06proto3"
 

@@ -3,7 +3,10 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -13,10 +16,12 @@ import (
 type ComponentHealth struct {
 	Status  string `json:"status"` // UP, DOWN, DEGRADED
 	Message string `json:"message,omitempty"`
+	Engine  string `json:"engine,omitempty"`
 }
 
 type ReadinessResponse struct {
 	Status     string                     `json:"status"` // READY, NOT_READY
+	Engine     string                     `json:"engine"` // dense_tgnn | sparse_two_stage | heuristic_fallback
 	Timestamp  string                     `json:"timestamp"`
 	Components map[string]ComponentHealth `json:"components"`
 }
@@ -91,15 +96,45 @@ func ReadinessHandler(store storage.Store) http.HandlerFunc {
 			mu.Unlock()
 		}()
 
-		// 3. Check Python ML gRPC connectivity
+		// 3. Check Python ML gRPC connectivity and loaded engine
+		threshold := 20
+		if val := os.Getenv("AEGIS_SPARSE_THRESHOLD"); val != "" {
+			if t, err := strconv.Atoi(val); err == nil && t > 0 {
+				threshold = t
+			}
+		}
+
+		loadedEngine := "dense_tgnn"
+		var svcCount int
+		if State != nil {
+			State.mu.RLock()
+			svcCount = len(State.Services)
+			State.mu.RUnlock()
+			if svcCount > threshold {
+				loadedEngine = "sparse_two_stage"
+			}
+		}
+
+		if GlobalGRPCClient == nil {
+			loadedEngine = "heuristic_fallback"
+		}
+
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			var comp ComponentHealth
 			if GlobalGRPCClient == nil {
-				comp = ComponentHealth{Status: "DEGRADED", Message: "Python ML gRPC client not connected (operating with rulebook fallback)"}
+				comp = ComponentHealth{
+					Status:  "DEGRADED",
+					Engine:  "heuristic_fallback",
+					Message: "Python ML gRPC client not connected (operating with heuristic_fallback)",
+				}
 			} else {
-				comp = ComponentHealth{Status: "UP", Message: "Python ML gRPC connected"}
+				comp = ComponentHealth{
+					Status:  "UP",
+					Engine:  loadedEngine,
+					Message: fmt.Sprintf("Python ML gRPC connected (engine: %s, threshold: %d, services: %d)", loadedEngine, threshold, svcCount),
+				}
 			}
 
 			mu.Lock()
@@ -111,6 +146,7 @@ func ReadinessHandler(store storage.Store) http.HandlerFunc {
 
 		resp := ReadinessResponse{
 			Status:     "READY",
+			Engine:     loadedEngine,
 			Timestamp:  time.Now().UTC().Format(time.RFC3339),
 			Components: components,
 		}

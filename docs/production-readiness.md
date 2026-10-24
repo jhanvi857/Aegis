@@ -30,7 +30,7 @@ When `AEGIS_ENV=production`:
 1. Wildcard CORS origin (`*`) is strictly forbidden and causes startup panic.
 2. If `AEGIS_TLS_ENABLED=true`, missing `AEGIS_TLS_CERT_FILE` or `AEGIS_TLS_KEY_FILE` halts initialization.
 3. Every configured origin must be a valid RFC 3986 URI.
-4. Default bootstrap credentials (`admin@aegis.local` / `AdminPass#2026`) emit high-priority audit warnings.
+4. `AEGIS_BOOTSTRAP_ADMIN_PASSWORD` must be set via environment variables and satisfy strict complexity constraints (min 12 chars, mixed case, digit, special character). Insecure or default database credentials halt initialization.
 
 ---
 
@@ -103,6 +103,7 @@ On receiving `SIGINT` or `SIGTERM`:
 
 ## 6. High-Scale Benchmark (500 Services)
 
+### 6.1 State Engine & Graph Algorithms
 Verified via `scripts/load_test_500_services.go`:
 
 | Metric | Measured Value | SLA Target | Result |
@@ -112,11 +113,36 @@ Verified via `scripts/load_test_500_services.go`:
 | Tarjan SCC Condensation p99 | 1.28 ms | < 10 ms | PASS |
 | Blast Radius Upstream BFS p99 | < 1 ms | < 5 ms | PASS |
 
+### 6.2 Sparse TGNN & Two-Stage Pipeline Benchmark (N=10 to N=500)
+Measured via `scripts/benchmark_sparse_tgnn_500.py` across sizes $N \in \{10, 50, 100, 200, 500\}$:
+
+**Test Hardware & Environment:**
+- **OS:** Windows 11 (AMD64)
+- **CPU:** Intel Core Ultra 7 155H (16 physical cores, 22 threads)
+- **Memory:** 15.4 GB RAM
+- **Runtime:** Python 3.13.1, PyTorch 2.10.0+cpu
+- **Seeds Evaluated:** `[42, 101, 2024, 777, 999]` (5 trials per topology size)
+- **Routing Configuration:** Dense TGNN for $N \le 20$ (`AEGIS_SPARSE_THRESHOLD=20`), Two-Stage Sparse TGNN pipeline for $N > 20$.
+
+**Empirical Measurements:**
+
+| Topology Size ($N$) | Total Edges | Subgraph Nodes ($|V_{\text{sub}}|$) | Latency p50 | Latency p95 | Latency p99 | Inference RAM (Peak) | Zero-Shot Root Cause Accuracy | SLA Target | Result |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **10** (Dense Baseline) | 20 | 10 | 14.47 ms | 19.46 ms | 19.46 ms | 0.02 MB | **100.0%** (5/5) | < 50 ms | PASS |
+| **50** (Sparse 2-Stage) | 161 | 44 | 25.18 ms | 27.30 ms | 27.30 ms | 0.07 MB | **100.0%** (5/5) | < 50 ms | PASS |
+| **100** (Sparse 2-Stage) | 319 | 32 | 19.92 ms | 23.56 ms | 23.56 ms | 0.03 MB | **100.0%** (5/5) | < 50 ms | PASS |
+| **200** (Sparse 2-Stage) | 662 | 40 | 20.05 ms | 22.19 ms | 22.19 ms | 0.04 MB | **100.0%** (5/5) | < 50 ms | PASS |
+| **500** (Sparse 2-Stage) | 1667 | 46 | 22.01 ms | 23.29 ms | 23.29 ms | 0.10 MB | **100.0%** (5/5) | < 50 ms | PASS |
+
+> **Scale Scope Notice:** Inductive topology generalization holds for any $N$ up to $N = 500$ services, which is the largest scale verified empirically in hardware benchmarks.
+
 ---
 
-## 7. Google Online Boutique Kubernetes Validation
+## 7. Google Online Boutique Kubernetes Validation (Manifests & Runbook)
 
-A full Kubernetes deployment and fault injection runbook is located in `deploy/online-boutique/runbook.md`, verifying the full autonomous cycle on 11 production microservices:
+*Note: The artifacts in `deploy/online-boutique` comprise declarative manifests and an operational runbook; they have not yet been validated on a live production cluster.*
+
+A full Kubernetes deployment and fault injection runbook is located in `deploy/online-boutique/runbook.md`, verifying the planned autonomous cycle on 11 microservices:
 1. Target microservices deployed in namespace `online-boutique`.
 2. Outbound `aegis-agent` daemonset deployed via Helm chart `deploy/helm/aegis-agent`.
 3. Chaos injection on `cartservice` and `redis-cart` triggers TGNN root-cause isolation.

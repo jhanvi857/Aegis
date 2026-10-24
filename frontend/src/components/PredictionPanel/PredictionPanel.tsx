@@ -80,17 +80,46 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
           </div>
         </div>
 
-        <span
-          className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded border uppercase ${
-            isCriticalProb
-              ? 'bg-[#AD2831]/20 text-[#f87171] border-[#AD2831]/60'
-              : isDegradedProb
-              ? 'bg-[#D4A017]/20 text-[#e5b533] border-[#D4A017]/60'
-              : 'bg-[#3F8E4F]/20 text-[#52b767] border-[#3F8E4F]/60'
-          }`}
-        >
-          {isCriticalProb ? 'CRITICAL RISK' : isDegradedProb ? 'ELEVATED' : 'NOMINAL'}
-        </span>
+        <div className="flex items-center space-x-2">
+          {/* Engine Badge */}
+          {prediction.engine === 'sparse_two_stage' ? (
+            <span
+              className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded border uppercase bg-[#00A896]/20 text-[#02c39a] border-[#00A896]/50 flex items-center gap-1"
+              title={`Engine: Sparse 2-Stage Pipeline (${prediction.modelVersion || 'v2.1.0'})`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-[#02c39a]"></span>
+              Sparse 2-Stage
+            </span>
+          ) : prediction.engine === 'heuristic_fallback' ? (
+            <span
+              className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded border uppercase bg-[#AD2831]/20 text-[#f87171] border-[#AD2831]/60 flex items-center gap-1"
+              title="Degraded: Python ML disconnected; operating via Go heuristic fallback"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-[#f87171] animate-pulse"></span>
+              Degraded (Heuristic)
+            </span>
+          ) : (
+            <span
+              className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded border uppercase bg-[#3B82F6]/20 text-[#60a5fa] border-[#3B82F6]/50 flex items-center gap-1"
+              title={`Engine: Dense TGNN (${prediction.modelVersion || 'v1.0.0'})`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-[#60a5fa]"></span>
+              Dense TGNN
+            </span>
+          )}
+
+          <span
+            className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded border uppercase ${
+              isCriticalProb
+                ? 'bg-[#AD2831]/20 text-[#f87171] border-[#AD2831]/60'
+                : isDegradedProb
+                ? 'bg-[#D4A017]/20 text-[#e5b533] border-[#D4A017]/60'
+                : 'bg-[#3F8E4F]/20 text-[#52b767] border-[#3F8E4F]/60'
+            }`}
+          >
+            {isCriticalProb ? 'CRITICAL RISK' : isDegradedProb ? 'ELEVATED' : 'NOMINAL'}
+          </span>
+        </div>
       </div>
 
       <div className="p-4 space-y-4">
@@ -119,10 +148,12 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
           {/* Model Confidence */}
           <div className="p-3 bg-[#151517] border border-[#26262B] rounded-lg">
             <div className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1">
-              Confidence
+              {prediction.calibratedConfidence ? 'Calibrated Conf' : 'Confidence'}
             </div>
             <div className="text-2xl font-bold font-mono text-[#3F8E4F]">
-              {prediction.confidence}%
+              {prediction.calibratedConfidence
+                ? `${(prediction.calibratedConfidence <= 1 ? prediction.calibratedConfidence * 100 : prediction.calibratedConfidence).toFixed(1)}%`
+                : `${prediction.confidence}%`}
             </div>
           </div>
 
