@@ -478,6 +478,14 @@ func ComputePredictionOutput() PredictionOutput {
 		}
 	}
 
+	latestVer := 1
+	if store := GetAuthStore(); store != nil {
+		if v, err := store.GetLatestTopologyVersion(context.Background()); err == nil && v != nil && v.Version > 0 {
+			latestVer = v.Version
+		}
+	}
+	pred.TopologyVersion = latestVer
+
 	return pred
 }
 

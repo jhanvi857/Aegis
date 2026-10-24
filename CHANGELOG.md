@@ -4,6 +4,16 @@ All notable changes to the Aegis platform will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Service & Dependency Builder Platform (Phases 1-3)**:
+  - **Data Model & Schema Migration (`004_service_dependency_builder.sql`)**: Extended `topology_services` with `monitoring_mode` (`ignore`, `observe`, `recommend`, `auto_remediate`), `telemetry_source` (Prometheus, Kubernetes, Agent Push), `recovery_binding` (Kubernetes, Docker), `status`, `owner`, `tier`, and `tags`. Extended `topology_edges` with `source` (`manual`, `suggested`, `discovered`), `state` (`active`, `suggested`, `rejected`), `edge_type` (`sync`, `async`, `db`, `cache`), `confidence`, and `created_by`.
+  - **Cryptographic Protection & SSRF Shield (`crypto.go`, `ssrf.go`)**: Encrypted sensitive telemetry tokens and passwords at rest with AES-256-GCM. Implemented SSRF blocklist prohibiting private CIDRs, link-local, and cloud metadata (`169.254.169.254`), with strict timeouts and size caps. Redacted all credentials from API responses, export manifests, and audit logs.
+  - **Graph Health & Tarjan SCC Validation (`validate.go`)**: Added `POST /api/registry/validate` endpoint analyzing graphs for duplicate IDs, self-loops, orphan nodes, cycles with SCC component diagnostics, and unmonitored dependencies.
+  - **Trace Auto-Discovery Lifecycle & Immutability**: Auto-discovered traces emit `suggested` edges with confidence scores (`/api/registry/suggestions`). Supported operator accept/reject actions; rejected suggestions stick permanently and manual edges are strictly immutable against discovery overwrites.
+  - **Bulk Import / Export with Dry-Run Diff Preview**: Added `dryRun=true` preview returning structured additions, modifications, and deletions diff before committing changes. Added YAML, JSON, and CSV exports with credentials redacted.
+  - **Interactive Graph Workbench & Add Service Wizard (React + `@xyflow/react`)**: Implemented 5-step Add/Edit Service wizard with mandatory real-time connection test and copyable agent-push snippets. Built interactive graph builder with drag-and-drop connections, edge type selectors, auto-layout, undo/redo, neighborhood focus for 200+ services, and click-to-focus validation drawer.
+  - **Live Registry System Wiring & Action Gates**: Prediction and recovery engines evaluate live registry state. Recovery execution strictly gates against observe-only modes and unconfigured bindings, verifying requested actions against `allowed_actions`. Added topology version tracking across predictions and audit trails.
+
 ### Fixed
 - **Recovery Fault Isolation & Genuine Telemetry Verification (Issue 1)**:
   - Removed auto-clearing of `State.ActiveFaults` and forwarding of stop commands to Chaos Engine during remediation in both manual and autonomous recovery paths.

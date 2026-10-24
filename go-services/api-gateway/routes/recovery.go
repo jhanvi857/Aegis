@@ -176,6 +176,72 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 		actionType = "restart"
 	}
 
+	// Live Registry Enforcement: Only act on services with mode recommend/auto_remediate,
+	// a valid recovery_binding, and the action in allowed_actions; otherwise return "observe-only/no binding"
+	if store := GetAuthStore(); store != nil {
+		regSvc, err := store.GetService(r.Context(), targetID)
+		if err == nil && regSvc != nil {
+			mode := strings.ToLower(regSvc.MonitoringMode)
+			if mode == "observe" || mode == "ignore" {
+				LogAudit(r, "recovery.disallowed", targetID, "REJECTED", "", fmt.Sprintf("action: %s, mode: %s", actionType, regSvc.MonitoringMode), "BLOCKED", "Service is in observe-only or ignore mode")
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
+					"error":   "observe-only/no binding: service monitoring mode does not permit automated or manual recovery execution",
+					"status":  "rejected",
+					"mode":    regSvc.MonitoringMode,
+					"message": "Service is in observe-only mode. Set monitoring mode to recommend or auto_remediate to permit actions.",
+				})
+				return
+			}
+			if regSvc.RecoveryBinding == nil || strings.TrimSpace(regSvc.RecoveryBinding.Target) == "" {
+				LogAudit(r, "recovery.disallowed", targetID, "REJECTED", "", fmt.Sprintf("action: %s", actionType), "BLOCKED", "Service has no recovery binding")
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
+					"error":   "observe-only/no binding: service has no recovery binding configured",
+					"status":  "rejected",
+					"message": "Service has no valid recovery binding. Configure a Kubernetes or Docker target with allowed actions.",
+				})
+				return
+			}
+			if len(regSvc.RecoveryBinding.AllowedActions) > 0 {
+				normalizedAction := strings.ToLower(strings.TrimSpace(actionType))
+				if normalizedAction == "reroute_traffic" {
+					normalizedAction = "reroute"
+				}
+				if normalizedAction == "scale_up" {
+					normalizedAction = "scale"
+				}
+				allowed := false
+				for _, act := range regSvc.RecoveryBinding.AllowedActions {
+					normAct := strings.ToLower(strings.TrimSpace(act))
+					if normAct == "reroute_traffic" {
+						normAct = "reroute"
+					}
+					if normAct == "scale_up" {
+						normAct = "scale"
+					}
+					if normAct == normalizedAction || strings.EqualFold(normAct, actionType) {
+						allowed = true
+						break
+					}
+				}
+				if !allowed {
+					LogAudit(r, "recovery.disallowed", targetID, "REJECTED", "", fmt.Sprintf("action: %s", actionType), "BLOCKED", "Action not in allowed_actions")
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusBadRequest)
+					_ = json.NewEncoder(w).Encode(map[string]interface{}{
+						"error":          fmt.Sprintf("observe-only/no binding: action '%s' is not in service allowed_actions [%s]", actionType, strings.Join(regSvc.RecoveryBinding.AllowedActions, ", ")),
+						"status":         "rejected",
+						"allowedActions": regSvc.RecoveryBinding.AllowedActions,
+					})
+					return
+				}
+			}
+		}
+	}
+
 	// Single Source of Truth: evaluate Risk & Approval Policy
 	assessment := AssessPolicy(actionType, targetID)
 	riskLevel := assessment.RiskLevel

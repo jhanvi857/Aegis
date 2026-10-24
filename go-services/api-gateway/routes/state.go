@@ -89,6 +89,7 @@ type PredictionOutput struct {
 	Engine               string             `json:"engine"`
 	ModelVersion         string             `json:"modelVersion"`
 	CalibratedConfidence float64            `json:"calibratedConfidence"`
+	TopologyVersion      int                `json:"topologyVersion,omitempty"`
 }
 
 type RecoveryAction struct {
