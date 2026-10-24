@@ -9,13 +9,17 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
+# Existing Kubernetes Secret containing AEGIS_API_KEY
+existingSecret: ""
+
 # Aegis Control Plane connection configuration
 aegis:
   clusterId: "prod-k8s-cluster"
   namespace: "default"
   gatewayUrl: "http://aegis-gateway.aegis-system.svc.cluster.local:8080"
   # Machine API key (format: aegis_ak_*) used to authenticate outbound telemetry
-  apiKey: "aegis_ak_change_me_in_production"
+  # Required if existingSecret is empty; no default value in values.yaml
+  apiKey: ""
   # If true, agent publishes to Kafka directly instead of/in addition to gateway HTTP/gRPC
   kafka:
     enabled: false

@@ -177,7 +177,7 @@ func TestPhase7_ConfigValidation(t *testing.T) {
 	// Case 3: Production requires explicit non-default database password
 	invalidCfg3 := &config.Config{
 		Environment:         "production",
-		DatabaseURL:         "postgres://aegis:aegissecretpassword@localhost:5432/aegis_db",
+		DatabaseURL:         "postgres://aegis:insecure_default_pass@localhost:5432/aegis_db",
 		CORSAllowedOrigins:  []string{"https://aegis.example.com"},
 		BootstrapAdminPass:  "UltraSecureProdPassword#2026",
 	}

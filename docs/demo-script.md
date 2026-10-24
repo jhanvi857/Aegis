@@ -16,9 +16,9 @@ This document provides a step-by-step presentation walkthrough for demonstrating
 | **PostgreSQL & Redis** | `:5432`, `:6379` | Durable store for dynamic topologies, execution history, users, sessions, API keys, and audit logs. |
 
 ### Operator Credentials
-- **Administrator**: `admin@aegis.local` / `AdminPass#2026` (Full privileges: chaos injection, approvals, rollbacks, API keys)
-- **Operator**: `operator@aegis.local` / `OperatorPass#2026` (Remediation execution, approvals, topology selection)
-- **Viewer**: `viewer@aegis.local` / `ViewerPass#2026` (Read-only observation)
+- **Administrator**: Configured via `AEGIS_BOOTSTRAP_ADMIN_EMAIL` and `AEGIS_BOOTSTRAP_ADMIN_PASSWORD` in `.env` (e.g. `admin@enterprise.io`, password must satisfy 12+ char complexity). On first login, forced password rotation is flagged via `mustChangePassword`.
+- **Operator**: Provisioned via Admin user management or machine API keys (`aegis_ak_*`).
+- **Viewer**: Standard read-only observation role.
 
 ---
 

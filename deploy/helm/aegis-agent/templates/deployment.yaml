@@ -42,7 +42,7 @@ spec:
             - configMapRef:
                 name: {{ include "aegis-agent.fullname" . }}-config
             - secretRef:
-                name: {{ include "aegis-agent.fullname" . }}-auth
+                name: {{ .Values.existingSecret | default (printf "%s-auth" (include "aegis-agent.fullname" .)) }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}

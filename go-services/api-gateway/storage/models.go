@@ -35,6 +35,7 @@ type User struct {
 	PasswordHash        string     `json:"-"`
 	Salt                string     `json:"-"`
 	Role                string     `json:"role"`
+	MustChangePassword  bool       `json:"mustChangePassword,omitempty"`
 	FailedLoginAttempts int        `json:"failedLoginAttempts,omitempty"`
 	LockedUntil         *time.Time `json:"lockedUntil,omitempty"`
 	CreatedAt           time.Time  `json:"createdAt"`

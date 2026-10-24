@@ -11,6 +11,7 @@ type Store interface {
 	GetUserByID(ctx context.Context, id string) (*User, error)
 	CreateUser(ctx context.Context, user *User) error
 	UpdateUserRole(ctx context.Context, id string, role string) error
+	UpdateUserPassword(ctx context.Context, id, passwordHash, salt string, mustChangePassword bool) error
 	UpdateUserLoginAttempt(ctx context.Context, email string, failedAttempts int, lockedUntil *time.Time) error
 	ListUsers(ctx context.Context) ([]*User, error)
 	CountUsers(ctx context.Context) (int, error)

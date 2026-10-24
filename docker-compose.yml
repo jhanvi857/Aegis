@@ -60,7 +60,7 @@ services:
       - "5432:5432"
     environment:
       POSTGRES_USER: aegis
-      POSTGRES_PASSWORD: aegissecretpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD environment variable must be set in .env}
       POSTGRES_DB: aegis_db
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -264,9 +264,9 @@ services:
       PYTHON_GRPC_ADDR: "python-ml:50051"
       CHAOS_ENGINE_URL: "http://chaos-engine:8091"
       RECOVERY_ENGINE_URL: "http://recovery-engine:8092"
-      DATABASE_URL: "postgres://aegis:aegissecretpassword@postgres:5432/aegis_db?sslmode=disable"
-      AEGIS_BOOTSTRAP_ADMIN_EMAIL: "admin@enterprise.io"
-      AEGIS_BOOTSTRAP_ADMIN_PASSWORD: "AdminSecretPassword#2026"
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL environment variable must be set in .env}
+      AEGIS_BOOTSTRAP_ADMIN_EMAIL: ${AEGIS_BOOTSTRAP_ADMIN_EMAIL:-admin@enterprise.io}
+      AEGIS_BOOTSTRAP_ADMIN_PASSWORD: ${AEGIS_BOOTSTRAP_ADMIN_PASSWORD:?AEGIS_BOOTSTRAP_ADMIN_PASSWORD environment variable must be set in .env}
     volumes:
       - ./configs/topology.yaml:/etc/aegis/topology.yaml:ro
     depends_on:

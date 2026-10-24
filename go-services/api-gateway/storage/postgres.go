@@ -52,12 +52,14 @@ func (p *PostgresStore) autoMigrate(ctx context.Context) error {
 		password_hash VARCHAR(255) NOT NULL,
 		salt VARCHAR(64) NOT NULL,
 		role VARCHAR(32) NOT NULL DEFAULT 'viewer',
+		must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
 		failed_login_attempts INT NOT NULL DEFAULT 0,
 		locked_until TIMESTAMP WITH TIME ZONE NULL,
 		created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 	);
 	CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+	ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
 
 	CREATE TABLE IF NOT EXISTS sessions (
 		id VARCHAR(128) PRIMARY KEY,
@@ -195,12 +197,12 @@ func (p *PostgresStore) autoMigrate(ctx context.Context) error {
 
 func (p *PostgresStore) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	row := p.db.QueryRowContext(ctx, `
-		SELECT id, name, email, password_hash, salt, role, failed_login_attempts, locked_until, created_at, updated_at
+		SELECT id, name, email, password_hash, salt, role, must_change_password, failed_login_attempts, locked_until, created_at, updated_at
 		FROM users WHERE LOWER(email) = LOWER($1)
 	`, email)
 
 	var u User
-	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.PasswordHash, &u.Salt, &u.Role, &u.FailedLoginAttempts, &u.LockedUntil, &u.CreatedAt, &u.UpdatedAt)
+	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.PasswordHash, &u.Salt, &u.Role, &u.MustChangePassword, &u.FailedLoginAttempts, &u.LockedUntil, &u.CreatedAt, &u.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -212,12 +214,12 @@ func (p *PostgresStore) GetUserByEmail(ctx context.Context, email string) (*User
 
 func (p *PostgresStore) GetUserByID(ctx context.Context, id string) (*User, error) {
 	row := p.db.QueryRowContext(ctx, `
-		SELECT id, name, email, password_hash, salt, role, failed_login_attempts, locked_until, created_at, updated_at
+		SELECT id, name, email, password_hash, salt, role, must_change_password, failed_login_attempts, locked_until, created_at, updated_at
 		FROM users WHERE id = $1
 	`, id)
 
 	var u User
-	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.PasswordHash, &u.Salt, &u.Role, &u.FailedLoginAttempts, &u.LockedUntil, &u.CreatedAt, &u.UpdatedAt)
+	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.PasswordHash, &u.Salt, &u.Role, &u.MustChangePassword, &u.FailedLoginAttempts, &u.LockedUntil, &u.CreatedAt, &u.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -235,10 +237,28 @@ func (p *PostgresStore) CreateUser(ctx context.Context, user *User) error {
 	user.UpdatedAt = now
 
 	_, err := p.db.ExecContext(ctx, `
-		INSERT INTO users (id, name, email, password_hash, salt, role, failed_login_attempts, locked_until, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`, user.ID, user.Name, user.Email, user.PasswordHash, user.Salt, user.Role, user.FailedLoginAttempts, user.LockedUntil, user.CreatedAt, user.UpdatedAt)
+		INSERT INTO users (id, name, email, password_hash, salt, role, must_change_password, failed_login_attempts, locked_until, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	`, user.ID, user.Name, user.Email, user.PasswordHash, user.Salt, user.Role, user.MustChangePassword, user.FailedLoginAttempts, user.LockedUntil, user.CreatedAt, user.UpdatedAt)
 	return err
+}
+
+func (p *PostgresStore) UpdateUserPassword(ctx context.Context, id, passwordHash, salt string, mustChangePassword bool) error {
+	res, err := p.db.ExecContext(ctx, `
+		UPDATE users SET password_hash = $1, salt = $2, must_change_password = $3, updated_at = NOW()
+		WHERE id = $4
+	`, passwordHash, salt, mustChangePassword, id)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (p *PostgresStore) UpdateUserRole(ctx context.Context, id string, role string) error {

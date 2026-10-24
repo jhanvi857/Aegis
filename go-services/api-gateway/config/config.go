@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 type Config struct {
@@ -43,11 +44,7 @@ func LoadConfig() (*Config, error) {
 		if host != "" {
 			pgPort := getEnv("POSTGRES_PORT", "5432")
 			user := getEnv("POSTGRES_USER", "aegis")
-			defaultPass := "aegissecretpassword"
-			if env == "production" {
-				defaultPass = ""
-			}
-			pass := getEnv("POSTGRES_PASSWORD", defaultPass)
+			pass := os.Getenv("POSTGRES_PASSWORD")
 			db := getEnv("POSTGRES_DB", "aegis_db")
 			sslmode := getEnv("POSTGRES_SSLMODE", "disable")
 			if pass != "" {
@@ -96,7 +93,10 @@ func LoadConfig() (*Config, error) {
 	allowProdChaos := parseBool(getEnv("CHAOS_ALLOW_PRODUCTION", "false"))
 
 	adminEmail := getEnv("AEGIS_BOOTSTRAP_ADMIN_EMAIL", "admin@aegis.local")
-	adminPass := getEnv("AEGIS_BOOTSTRAP_ADMIN_PASSWORD", "AdminPass#2026")
+	adminPass := os.Getenv("AEGIS_BOOTSTRAP_ADMIN_PASSWORD")
+	if adminPass == "" && env == "production" {
+		return nil, fmt.Errorf("AEGIS_BOOTSTRAP_ADMIN_PASSWORD environment variable is required in production")
+	}
 
 	cfg := &Config{
 		ServerPort:           port,
@@ -128,7 +128,37 @@ func LoadConfig() (*Config, error) {
 	return cfg, nil
 }
 
+// ValidatePasswordComplexity validates password length and character composition
+func ValidatePasswordComplexity(pass string) error {
+	if len(pass) < 12 {
+		return fmt.Errorf("password must be at least 12 characters long")
+	}
+	var hasUpper, hasLower, hasDigit, hasSpecial bool
+	for _, ch := range pass {
+		switch {
+		case unicode.IsUpper(ch):
+			hasUpper = true
+		case unicode.IsLower(ch):
+			hasLower = true
+		case unicode.IsDigit(ch):
+			hasDigit = true
+		case unicode.IsPunct(ch) || unicode.IsSymbol(ch):
+			hasSpecial = true
+		}
+	}
+	if !hasUpper || !hasLower || !hasDigit || !hasSpecial {
+		return fmt.Errorf("password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character")
+	}
+	return nil
+}
+
 func (c *Config) Validate() error {
+	if c.BootstrapAdminPass != "" {
+		if err := ValidatePasswordComplexity(c.BootstrapAdminPass); err != nil {
+			return fmt.Errorf("invalid AEGIS_BOOTSTRAP_ADMIN_PASSWORD: %w", err)
+		}
+	}
+
 	if c.Environment == "production" {
 		if c.TLSEnabled {
 			if c.TLSCertFile == "" || c.TLSKeyFile == "" {
@@ -145,15 +175,15 @@ func (c *Config) Validate() error {
 			}
 		}
 
-		if c.BootstrapAdminPass == "AdminPass#2026" {
-			return fmt.Errorf("production mode requires non-default AEGIS_BOOTSTRAP_ADMIN_PASSWORD")
+		if c.BootstrapAdminPass == "" {
+			return fmt.Errorf("production mode requires AEGIS_BOOTSTRAP_ADMIN_PASSWORD to be set")
 		}
 
 		if c.DatabaseURL == "" {
 			return fmt.Errorf("production mode strictly requires explicit DATABASE_URL or POSTGRES_PASSWORD; default credentials are forbidden")
 		}
-		if strings.Contains(c.DatabaseURL, "aegissecretpassword") {
-			return fmt.Errorf("production mode strictly forbids using the default 'aegissecretpassword'")
+		if strings.Contains(c.DatabaseURL, "insecure_default_pass") || strings.Contains(c.DatabaseURL, ":password@") || strings.Contains(c.DatabaseURL, "://aegis:@") {
+			return fmt.Errorf("production mode strictly forbids using insecure or default database credentials")
 		}
 
 		if c.ChaosEnabled && !c.AllowProductionChaos {

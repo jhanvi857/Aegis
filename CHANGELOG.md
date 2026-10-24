@@ -11,6 +11,24 @@ All notable changes to the Aegis platform will be documented in this file.
   - Telemetry verification strictly checks live service health; if an ongoing fault leaves metrics degraded/critical, recovery status transitions to `Ineffective` and executes the escalation ladder.
   - Populated finalized `DurationMs` and `DurationStr` from the real verification window instead of initial zero placeholders.
   - Added comprehensive tests for active fault retention under `SCALE_UP`, ineffective escalation under active faults, natural fault expiration verification, and finalized duration recording.
+- **Sparse TGNN & Two-Stage Pipeline Serving Path Integration (Issue 2)**:
+  - Loaded Sparse TGNN and `TwoStageInferencePipeline` in Python gRPC server, dynamically routing between Dense TGNN ($N \le \text{AEGIS\_SPARSE\_THRESHOLD}$, default 20) and Two-Stage Sparse TGNN ($N > 20$) on $k$-hop neighborhoods.
+  - Passed dynamic registry topology (arbitrary $N$ services) and built `edge_index` from topology edges, removing fixed node count assumptions.
+  - Extended Protobuf `PredictResponse` and Go control plane to emit inference `engine` (`dense_tgnn`, `sparse_two_stage`, or `heuristic_fallback`), `model_version`, and `calibrated_confidence`.
+  - Updated `/readyz` probe to report active engine in component status.
+  - Updated React frontend PredictionPanel to render active engine badge and calibrated confidence, surfacing degraded state during fallback.
+  - Added 200-node topology import and sparse inference integration test in Go control plane.
+  - Formally documented real measured benchmarks across sizes 10, 50, 100, 200, and 500 nodes, bounding arbitrary topology generalization claims to $N \le 500$.
+- **Secrets Hardening & Credential Elimination (Issue 3)**:
+  - Replaced hardcoded default credentials in `docker-compose.yml` (`POSTGRES_PASSWORD`, `DATABASE_URL`, `AEGIS_BOOTSTRAP_ADMIN_PASSWORD`) with required `${VAR:?error_message}` variable interpolation.
+  - Provided `.env.example` containing non-secret placeholders only and verified `.env` is ignored by `.gitignore`.
+  - Removed all occurrences of default/compromised credentials (`aegissecretpassword`, `AdminSecretPassword#2026`) from configurations, scripts, documentation, and tests.
+  - Implemented strict password complexity validation (minimum 12 characters, requiring uppercase, lowercase, digit, and special symbol) across bootstrap configuration and user update operations.
+  - Enforced `mustChangePassword` flag on bootstrap administrator account, requiring immediate password rotation upon initial login via `POST /api/auth/change-password`.
+  - Refactored Helm chart (`deploy/helm/aegis-agent`) to reference existing secrets via `existingSecret` with zero default secret values in `values.yaml`.
+- **Environment & Simulation Scope Clarifications (Small Cleanups)**:
+  - Formally documented RL recovery agent as trained and evaluated strictly within a simulated Gym environment (`MicroserviceChaosEnv`), removing any implication of live cluster or production validation.
+  - Labeled `deploy/online-boutique` artifacts as declarative manifests and execution runbooks not yet validated on a live production cluster.
 
 ## [Phase 7: Production Readiness & Enterprise Operational Hardening] - 2026-10-22
 
@@ -32,7 +50,7 @@ All notable changes to the Aegis platform will be documented in this file.
 - **Single Source of Truth Alignment (`rulebook.yaml`, `policy.go`, `README.md`)**:
   - Aligned fault-to-action table in `README.md` with `rulebook.yaml` (including explicit `slow_query` -> `INCREASE_POOL` and `thread_exhaustion` -> `INCREASE_POOL` / `SCALE_UP`).
 - **Eliminated Hardcoded Database Credentials in Production (`config.go`)**:
-  - Config validation rejects startup in production if `DATABASE_URL` or `POSTGRES_PASSWORD` is omitted or left as the default development string (`aegissecretpassword`).
+  - Config validation rejects startup in production if `DATABASE_URL` or `POSTGRES_PASSWORD` is omitted or left as insecure default development credentials.
 - **Centralized Environment Configuration (`go-services/api-gateway/config/config.go`)**:
   - Typed `config.Config` loading all parameters from environment variables with defaults.
   - Strict production validation rejecting wildcard `*` CORS origins and missing TLS certificates/keys.

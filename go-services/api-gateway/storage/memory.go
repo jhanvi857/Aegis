@@ -97,6 +97,20 @@ func (m *MemoryStore) UpdateUserRole(ctx context.Context, id string, role string
 	return nil
 }
 
+func (m *MemoryStore) UpdateUserPassword(ctx context.Context, id, passwordHash, salt string, mustChangePassword bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, exists := m.usersByID[id]
+	if !exists {
+		return ErrNotFound
+	}
+	u.PasswordHash = passwordHash
+	u.Salt = salt
+	u.MustChangePassword = mustChangePassword
+	u.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
 func (m *MemoryStore) UpdateUserLoginAttempt(ctx context.Context, email string, failedAttempts int, lockedUntil *time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

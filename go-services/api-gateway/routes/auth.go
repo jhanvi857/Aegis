@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aegis/go-services/api-gateway/config"
 	"github.com/aegis/go-services/api-gateway/storage"
 	"github.com/gorilla/mux"
 )
@@ -69,27 +70,29 @@ func InitBootstrapAdmin(ctx context.Context) {
 	}
 
 	adminUser := &storage.User{
-		ID:           fmt.Sprintf("usr-%d", time.Now().UnixNano()),
-		Name:         "Bootstrap Administrator",
-		Email:        adminEmail,
-		PasswordHash: hash,
-		Salt:         salt,
-		Role:         storage.RoleAdmin,
-		CreatedAt:    time.Now().UTC(),
-		UpdatedAt:    time.Now().UTC(),
+		ID:                  fmt.Sprintf("usr-%d", time.Now().UnixNano()),
+		Name:                "Bootstrap Administrator",
+		Email:               adminEmail,
+		PasswordHash:        hash,
+		Salt:                salt,
+		Role:                storage.RoleAdmin,
+		MustChangePassword:  true,
+		CreatedAt:           time.Now().UTC(),
+		UpdatedAt:           time.Now().UTC(),
 	}
 
 	if err := store.CreateUser(ctx, adminUser); err != nil {
 		log.Printf("[auth] Failed to persist bootstrap admin: %v", err)
 	} else {
-		log.Printf("[auth] Bootstrap admin created: %s (role: %s)", adminEmail, storage.RoleAdmin)
+		log.Printf("[auth] Bootstrap admin created: %s (role: %s, mustChangePassword: true)", adminEmail, storage.RoleAdmin)
 	}
 }
 
 type User = storage.User
 type AuthResponse struct {
-	Token string        `json:"token"`
-	User  *storage.User `json:"user"`
+	Token              string        `json:"token"`
+	User               *storage.User `json:"user"`
+	MustChangePassword bool          `json:"mustChangePassword,omitempty"`
 }
 
 type LoginRequest struct {
@@ -219,8 +222,9 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	LogAudit(r, "auth.login", "", "", "", fmt.Sprintf("user_id: %s, email: %s", user.ID, user.Email), "SUCCESS", "")
 
 	_ = json.NewEncoder(w).Encode(AuthResponse{
-		Token: token,
-		User:  user,
+		Token:              token,
+		User:               user,
+		MustChangePassword: user.MustChangePassword,
 	})
 }
 
@@ -604,4 +608,66 @@ func ListAuditLogsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = json.NewEncoder(w).Encode(entries)
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword"`
+	NewPassword     string `json:"newPassword"`
+}
+
+// ChangePasswordHandler updates an authenticated user's password and clears MustChangePassword
+func ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var req ChangePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Invalid change password payload"})
+		return
+	}
+
+	user, err := GetUserFromRequest(r)
+	if err != nil || user == nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
+		return
+	}
+
+	if !storage.VerifyPassword(req.CurrentPassword, user.Salt, user.PasswordHash) {
+		LogAudit(r, "auth.change_password", "", "", "", fmt.Sprintf("user_id: %s", user.ID), "FAILED", "Incorrect current password")
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Incorrect current password"})
+		return
+	}
+
+	if err := config.ValidatePasswordComplexity(req.NewPassword); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Password does not meet complexity requirements: %v", err)})
+		return
+	}
+
+	salt, err := storage.GenerateSalt()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Cryptographic salt generation failure"})
+		return
+	}
+
+	passwordHash, err := storage.HashPassword(req.NewPassword, salt)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Password hashing failure"})
+		return
+	}
+
+	if err := GetAuthStore().UpdateUserPassword(r.Context(), user.ID, passwordHash, salt, false); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Failed to update user password"})
+		return
+	}
+
+	LogAudit(r, "auth.change_password", "", "", "", fmt.Sprintf("user_id: %s", user.ID), "SUCCESS", "")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":            "Password changed successfully",
+		"mustChangePassword": false,
+	})
 }

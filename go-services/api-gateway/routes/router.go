@@ -96,6 +96,7 @@ func SetupRouter(store storage.Store) *mux.Router {
 	// ─── Authenticated: Viewer Role (Read-only + Self) ───────────
 	r.HandleFunc("/api/auth/me", RequireRole(storage.RoleViewer, GetMeHandler)).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/auth/logout", RequireRole(storage.RoleViewer, LogoutHandler)).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/auth/change-password", RequireRole(storage.RoleViewer, ChangePasswordHandler)).Methods("POST", "OPTIONS")
 
 	// Topology (Read)
 	r.HandleFunc("/api/topology", RequireRole(storage.RoleViewer, TopologyHandler)).Methods("GET", "OPTIONS")
