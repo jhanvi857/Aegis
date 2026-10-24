@@ -10,6 +10,7 @@ import {
 import '@xyflow/react/dist/style.css';
 
 import { useTelemetryStore, getMLPrediction } from '../../store/useTelemetryStore';
+import { registryApi, type TopologyInfo } from '../../api/registry';
 import { TopologyNode } from '../TopologyNode';
 import { GitFork, Layers, ShieldAlert } from 'lucide-react';
 
@@ -31,12 +32,23 @@ export const TopologyGraph: React.FC<TopologyGraphProps> = ({
   className = '',
 }) => {
   const { services, activeFaults, setSelectedServiceId, tickTelemetry } = useTelemetryStore();
+  const [topologies, setTopologies] = useState<TopologyInfo[]>([]);
   const [selectedTopo, setSelectedTopo] = useState<string>('topology.yaml');
   const [switchingTopo, setSwitchingTopo] = useState<boolean>(false);
 
   const prediction = getMLPrediction(services, activeFaults);
   const rootCauseId = prediction.rootCauseServiceId;
   const blastRadiusSet = useMemo(() => new Set(prediction.blastRadius || []), [prediction.blastRadius]);
+
+  React.useEffect(() => {
+    registryApi.listTopologies()
+      .then((items) => {
+        setTopologies(items);
+        const active = items.find((item) => item.active);
+        if (active) setSelectedTopo(active.filename);
+      })
+      .catch((err) => console.error('Failed to load available topologies:', err));
+  }, []);
 
   const handleSelectTopology = async (filename: string) => {
     setSelectedTopo(filename);
@@ -269,8 +281,14 @@ export const TopologyGraph: React.FC<TopologyGraphProps> = ({
                 disabled={switchingTopo}
                 className="bg-[#0B0B0C] text-gray-200 border border-[#26262B] rounded px-2 py-0.5 text-[11px] focus:outline-none focus:border-[#840032]"
               >
-                <option value="topology.yaml">Standard Mesh (5 nodes)</option>
-                <option value="topology.example.yaml">Extended Demo (8 nodes)</option>
+                {topologies.length === 0 && (
+                  <option value="topology.yaml">Loading topologies...</option>
+                )}
+                {topologies.map((topology) => (
+                  <option key={topology.filename} value={topology.filename}>
+                    {topology.name || topology.filename} ({topology.nodeCount} nodes)
+                  </option>
+                ))}
               </select>
             </div>
           )}

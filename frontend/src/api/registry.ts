@@ -94,6 +94,15 @@ export interface SystemModeInfo {
   namespace: string;
 }
 
+export interface TopologyInfo {
+  id: string;
+  filename: string;
+  name: string;
+  description: string;
+  nodeCount: number;
+  active: boolean;
+}
+
 export interface ValidationIssue {
   type: 'error' | 'warning' | 'info';
   code: string;
@@ -144,6 +153,10 @@ export interface ImportResponse {
 export const registryApi = {
   getSystemMode: async (): Promise<SystemModeInfo> => {
     return await apiFetch<SystemModeInfo>('/system/mode');
+  },
+
+  listTopologies: async (): Promise<TopologyInfo[]> => {
+    return await apiFetch<TopologyInfo[]>('/topology/list');
   },
 
   setSystemMode: async (demoMode: boolean): Promise<SystemModeInfo> => {

@@ -154,6 +154,18 @@ func TopologySelectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if store := GetAuthStore(); store != nil {
+		if err := ReplaceTopologyRegistry(r.Context(), store); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   fmt.Sprintf("Topology loaded but registry synchronization failed: %v", err),
+			})
+			return
+		}
+	}
+
 	LogAudit(r, "topology.select", "", "", "", fmt.Sprintf("filename: %s", targetFile), "SUCCESS", "")
 
 	w.Header().Set("Content-Type", "application/json")
@@ -164,4 +176,3 @@ func TopologySelectHandler(w http.ResponseWriter, r *http.Request) {
 		"message":   fmt.Sprintf("Successfully switched active mesh topology to %s", targetFile),
 	})
 }
-

@@ -862,6 +862,7 @@ func TestConnectionHandler(w http.ResponseWriter, r *http.Request) {
 type TopologyImportPayload struct {
 	Format      string                    `json:"format,omitempty"`
 	Data        string                    `json:"data,omitempty"`
+	RawYAML     string                    `json:"rawYaml,omitempty"`
 	DryRun      bool                      `json:"dryRun,omitempty"`
 	Namespace   string                    `json:"namespace,omitempty"`
 	ClusterID   string                    `json:"clusterId,omitempty"`
@@ -940,6 +941,13 @@ func ImportTopologyHandler(w http.ResponseWriter, r *http.Request) {
 								Name: row[1],
 							})
 						}
+					}
+				}
+
+				if payload.RawYAML != "" && len(payload.Services) == 0 && len(payload.Nodes) == 0 {
+					if err := yaml.Unmarshal([]byte(payload.RawYAML), &payload); err != nil {
+						http.Error(w, fmt.Sprintf(`{"error":"Invalid YAML payload: %s"}`, err.Error()), http.StatusBadRequest)
+						return
 					}
 				}
 			}

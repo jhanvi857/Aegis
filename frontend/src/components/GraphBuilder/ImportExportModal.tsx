@@ -101,8 +101,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
       return JSON.parse(trimmed);
     }
-    // Simple YAML parser fallback for basic structures or raw object
-    return { rawYaml: trimmed };
+    return { format: 'yaml', data: trimmed };
   };
 
   const handleDryRunPreview = async () => {

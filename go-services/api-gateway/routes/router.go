@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"net/http"
 	"sync"
 
@@ -64,6 +65,11 @@ func CorsMiddleware(next http.Handler) http.Handler {
 // SetupRouter constructs and configures the complete Aegis HTTP router with auth and RBAC
 func SetupRouter(store storage.Store) *mux.Router {
 	SetAuthStore(store)
+	if err := BootstrapTopologyRegistry(context.Background(), store); err != nil {
+		telemetry.Logger.Warn("topology", "Could not bootstrap dynamic topology registry", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
 
 	r := mux.NewRouter()
 
