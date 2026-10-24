@@ -435,6 +435,11 @@ and recovery infrastructure:
 make up-full
 ```
 
+No default service mesh is created on startup. A company or application owner must create
+services and dependencies through the Service Builder or import an owner-maintained topology.
+The full playground profile is optional demo infrastructure and requires an explicit topology
+configuration for its simulated services.
+
 Model checkpoints are mounted from `python-ml/models/checkpoints`; they are not copied into
 the image. See [`docs/build-performance.md`](docs/build-performance.md) for build and memory
 measurements.

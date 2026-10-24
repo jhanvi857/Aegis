@@ -83,16 +83,6 @@ func TopologyListHandler(w http.ResponseWriter, r *http.Request) {
 	files, err := os.ReadDir(dir)
 
 	list := make([]TopologyInfo, 0)
-	// Add current / default topology
-	list = append(list, TopologyInfo{
-		ID:          "default",
-		Filename:    "topology.yaml",
-		Name:        "Default Aegis Mesh (5 Nodes)",
-		Description: "Standard 5-node production topology",
-		NodeCount:   len(State.ServiceOrder),
-		Active:      true,
-	})
-
 	if err == nil {
 		for _, f := range files {
 			if !f.IsDir() && (strings.HasSuffix(f.Name(), ".yaml") || strings.HasSuffix(f.Name(), ".yml")) {

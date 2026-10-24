@@ -54,16 +54,16 @@ type Microservice struct {
 }
 
 type ChaosInjection struct {
-	ID               string `json:"id"`
-	FaultType        string `json:"faultType"`
-	Title            string `json:"title"`
-	TargetServiceID  string `json:"targetServiceId"`
+	ID                string `json:"id"`
+	FaultType         string `json:"faultType"`
+	Title             string `json:"title"`
+	TargetServiceID   string `json:"targetServiceId"`
 	TargetServiceName string `json:"targetServiceName"`
-	Severity         string `json:"severity"`
-	DurationSeconds  int    `json:"durationSeconds"`
-	RemainingSeconds int    `json:"remainingSeconds"`
-	Status           string `json:"status"`
-	StartedAt        string `json:"startedAt"`
+	Severity          string `json:"severity"`
+	DurationSeconds   int    `json:"durationSeconds"`
+	RemainingSeconds  int    `json:"remainingSeconds"`
+	Status            string `json:"status"`
+	StartedAt         string `json:"startedAt"`
 }
 
 type AffectedNodeInfo struct {
@@ -235,23 +235,14 @@ func InitState() {
 	State.AutonomousRecovery = autoRecovery
 	State.mu.Unlock()
 
-	topoPath := os.Getenv("TOPOLOGY_PATH")
-	if topoPath == "" {
-		candidates := []string{
-			"configs/topology.yaml",
-			"../configs/topology.yaml",
-			"../../configs/topology.yaml",
-			"/etc/aegis/topology.yaml",
+	topoPath := strings.TrimSpace(os.Getenv("TOPOLOGY_PATH"))
+	if topoPath != "" {
+		if err := LoadTopology(topoPath); err != nil {
+			log.Printf("[api-gateway] Warning: configured topology could not be loaded: %v", err)
 		}
-		for _, c := range candidates {
-			if _, err := os.Stat(c); err == nil {
-				topoPath = c
-				break
-			}
-		}
+	} else {
+		log.Printf("[api-gateway] No topology configured; waiting for owner-created services or an import")
 	}
-
-	_ = LoadTopology(topoPath)
 
 	// Start background maintenance loop once
 	stateTickerOnce.Do(func() {

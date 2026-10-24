@@ -5,6 +5,10 @@ All notable changes to the Aegis platform will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Owner-managed topology lifecycle**:
+  - Removed automatic loading and registry bootstrapping of the five-node sample mesh.
+  - New deployments start with an empty service registry; owners create or import their own topology.
+  - Service deletion now returns a clear `404` when the requested service does not exist.
 - **Lean CPU Development Stack**:
   - Split Python serving and training requirements, pinned a CPU-only PyTorch wheel, and removed CUDA packages, training libraries, and `grpcio-tools` from the serving runtime image.
   - Added cached multi-stage Python, Go, and frontend images, non-root runtimes, Compose `core`/`full` profiles, resource limits, model volume mounts, and explicit `make up-lean`/`make up-full` workflows.

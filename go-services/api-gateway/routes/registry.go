@@ -431,7 +431,17 @@ func DeleteRegistryServiceHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	if err := GetAuthStore().DeleteService(r.Context(), id); err != nil {
+	store := GetAuthStore()
+	if _, err := store.GetService(r.Context(), id); err != nil {
+		if err == storage.ErrNotFound {
+			http.Error(w, fmt.Sprintf(`{"error":"Service %s was not found"}`, id), http.StatusNotFound)
+			return
+		}
+		http.Error(w, fmt.Sprintf(`{"error":"Failed to find service: %s"}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	if err := store.DeleteService(r.Context(), id); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"Failed to delete service: %s"}`, err.Error()), http.StatusInternalServerError)
 		return
 	}

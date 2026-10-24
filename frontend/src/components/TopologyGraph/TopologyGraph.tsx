@@ -33,7 +33,7 @@ export const TopologyGraph: React.FC<TopologyGraphProps> = ({
 }) => {
   const { services, activeFaults, setSelectedServiceId, tickTelemetry } = useTelemetryStore();
   const [topologies, setTopologies] = useState<TopologyInfo[]>([]);
-  const [selectedTopo, setSelectedTopo] = useState<string>('topology.yaml');
+  const [selectedTopo, setSelectedTopo] = useState<string>('');
   const [switchingTopo, setSwitchingTopo] = useState<boolean>(false);
 
   const prediction = getMLPrediction(services, activeFaults);
@@ -282,7 +282,7 @@ export const TopologyGraph: React.FC<TopologyGraphProps> = ({
                 className="bg-[#0B0B0C] text-gray-200 border border-[#26262B] rounded px-2 py-0.5 text-[11px] focus:outline-none focus:border-[#840032]"
               >
                 {topologies.length === 0 && (
-                  <option value="topology.yaml">Loading topologies...</option>
+                  <option value="">No preset topologies</option>
                 )}
                 {topologies.map((topology) => (
                   <option key={topology.filename} value={topology.filename}>

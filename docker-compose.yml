@@ -256,12 +256,10 @@ services:
       - "50051:50051"
     environment:
       PORT: "50051"
-      TOPOLOGY_PATH: /app/configs/topology.yaml
       OMP_NUM_THREADS: ${OMP_NUM_THREADS:-2}
       AEGIS_TORCH_NUM_THREADS: ${AEGIS_TORCH_NUM_THREADS:-2}
       AEGIS_CHECKPOINT_PATH: /app/python-ml/models/checkpoints/tgnn_best.pt
     volumes:
-      - ./configs/topology.yaml:/app/configs/topology.yaml:ro
       - ./python-ml/models/checkpoints:/app/python-ml/models/checkpoints:ro
     mem_limit: 2g
     cpus: 2
@@ -280,15 +278,12 @@ services:
       - "8000:8000"
     environment:
       API_GATEWAY_PORT: "8000"
-      TOPOLOGY_PATH: /etc/aegis/topology.yaml
       PYTHON_GRPC_ADDR: "python-ml:50051"
       CHAOS_ENGINE_URL: "http://chaos-engine:8091"
       RECOVERY_ENGINE_URL: "http://recovery-engine:8092"
       DATABASE_URL: postgresql://aegis:${POSTGRES_PASSWORD}@postgres:5432/aegis_db?sslmode=disable
       AEGIS_BOOTSTRAP_ADMIN_EMAIL: ${AEGIS_BOOTSTRAP_ADMIN_EMAIL:-admin@enterprise.io}
       AEGIS_BOOTSTRAP_ADMIN_PASSWORD: ${AEGIS_BOOTSTRAP_ADMIN_PASSWORD:?AEGIS_BOOTSTRAP_ADMIN_PASSWORD environment variable must be set in .env}
-    volumes:
-      - ./configs/topology.yaml:/etc/aegis/topology.yaml:ro
     depends_on:
       - postgres
       - python-ml
