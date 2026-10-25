@@ -69,6 +69,7 @@ RUN sed -i \
         -e 's#/var/log/nginx/error.log#/tmp/nginx/error.log#' \
         -e 's#/var/log/nginx/access.log#/tmp/nginx/access.log#' \
         /etc/nginx/nginx.conf \
+    && rm -f /etc/nginx/sites-enabled/default \
     && sed -i 's/\r$//' /opt/aegis/start.sh \
     && chmod 0755 /opt/aegis/start.sh \
     && useradd --create-home --uid 1000 aegis \
