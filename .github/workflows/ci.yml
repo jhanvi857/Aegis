@@ -57,6 +57,8 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run Pytest Suite
+        env:
+          TEMPORARILY_DISABLE_PROTOBUF_VERSION_CHECK: 'true'
         run: |
           pytest -v tests/
 
