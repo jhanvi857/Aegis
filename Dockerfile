@@ -30,9 +30,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     CHAOS_ENGINE_URL=http://127.0.0.1:8091 \
     RECOVERY_ENGINE_URL=http://127.0.0.1:8092 \
     DEMO_MODE=true \
+    AEGIS_BOOTSTRAP_ADMIN_EMAIL=admin@aegis.local \
     AEGIS_AUTONOMOUS_RECOVERY=false \
     CHAOS_ENABLED=true \
-    AEGIS_CORS_ALLOWED_ORIGINS=
+    AEGIS_CORS_ALLOWED_ORIGINS= \
+    AEGIS_CHECKPOINT_PATH=/opt/aegis/python-ml/models/checkpoints/tgnn_best.pt \
+    AEGIS_RL_CHECKPOINT_PATH=/opt/aegis/python-ml/models/checkpoints/rl_policy_best.pt
 
 RUN apt-get update \
     && apt-get install --no-install-recommends -y nginx supervisor \
@@ -54,15 +57,26 @@ RUN python -m grpc_tools.protoc \
     --grpc_python_out=/opt/aegis/python-ml/shared/pb \
     /opt/aegis/proto/*.proto \
     && touch /opt/aegis/python-ml/shared/pb/__init__.py \
-    && mkdir -p /var/log/supervisor /var/lib/nginx
+    && mkdir -p /var/log/supervisor /var/lib/nginx \
+        /tmp/nginx/client_body /tmp/nginx/proxy /tmp/nginx/fastcgi \
+        /tmp/nginx/uwsgi /tmp/nginx/scgi
 
 COPY deploy/hf/nginx.conf /etc/nginx/conf.d/default.conf
 COPY deploy/hf/supervisord.conf /etc/supervisor/conf.d/aegis.conf
 COPY deploy/hf/start.sh /opt/aegis/start.sh
-RUN sed -i 's/\r$//' /opt/aegis/start.sh \
+RUN sed -i \
+        -e '/^user /d' \
+        -e 's#pid /run/nginx.pid;#pid /tmp/nginx.pid;#' \
+        -e 's#/var/log/nginx/error.log#/tmp/nginx/error.log#' \
+        -e 's#/var/log/nginx/access.log#/tmp/nginx/access.log#' \
+        /etc/nginx/nginx.conf \
+    && rm -f /etc/nginx/sites-enabled/default \
+    && sed -i 's/\r$//' /opt/aegis/start.sh \
     && chmod 0755 /opt/aegis/start.sh \
-    && useradd --create-home --uid 10001 aegis \
-    && chown -R aegis:aegis /opt/aegis /var/log/supervisor /var/lib/nginx
+    && useradd --create-home --uid 1000 aegis \
+    && chown -R aegis:aegis /opt/aegis /var/log/supervisor /var/lib/nginx /tmp/nginx
+
+USER 1000
 
 EXPOSE 7860
 ENTRYPOINT ["/opt/aegis/start.sh"]
