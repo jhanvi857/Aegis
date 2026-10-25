@@ -59,7 +59,8 @@ RUN python -m grpc_tools.protoc \
 COPY deploy/hf/nginx.conf /etc/nginx/conf.d/default.conf
 COPY deploy/hf/supervisord.conf /etc/supervisor/conf.d/aegis.conf
 COPY deploy/hf/start.sh /opt/aegis/start.sh
-RUN chmod 0755 /opt/aegis/start.sh \
+RUN sed -i 's/\r$//' /opt/aegis/start.sh \
+    && chmod 0755 /opt/aegis/start.sh \
     && useradd --create-home --uid 10001 aegis \
     && chown -R aegis:aegis /opt/aegis /var/log/supervisor /var/lib/nginx
 

@@ -88,12 +88,16 @@ Commands run in this workspace:
 - `Set-Location go-services; go build ./api-gateway` — passed.
 - `python -m compileall -q python-ml` — passed.
 - `git diff --check` — passed.
+- `docker build --progress=plain -t aegis:hf .` — passed.
+- Disposable container on port `7860` — passed.
+- Dashboard shell and proxied `/health` — passed.
+- Bootstrap admin login through `/api/auth/login` — passed.
+- Authenticated `/api/predict` — passed; engine reported `dense_tgnn`.
+- Demo latency injection through `/api/chaos` — passed for `node-b`.
+- Authenticated prediction after chaos injection — passed.
 
-The Docker image could not be built or run in this environment because Docker
-Desktop's Linux daemon was unavailable. Therefore login, dashboard loading,
-`/api/predict`, and demo chaos injection have **not** been verified inside the
-container. No Hugging Face Space live URL is claimed until a deployment is
-actually published and exercised.
+The container was verified locally only. No Hugging Face Space live URL is
+claimed until a deployment is actually published and exercised.
 
 ## Honest limitations
 

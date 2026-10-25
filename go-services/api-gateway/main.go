@@ -60,6 +60,7 @@ func main() {
 	// Initialize Storage & Bootstrap Admin
 	store := initStorage(cfg)
 	defer store.Close()
+	routes.SetAuthStore(store)
 	routes.InitBootstrapAdmin(context.Background())
 
 	// Build router with auth and RBAC
@@ -103,4 +104,3 @@ func main() {
 		telemetry.Logger.Info("system", "Server shut down cleanly")
 	}
 }
-
