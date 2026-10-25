@@ -65,12 +65,10 @@ COPY deploy/hf/nginx.conf /etc/nginx/conf.d/default.conf
 COPY deploy/hf/supervisord.conf /etc/supervisor/conf.d/aegis.conf
 COPY deploy/hf/start.sh /opt/aegis/start.sh
 RUN sed -i \
-        -e '/^user /d' \
         -e 's#pid /run/nginx.pid;#pid /tmp/nginx.pid;#' \
         -e 's#/var/log/nginx/error.log#/tmp/nginx/error.log#' \
         -e 's#/var/log/nginx/access.log#/tmp/nginx/access.log#' \
         /etc/nginx/nginx.conf \
-    && rm -f /etc/nginx/sites-enabled/default \
     && sed -i 's/\r$//' /opt/aegis/start.sh \
     && chmod 0755 /opt/aegis/start.sh \
     && useradd --create-home --uid 1000 aegis \
