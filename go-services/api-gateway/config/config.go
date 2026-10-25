@@ -75,7 +75,7 @@ func LoadConfig() (*Config, error) {
 	shutdownTimeout := time.Duration(shutdownSec) * time.Second
 
 	demoMode := parseBool(getEnv("DEMO_MODE", "false")) || parseBool(getEnv("AEGIS_DEMO_MODE", "false"))
-	autoRecovery := true
+	autoRecovery := false
 	if val := os.Getenv("AEGIS_AUTONOMOUS_RECOVERY"); val != "" {
 		autoRecovery = parseBool(val)
 	}

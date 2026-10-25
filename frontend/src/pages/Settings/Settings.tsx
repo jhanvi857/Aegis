@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useTelemetryStore } from '../../store/useTelemetryStore';
+import { API_BASE_URL } from '../../api/client';
 import { Settings as SettingsIcon, RotateCcw, CheckCircle2 } from 'lucide-react';
 
 export const Settings: React.FC = () => {
   const { resetDemoState } = useTelemetryStore();
   const [wsUrl, setWsUrl] = useState(import.meta.env.VITE_WS_URL || 'ws://localhost:8080/ws');
-  const [apiUrl, setApiUrl] = useState(import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api');
+  const [apiUrl, setApiUrl] = useState(API_BASE_URL);
   const [saved, setSaved] = useState(false);
 
   const handleSave = () => {

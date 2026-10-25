@@ -211,7 +211,7 @@ var (
 
 func InitState() {
 	demoMode := strings.EqualFold(os.Getenv("DEMO_MODE"), "true") || strings.EqualFold(os.Getenv("AEGIS_DEMO_MODE"), "true")
-	autoRecovery := true
+	autoRecovery := false
 	if env := os.Getenv("AEGIS_AUTONOMOUS_RECOVERY"); env != "" {
 		autoRecovery = strings.EqualFold(env, "true")
 	}

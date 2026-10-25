@@ -1,4 +1,4 @@
-import { apiFetch } from './client';
+import { apiFetch, API_BASE_URL } from './client';
 
 export type MonitoringMode = 'ignore' | 'observe' | 'recommend' | 'auto_remediate';
 export type ServiceStatus = 'unconnected' | 'healthy_data' | 'no_data' | 'stale' | 'healthy' | 'degraded' | 'critical';
@@ -274,8 +274,7 @@ export const registryApi = {
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
-    const res = await fetch(`${baseUrl}/registry/export?format=${format}`, { headers });
+    const res = await fetch(`${API_BASE_URL}/registry/export?format=${format}`, { headers });
     if (!res.ok) {
       throw new Error(`Export failed: HTTP ${res.status}`);
     }
