@@ -10,6 +10,9 @@ import sys
 import time
 import json
 import logging
+import argparse
+import urllib.parse
+import urllib.request
 from typing import Dict, Any, List, Optional
 import numpy as np
 import torch
@@ -88,21 +91,21 @@ class LiveKafkaEpisodeCollector:
         step_count = 0
 
         # Connect consumer if not already running
-        if not self.consumer.is_running:
-            self.consumer.start()
+        if not self.consumer.is_running and not self.consumer.start():
+            raise RuntimeError(
+                f"Kafka telemetry is unavailable at {self.bootstrap_servers}; "
+                "refusing to generate synthetic fallback data"
+            )
 
         batch_stream = self.consumer.stream_batches()
 
         while step_count < self.sequence_length:
             try:
                 batch = next(batch_stream)
-            except (StopIteration, Exception):
-                # Fallback to simulated batch if stream terminates
-                batch = self.consumer.generate_simulated_batch(
-                    fault_node=fault_node,
-                    fault_type=fault_type,
-                    precursor_severity=0.20 if is_failure else 0.0,
-                )
+            except StopIteration as exc:
+                raise RuntimeError("Kafka telemetry stream ended before the capture completed") from exc
+            except Exception as exc:
+                raise RuntimeError("Kafka telemetry stream failed during the capture") from exc
 
             rep = self.service.process_telemetry_batch(batch)
 
@@ -161,6 +164,69 @@ class LiveKafkaEpisodeCollector:
             "fault_node": fault_node or "none",
             "fault_type": fault_type or "nominal",
             "recorded_at": time.time(),
+        }
+
+    @staticmethod
+    def _prometheus_query(prometheus_url: str, query: str) -> List[Dict[str, Any]]:
+        encoded = urllib.parse.urlencode({"query": query})
+        with urllib.request.urlopen(
+            f"{prometheus_url.rstrip('/')}/api/v1/query?{encoded}",
+            timeout=10,
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        if payload.get("status") != "success":
+            raise RuntimeError(f"Prometheus query failed: {payload}")
+        return payload.get("data", {}).get("result", [])
+
+    def record_prometheus_episode(
+        self,
+        prometheus_url: str,
+        observation_window_sec: float = 60.0,
+        poll_interval_sec: float = 5.0,
+        fault_node: Optional[str] = None,
+        fault_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Capture only observed Prometheus samples before an externally injected fault."""
+        queries = {
+            "http_requests_in_flight": "http_requests_in_flight",
+            "db_pool_connections_wait_count": "db_pool_connections_wait_count",
+            "process_resident_memory_bytes": "process_resident_memory_bytes",
+            "go_goroutines": "go_goroutines",
+            "worker_pool_utilization_ratio": "worker_pool_utilization_ratio",
+            "consumer_lag": "consumer_lag",
+            "queue_depth": "queue_depth",
+        }
+        samples: List[Dict[str, Any]] = []
+        deadline = time.time() + observation_window_sec
+        while time.time() < deadline:
+            timestamp_ns = int(time.time() * 1e9)
+            for metric_name, query in queries.items():
+                for result in self._prometheus_query(prometheus_url, query):
+                    labels = result.get("metric", {})
+                    service_id = labels.get("service") or labels.get("job")
+                    value = result.get("value")
+                    if not service_id or not value:
+                        continue
+                    samples.append(
+                        {
+                            "timestamp_unix_nano": timestamp_ns,
+                            "service_id": service_id,
+                            "metric_name": metric_name,
+                            "value": float(value[1]),
+                        }
+                    )
+            time.sleep(poll_interval_sec)
+
+        if not samples:
+            raise RuntimeError("Prometheus returned no usable service metrics during the capture")
+
+        return {
+            "metrics": samples,
+            "fault_node": fault_node or "none",
+            "fault_type": fault_type or "nominal",
+            "observation_window_sec": observation_window_sec,
+            "pre_injection_only": True,
+            "captured_at": time.time(),
         }
 
     def collect_validation_dataset(
@@ -237,3 +303,47 @@ class LiveKafkaEpisodeCollector:
         )
         logger.info(f"Saved {len(all_failure_labels)} live validation episodes to {out_path}")
         return out_path
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Capture real telemetry without synthetic fallback")
+    parser.add_argument("--source", choices=("prometheus", "kafka"), default="prometheus")
+    parser.add_argument("--prometheus-url", default="http://localhost:9091")
+    parser.add_argument("--kafka-bootstrap", default="localhost:9092")
+    parser.add_argument("--topology", default="configs/topology.yaml")
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--duration-sec", type=float, default=60.0)
+    parser.add_argument("--interval-sec", type=float, default=5.0)
+    parser.add_argument("--fault-node")
+    parser.add_argument("--fault-type")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO)
+    collector = LiveKafkaEpisodeCollector(
+        bootstrap_servers=args.kafka_bootstrap,
+        topology_path=args.topology,
+    )
+    if args.source == "prometheus":
+        episode = collector.record_prometheus_episode(
+            prometheus_url=args.prometheus_url,
+            observation_window_sec=args.duration_sec,
+            poll_interval_sec=args.interval_sec,
+            fault_node=args.fault_node,
+            fault_type=args.fault_type,
+        )
+    else:
+        episode = collector.record_episode(
+            fault_node=args.fault_node,
+            fault_type=args.fault_type,
+            observation_window_sec=args.duration_sec,
+        )
+
+    output_path = os.path.abspath(args.output)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as output_file:
+        json.dump(episode, output_file, indent=2)
+    logger.info("Saved observed telemetry episode to %s", output_path)
+
+
+if __name__ == "__main__":
+    main()

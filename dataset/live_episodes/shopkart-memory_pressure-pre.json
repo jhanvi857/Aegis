@@ -1,0 +1,1341 @@
+{
+  "metrics": [
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "checkout",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "edge-gateway",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "search",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "reviews",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "catalog",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "cart",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "inventory",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "payments",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "external-bank-mock",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "checkout",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "inventory",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "payments",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "reviews",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "catalog",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "search",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65425408.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "payments",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65921024.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "reviews",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65806336.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "catalog",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 69619712.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "external-bank-mock",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 64786432.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "checkout",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 69566464.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "edge-gateway",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 66920448.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "cart",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 66981888.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "notifications",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65310720.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "inventory",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65744896.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "search",
+      "metric_name": "go_goroutines",
+      "value": 9.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "payments",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "reviews",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "catalog",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "external-bank-mock",
+      "metric_name": "go_goroutines",
+      "value": 9.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "checkout",
+      "metric_name": "go_goroutines",
+      "value": 14.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "edge-gateway",
+      "metric_name": "go_goroutines",
+      "value": 17.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "cart",
+      "metric_name": "go_goroutines",
+      "value": 9.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "notifications",
+      "metric_name": "go_goroutines",
+      "value": 14.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "inventory",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "checkout",
+      "metric_name": "worker_pool_utilization_ratio",
+      "value": 0.05
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "notifications",
+      "metric_name": "consumer_lag",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906253740845824,
+      "service_id": "notifications",
+      "metric_name": "queue_depth",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "checkout",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "edge-gateway",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "search",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "reviews",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "catalog",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "cart",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "inventory",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "payments",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "external-bank-mock",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "checkout",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "inventory",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "payments",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "reviews",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "catalog",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "search",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65425408.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "payments",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65921024.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "reviews",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65806336.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "catalog",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 69627904.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "external-bank-mock",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 64786432.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "checkout",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 69566464.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "edge-gateway",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 66928640.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "cart",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 66981888.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "notifications",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65298432.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "inventory",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65744896.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "search",
+      "metric_name": "go_goroutines",
+      "value": 9.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "payments",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "reviews",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "catalog",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "external-bank-mock",
+      "metric_name": "go_goroutines",
+      "value": 9.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "checkout",
+      "metric_name": "go_goroutines",
+      "value": 13.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "edge-gateway",
+      "metric_name": "go_goroutines",
+      "value": 17.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "cart",
+      "metric_name": "go_goroutines",
+      "value": 9.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "notifications",
+      "metric_name": "go_goroutines",
+      "value": 14.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "inventory",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "checkout",
+      "metric_name": "worker_pool_utilization_ratio",
+      "value": 0.05
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "notifications",
+      "metric_name": "consumer_lag",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906258900457216,
+      "service_id": "notifications",
+      "metric_name": "queue_depth",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "checkout",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "edge-gateway",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "search",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "reviews",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "catalog",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "cart",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "inventory",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "payments",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "external-bank-mock",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "checkout",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "inventory",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "payments",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "reviews",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "catalog",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "search",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65425408.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "payments",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65925120.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "reviews",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65806336.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "catalog",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 69627904.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "external-bank-mock",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 64786432.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "checkout",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 69570560.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "edge-gateway",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 66957312.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "cart",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 66981888.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "notifications",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65298432.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "inventory",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65744896.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "search",
+      "metric_name": "go_goroutines",
+      "value": 9.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "payments",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "reviews",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "catalog",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "external-bank-mock",
+      "metric_name": "go_goroutines",
+      "value": 9.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "checkout",
+      "metric_name": "go_goroutines",
+      "value": 13.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "edge-gateway",
+      "metric_name": "go_goroutines",
+      "value": 17.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "cart",
+      "metric_name": "go_goroutines",
+      "value": 9.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "notifications",
+      "metric_name": "go_goroutines",
+      "value": 14.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "inventory",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "checkout",
+      "metric_name": "worker_pool_utilization_ratio",
+      "value": 0.05
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "notifications",
+      "metric_name": "consumer_lag",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906264042556928,
+      "service_id": "notifications",
+      "metric_name": "queue_depth",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "checkout",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "edge-gateway",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "search",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "reviews",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "catalog",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "cart",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "inventory",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "payments",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "external-bank-mock",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "checkout",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "inventory",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "payments",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "reviews",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "catalog",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "search",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65429504.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "payments",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65925120.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "reviews",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65806336.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "catalog",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 69627904.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "external-bank-mock",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 64786432.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "checkout",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 69570560.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "edge-gateway",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 67756032.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "cart",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 66985984.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "notifications",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65306624.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "inventory",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65744896.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "search",
+      "metric_name": "go_goroutines",
+      "value": 9.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "payments",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "reviews",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "catalog",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "external-bank-mock",
+      "metric_name": "go_goroutines",
+      "value": 9.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "checkout",
+      "metric_name": "go_goroutines",
+      "value": 13.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "edge-gateway",
+      "metric_name": "go_goroutines",
+      "value": 17.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "cart",
+      "metric_name": "go_goroutines",
+      "value": 9.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "notifications",
+      "metric_name": "go_goroutines",
+      "value": 14.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "inventory",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "checkout",
+      "metric_name": "worker_pool_utilization_ratio",
+      "value": 0.05
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "notifications",
+      "metric_name": "consumer_lag",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906269180467968,
+      "service_id": "notifications",
+      "metric_name": "queue_depth",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "checkout",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "edge-gateway",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "search",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "reviews",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "catalog",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "cart",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "inventory",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "payments",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "external-bank-mock",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "checkout",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "inventory",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "payments",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "reviews",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "catalog",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "search",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65429504.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "payments",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65925120.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "reviews",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65806336.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "catalog",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 69627904.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "external-bank-mock",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 64786432.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "checkout",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 69570560.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "edge-gateway",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 67756032.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "cart",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 66985984.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "notifications",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65306624.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "inventory",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65744896.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "search",
+      "metric_name": "go_goroutines",
+      "value": 9.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "payments",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "reviews",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "catalog",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "external-bank-mock",
+      "metric_name": "go_goroutines",
+      "value": 9.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "checkout",
+      "metric_name": "go_goroutines",
+      "value": 13.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "edge-gateway",
+      "metric_name": "go_goroutines",
+      "value": 17.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "cart",
+      "metric_name": "go_goroutines",
+      "value": 9.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "notifications",
+      "metric_name": "go_goroutines",
+      "value": 14.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "inventory",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "checkout",
+      "metric_name": "worker_pool_utilization_ratio",
+      "value": 0.05
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "notifications",
+      "metric_name": "consumer_lag",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906274282384128,
+      "service_id": "notifications",
+      "metric_name": "queue_depth",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "checkout",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "edge-gateway",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "search",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "reviews",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "catalog",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "cart",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "inventory",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "payments",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "external-bank-mock",
+      "metric_name": "http_requests_in_flight",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "checkout",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "inventory",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "payments",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "reviews",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "catalog",
+      "metric_name": "db_pool_connections_wait_count",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "search",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65429504.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "payments",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65925120.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "reviews",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65806336.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "catalog",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 69627904.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "external-bank-mock",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 64786432.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "checkout",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 69558272.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "edge-gateway",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 68435968.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "cart",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 66985984.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "notifications",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65306624.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "inventory",
+      "metric_name": "process_resident_memory_bytes",
+      "value": 65744896.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "search",
+      "metric_name": "go_goroutines",
+      "value": 9.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "payments",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "reviews",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "catalog",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "external-bank-mock",
+      "metric_name": "go_goroutines",
+      "value": 9.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "checkout",
+      "metric_name": "go_goroutines",
+      "value": 14.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "edge-gateway",
+      "metric_name": "go_goroutines",
+      "value": 17.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "cart",
+      "metric_name": "go_goroutines",
+      "value": 9.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "notifications",
+      "metric_name": "go_goroutines",
+      "value": 14.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "inventory",
+      "metric_name": "go_goroutines",
+      "value": 12.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "checkout",
+      "metric_name": "worker_pool_utilization_ratio",
+      "value": 0.05
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "notifications",
+      "metric_name": "consumer_lag",
+      "value": 0.0
+    },
+    {
+      "timestamp_unix_nano": 1792906279375036672,
+      "service_id": "notifications",
+      "metric_name": "queue_depth",
+      "value": 0.0
+    }
+  ],
+  "fault_node": "none",
+  "fault_type": "nominal",
+  "observation_window_sec": 30.0,
+  "pre_injection_only": true,
+  "captured_at": 1792906284.4683392
+}
