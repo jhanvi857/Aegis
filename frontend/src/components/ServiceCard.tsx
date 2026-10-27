@@ -20,12 +20,16 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
     healthy: 'bg-[#3F8E4F]/15 text-[#52b767] border-[#3F8E4F]/50',
     degraded: 'bg-[#D4A017]/15 text-[#e5b533] border-[#D4A017]/50',
     critical: 'bg-[#AD2831]/20 text-[#f87171] border-[#AD2831]/60 animate-pulse-subtle',
+    remediating: 'bg-cyan-950/40 text-cyan-300 border-cyan-700 animate-pulse',
+    unknown: 'bg-gray-800/50 text-gray-400 border-gray-600/60',
   };
 
   const statusLabel = {
     healthy: 'HEALTHY',
     degraded: 'WARNING',
     critical: 'CRITICAL',
+    remediating: 'REMEDIATING',
+    unknown: service.dataStatus === 'stale' ? 'STALE' : 'UNKNOWN',
   };
 
   return (

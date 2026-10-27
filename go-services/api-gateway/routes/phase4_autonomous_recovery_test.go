@@ -90,7 +90,7 @@ func setupPhase4TestRouter(t *testing.T) (*storage.MemoryStore, http.Handler, st
 }
 
 func TestPhase4_AutonomousSelfHealing_FullLoop(t *testing.T) {
-	store, _, _, _, _ := setupPhase4TestRouter(t)
+	setupPhase4TestRouter(t)
 
 	// Ensure target service node-b exists and simulate degraded state from cache_down
 	State.mu.Lock()
@@ -125,15 +125,9 @@ func TestPhase4_AutonomousSelfHealing_FullLoop(t *testing.T) {
 	}
 	State.mu.Unlock()
 
-	// Execute autonomous recovery
+	// A recommendation without an owner-configured executor binding must fail closed.
 	exec, err := ExecuteAutonomousRecovery("node-b", "flush_cache", "act-cache-b-1")
-	if err != nil {
-		t.Fatalf("ExecuteAutonomousRecovery failed: %v", err)
-	}
-
-	if exec == nil || exec.TargetServiceID != "node-b" || exec.Approver != "Autonomous Decision Engine" {
-		t.Fatalf("Unexpected execution record: %+v", exec)
-	}
+	if err == nil { t.Fatalf("expected an unsupported, unbound action to be rejected; got %+v", exec) }
 
 	// Verify target service active fault remains active (not falsely cleared by recovery)
 	State.mu.RLock()
@@ -148,24 +142,7 @@ func TestPhase4_AutonomousSelfHealing_FullLoop(t *testing.T) {
 		t.Fatalf("Expected node-b status to remain degraded while fault is ongoing")
 	}
 
-	// Verify persistent audit log
-	logs, err := store.ListAuditLogs(context.Background(), 10)
-	if err != nil || len(logs) == 0 {
-		t.Fatalf("Failed to fetch audit logs or empty: %v", err)
-	}
-	var foundAutoLog bool
-	for _, l := range logs {
-		if l.Action == "recovery.autonomous_execute" && l.TargetServiceID == "node-b" {
-			foundAutoLog = true
-			if l.ApprovalStatus != "AUTONOMOUS" {
-				t.Fatalf("Expected ApprovalStatus AUTONOMOUS, got %s", l.ApprovalStatus)
-			}
-		}
-	}
-	if !foundAutoLog {
-		t.Fatalf("Audit log did not record recovery.autonomous_execute")
-	}
-	WaitForRecoveryVerifications()
+	if exec != nil { t.Fatalf("rejected action unexpectedly returned an execution record: %+v", exec) }
 }
 
 func TestPhase4_AutonomousSelfHealing_ApprovalGate_HoldHighRisk(t *testing.T) {
@@ -194,23 +171,13 @@ func TestPhase4_AutonomousSelfHealing_ApprovalGate_HoldHighRisk(t *testing.T) {
 		t.Fatalf("Expected ExecuteAutonomousRecovery to fail on high-risk action, but it succeeded: %+v", exec)
 	}
 
-	// Verify gateway was NOT modified
+	// Verify gateway was NOT modified and the missing binding is fail-closed.
 	State.mu.RLock()
 	gw := State.Services["gateway"]
-	var foundGateLog bool
-	for _, l := range State.Logs {
-		if l.Level == "WARN" && len(l.Message) > 0 && bytes.Contains([]byte(l.Message), []byte("APPROVAL GATE")) {
-			foundGateLog = true
-			break
-		}
-	}
 	State.mu.RUnlock()
 
 	if gw.Status != "critical" {
 		t.Fatalf("Expected gateway to remain critical, got %s", gw.Status)
-	}
-	if !foundGateLog {
-		t.Fatalf("Expected approval gate warning log entry in State.Logs")
 	}
 }
 

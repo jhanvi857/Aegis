@@ -160,15 +160,20 @@ func (x *Evidence) GetUnit() string {
 }
 
 type RootCause struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	NodeId              string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
-	Probability         float64                `protobuf:"fixed64,2,opt,name=probability,proto3" json:"probability,omitempty"`
-	Explanation         string                 `protobuf:"bytes,3,opt,name=explanation,proto3" json:"explanation,omitempty"`
-	ContributingMetrics []string               `protobuf:"bytes,4,rep,name=contributing_metrics,json=contributingMetrics,proto3" json:"contributing_metrics,omitempty"`
-	FaultFamily         string                 `protobuf:"bytes,5,opt,name=fault_family,json=faultFamily,proto3" json:"fault_family,omitempty"`
-	Evidence            []*Evidence            `protobuf:"bytes,6,rep,name=evidence,proto3" json:"evidence,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	NodeId               string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	Probability          float64                `protobuf:"fixed64,2,opt,name=probability,proto3" json:"probability,omitempty"`
+	Explanation          string                 `protobuf:"bytes,3,opt,name=explanation,proto3" json:"explanation,omitempty"`
+	ContributingMetrics  []string               `protobuf:"bytes,4,rep,name=contributing_metrics,json=contributingMetrics,proto3" json:"contributing_metrics,omitempty"`
+	FaultFamily          string                 `protobuf:"bytes,5,opt,name=fault_family,json=faultFamily,proto3" json:"fault_family,omitempty"`
+	Evidence             []*Evidence            `protobuf:"bytes,6,rep,name=evidence,proto3" json:"evidence,omitempty"`
+	Uncertainty          string                 `protobuf:"bytes,7,opt,name=uncertainty,proto3" json:"uncertainty,omitempty"`
+	RankingScore         float64                `protobuf:"fixed64,8,opt,name=ranking_score,json=rankingScore,proto3" json:"ranking_score,omitempty"`
+	TraceRefs            []string               `protobuf:"bytes,9,rep,name=trace_refs,json=traceRefs,proto3" json:"trace_refs,omitempty"`
+	LogRefs              []string               `protobuf:"bytes,10,rep,name=log_refs,json=logRefs,proto3" json:"log_refs,omitempty"`
+	AnomalyOnsetUnixNano int64                  `protobuf:"varint,11,opt,name=anomaly_onset_unix_nano,json=anomalyOnsetUnixNano,proto3" json:"anomaly_onset_unix_nano,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *RootCause) Reset() {
@@ -241,6 +246,41 @@ func (x *RootCause) GetEvidence() []*Evidence {
 		return x.Evidence
 	}
 	return nil
+}
+
+func (x *RootCause) GetUncertainty() string {
+	if x != nil {
+		return x.Uncertainty
+	}
+	return ""
+}
+
+func (x *RootCause) GetRankingScore() float64 {
+	if x != nil {
+		return x.RankingScore
+	}
+	return 0
+}
+
+func (x *RootCause) GetTraceRefs() []string {
+	if x != nil {
+		return x.TraceRefs
+	}
+	return nil
+}
+
+func (x *RootCause) GetLogRefs() []string {
+	if x != nil {
+		return x.LogRefs
+	}
+	return nil
+}
+
+func (x *RootCause) GetAnomalyOnsetUnixNano() int64 {
+	if x != nil {
+		return x.AnomalyOnsetUnixNano
+	}
+	return 0
 }
 
 type PropagationPath struct {
@@ -655,14 +695,21 @@ const file_predict_proto_rawDesc = "" +
 	"\x06metric\x18\x01 \x01(\tR\x06metric\x12%\n" +
 	"\x0eobserved_value\x18\x02 \x01(\x01R\robservedValue\x12'\n" +
 	"\x0fthreshold_value\x18\x03 \x01(\x01R\x0ethresholdValue\x12\x12\n" +
-	"\x04unit\x18\x04 \x01(\tR\x04unit\"\xf3\x01\n" +
+	"\x04unit\x18\x04 \x01(\tR\x04unit\"\xab\x03\n" +
 	"\tRootCause\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12 \n" +
 	"\vprobability\x18\x02 \x01(\x01R\vprobability\x12 \n" +
 	"\vexplanation\x18\x03 \x01(\tR\vexplanation\x121\n" +
 	"\x14contributing_metrics\x18\x04 \x03(\tR\x13contributingMetrics\x12!\n" +
 	"\ffault_family\x18\x05 \x01(\tR\vfaultFamily\x123\n" +
-	"\bevidence\x18\x06 \x03(\v2\x17.aegis.predict.EvidenceR\bevidence\"[\n" +
+	"\bevidence\x18\x06 \x03(\v2\x17.aegis.predict.EvidenceR\bevidence\x12 \n" +
+	"\vuncertainty\x18\a \x01(\tR\vuncertainty\x12#\n" +
+	"\rranking_score\x18\b \x01(\x01R\frankingScore\x12\x1d\n" +
+	"\n" +
+	"trace_refs\x18\t \x03(\tR\ttraceRefs\x12\x19\n" +
+	"\blog_refs\x18\n" +
+	" \x03(\tR\alogRefs\x125\n" +
+	"\x17anomaly_onset_unix_nano\x18\v \x01(\x03R\x14anomalyOnsetUnixNano\"[\n" +
 	"\x0fPropagationPath\x12\x1d\n" +
 	"\n" +
 	"path_nodes\x18\x01 \x03(\tR\tpathNodes\x12)\n" +
