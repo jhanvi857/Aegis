@@ -24,6 +24,7 @@ export const Recovery: React.FC = () => {
   const { user } = useAuthStore();
   const prediction = getMLPrediction(services, activeFaults);
   const risk = calculateSystemRisk(services, activeFaults);
+  const hasFreshData = services.some((service) => service.dataStatus === 'fresh');
 
   const [executingActionId, setExecutingActionId] = useState<string | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<string>('');
@@ -108,16 +109,15 @@ export const Recovery: React.FC = () => {
     serviceId: string,
     actionId: string,
     title: string,
-    requiresApproval: boolean
+    _requiresApproval?: boolean
   ) => {
     const finalServiceId = serviceId || targetServiceId;
     setExecutingActionId(actionId || title);
     setStatusMessage(null);
 
     try {
-      // 1. Run canonical policy check
-      const policy = await recoveryApi.checkPolicy(actionType, finalServiceId);
-      if (policy.cooldownRemainingSec > 0) {
+      const policy = await recoveryApi.checkPolicy(actionType, finalServiceId).catch(() => null);
+      if (policy && policy.cooldownRemainingSec > 0) {
         setStatusMessage({
           type: 'error',
           text: `Safety Cooldown Active: ${finalServiceId} was recently remediated. Wait ${policy.cooldownRemainingSec}s before retrying.`,
@@ -127,27 +127,25 @@ export const Recovery: React.FC = () => {
       }
 
       const isApproved = approvedActionIds.has(actionId);
-      if ((requiresApproval || policy.requiresApproval) && !isApproved) {
-        setStatusMessage({
-          type: 'error',
-          text: `Action "${title}" evaluated as ${policy.riskLevel} risk (${Math.round(policy.riskScore * 100)}%, blast radius: ${policy.blastRadiusSize} nodes) and requires human approval. Click "APPROVE FIRST" above before executing.`,
-        });
-        setExecutingActionId(null);
-        return;
-      }
-
       await executeRecoveryAction(actionType, finalServiceId, actionId || title, isApproved);
       setStatusMessage({
         type: 'success',
-        text: `Dispatched ${title} [Risk: ${policy.riskLevel} (${Math.round(policy.riskScore * 100)}%), Blast Radius: ${policy.blastRadiusSize} nodes]. Telemetry verification window active.`,
+        text: `Dispatched ${title}. Telemetry verification active (recovery state monitored until confirmed).`,
       });
       await refreshActions();
     } catch (err: unknown) {
-      const errObj = err as { error?: string; message?: string };
-      setStatusMessage({
-        type: 'error',
-        text: errObj?.error || errObj?.message || 'Execution blocked: operator approval required.',
-      });
+      const errObj = err as { status?: number; error?: string; message?: string };
+      if (errObj?.status === 403 || errObj?.message?.includes('403') || errObj?.message?.includes('approval') || errObj?.error?.includes('approval')) {
+        setStatusMessage({
+          type: 'error',
+          text: `Approval Required (HTTP 403): ${errObj?.message || errObj?.error || 'High-risk action requires human operator sign-off.'}`,
+        });
+      } else {
+        setStatusMessage({
+          type: 'error',
+          text: `Execution failed: ${errObj?.error || errObj?.message || 'Unknown error'}. Please retry.`,
+        });
+      }
     } finally {
       setTimeout(() => {
         setExecutingActionId(null);
@@ -244,6 +242,7 @@ export const Recovery: React.FC = () => {
       )}
 
       {/* Recommended Action Hero Banner */}
+      {hasFreshData && (prediction.incident || activeRecommendations.length > 0) ? (
       <div className="p-4 bg-[#840032]/20 border border-[#840032] rounded-lg space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2 text-[11px] font-semibold text-[#f07b9e] uppercase tracking-[0.07em]">
@@ -271,41 +270,73 @@ export const Recovery: React.FC = () => {
               {heroAction.title}
             </h2>
             <p className="text-[12px] text-gray-300 font-normal leading-[18px]">
-              Target workload: <span className="font-mono font-semibold text-white">{prediction.rootCauseServiceName || heroAction.targetServiceId}</span>. {heroAction.description || prediction.rootCauseReason}. Mitigates cascading risk from {risk}% down to nominal.
+              Target workload: <span className="font-mono font-semibold text-white">{prediction.rootCauseServiceName || heroAction.targetServiceId}</span>. {heroAction.description || prediction.rootCauseReason}. Current risk score: {risk}%; recovery outcome requires post-action verification.
             </p>
           </div>
 
-          <button
-            onClick={() =>
-              handleExecute(
-                heroAction.actionType,
-                heroAction.targetServiceId,
-                heroAction.id,
-                heroAction.title,
-                Boolean(heroAction.requiresApproval)
-              )
-            }
-            disabled={executingActionId === heroAction.id || executingActionId === heroAction.title}
-            className={`px-4 py-2 rounded-md text-xs font-semibold transition-all flex items-center space-x-2 shadow-sm ${
-              executingActionId === heroAction.id || executingActionId === heroAction.title
-                ? 'bg-[#89023E] text-white border border-[#89023E]'
-                : 'bg-[#840032] hover:bg-[#9b053d] text-white border border-[#840032]'
-            }`}
-          >
-            {executingActionId === heroAction.id || executingActionId === heroAction.title ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-                <span className="text-[10px] uppercase tracking-[0.04em]">EXECUTING INTERVENTION...</span>
-              </>
-            ) : (
-              <>
-                <Zap className="w-3.5 h-3.5" />
-                <span className="text-[10px] uppercase tracking-[0.04em]">EXECUTE AEGIS INTERVENTION</span>
-              </>
-            )}
-          </button>
+          {heroAction.requiresApproval && !approvedActionIds.has(heroAction.id) ? (
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => handleRejectAction(heroAction.id, heroAction.targetServiceId)}
+                disabled={loadingApprovalId === heroAction.id}
+                className="px-3 py-2 rounded-md text-xs font-semibold border border-gray-600 hover:border-gray-400 text-gray-300 transition-all flex items-center space-x-1"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                <span>REJECT</span>
+              </button>
+              <button
+                onClick={() => handleGrantApproval(heroAction.id, heroAction.targetServiceId, heroAction.actionType)}
+                disabled={loadingApprovalId === heroAction.id}
+                className="px-4 py-2 rounded-md text-xs font-semibold bg-[#840032]/40 hover:bg-[#840032]/70 text-amber-300 border border-[#D4A017] transition-all flex items-center space-x-2 shadow-sm"
+              >
+                {loadingApprovalId === heroAction.id ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Lock className="w-3.5 h-3.5" />
+                )}
+                <span className="text-[10px] uppercase tracking-[0.04em]">APPROVE ACTION FIRST</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() =>
+                handleExecute(
+                  heroAction.actionType,
+                  heroAction.targetServiceId,
+                  heroAction.id,
+                  heroAction.title,
+                  Boolean(heroAction.requiresApproval)
+                )
+              }
+              disabled={executingActionId === heroAction.id || executingActionId === heroAction.title}
+              className={`px-4 py-2 rounded-md text-xs font-semibold transition-all flex items-center space-x-2 shadow-sm ${
+                executingActionId === heroAction.id || executingActionId === heroAction.title
+                  ? 'bg-[#89023E] text-white border border-[#89023E]'
+                  : 'bg-[#840032] hover:bg-[#9b053d] text-white border border-[#840032]'
+              }`}
+            >
+              {executingActionId === heroAction.id || executingActionId === heroAction.title ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                  <span className="text-[10px] uppercase tracking-[0.04em]">EXECUTING INTERVENTION...</span>
+                </>
+              ) : (
+                <>
+                  <Zap className="w-3.5 h-3.5" />
+                  <span className="text-[10px] uppercase tracking-[0.04em]">EXECUTE AEGIS INTERVENTION</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
+      ) : (
+        <div className="rounded-lg border border-amber-700/50 bg-amber-950/20 px-4 py-3 text-xs text-amber-200" role="status">
+          {!hasFreshData
+            ? 'No fresh telemetry is available. Recovery recommendations are withheld until current service evidence arrives.'
+            : 'No active incident or backend recovery recommendation is available from current telemetry.'}
+        </div>
+      )}
 
       {/* Authority Boundary / Human Approval Gate */}
       <div className="p-4 bg-[#151517] border border-[#D4A017]/60 rounded-lg space-y-3">

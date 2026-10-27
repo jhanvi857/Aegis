@@ -36,39 +36,42 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
 
   const [demoBannerMessage, setDemoBannerMessage] = useState<string | null>(null);
 
-  const risk = calculateSystemRisk(services, activeFaults);
   const prediction = getMLPrediction(services, activeFaults);
+  const isIncident = prediction.incident === true || prediction.state === 'incident';
+  const risk = isIncident ? calculateSystemRisk(services, activeFaults) : 0;
 
-  const isCritical = risk >= 80;
-  const isDegraded = risk >= 40 && risk < 80;
+  const isCritical = isIncident && risk >= 80;
+  const isDegraded = isIncident && risk >= 40 && risk < 80;
 
-  const runningServicesCount = services.filter((s) => s.status !== 'critical').length;
+  const runningServicesCount = services.filter((s) => s.dataStatus === 'fresh' && (s.status === 'healthy' || s.status === 'degraded')).length;
   const activeAlertsCount = alerts.filter((a) => !a.resolved).length;
-  const isAutonomous = autonomousStatus?.enabled ?? true;
+  const isAutonomous = autonomousStatus?.enabled ?? false;
+  const hasFreshData = services.some((s) => s.dataStatus === 'fresh');
+  const freshServiceCount = services.filter((s) => s.dataStatus === 'fresh').length;
 
   // Aggregate global metric trends from services history
   const historyLen = services[0]?.history?.length || 0;
   const globalHistory = Array.from({ length: historyLen }).map((_, idx) => {
     const timestamp = services[0]?.history[idx]?.timestamp || '';
-    const avgCpu = Math.round(
-      services.reduce((acc, s) => acc + (s.history?.[idx]?.cpu || s.cpu || 0), 0) / (services.length || 1)
-    );
-    const avgLat = Math.round(
-      services.reduce((acc, s) => acc + (s.history?.[idx]?.latency || s.latency || 0), 0) / (services.length || 1)
-    );
-    const avgMem = Math.round(
-      services.reduce((acc, s) => acc + (s.history?.[idx]?.memory || s.memory || 0), 0) / (services.length || 1)
-    );
-    const totalRps = Math.round(
-      services.reduce((acc, s) => acc + (s.history?.[idx]?.rps || s.rps || 0), 0)
-    );
+    const averageObserved = (signal: string, key: 'cpu' | 'latency' | 'memory') => {
+      const values = services.flatMap((s) => {
+        const point = s.history?.[idx];
+        const fresh = s.dataStatus === 'fresh' && (s.observedSignals?.includes(signal) ?? false);
+        return fresh && point && typeof point[key] === 'number' ? [point[key]] : [];
+      });
+      return values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : undefined;
+    };
+    const observedRps = services.flatMap((s) => {
+      const point = s.history?.[idx];
+      return s.dataStatus === 'fresh' && s.observedSignals?.includes('rps') && point ? [point.rps] : [];
+    });
 
     return {
       timestamp,
-      cpu: avgCpu,
-      latency: avgLat,
-      memory: avgMem,
-      rps: totalRps,
+      cpu: averageObserved('cpu', 'cpu'),
+      latency: averageObserved('latency', 'latency'),
+      memory: averageObserved('memory', 'memory'),
+      rps: observedRps.length ? Math.round(observedRps.reduce((a, b) => a + b, 0)) : undefined,
     };
   });
 
@@ -80,25 +83,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
       return;
     }
 
+    // Adapt target service dynamically to whatever topology is currently loaded
+    const ids = services.map((s) => s.id);
+    const targetA = ids[0] || 'service-0';
+    const targetB = ids.length > 1 ? ids[1] : targetA;
+    const targetC = ids.length > 2 ? ids[2] : targetB;
+    const targetD = ids.length > 3 ? ids[3] : targetC;
+
     if (scenario === 'cpu') {
-      await injectChaosFault('cpu_stress', 'node-c', 35);
+      await injectChaosFault('cpu_stress', targetC, 35);
       setDemoBannerMessage(
-        'Scenario 1 Injected: CPU saturation on node-c! Observe TGNN prediction & autonomous scale-up.'
+        `Scenario 1 Injected: CPU saturation on ${targetC}! Observe the service-level anomaly signal and recommended recovery action.`
       );
     } else if (scenario === 'latency') {
-      await injectChaosFault('latency', 'node-b', 35);
+      await injectChaosFault('latency', targetB, 35);
       setDemoBannerMessage(
-        'Scenario 2 Injected: 950ms latency deadlock on node-b! Observe propagation & approval gate.'
+        `Scenario 2 Injected: 950ms latency deadlock on ${targetB}! Observe propagation & approval gate.`
       );
     } else if (scenario === 'crash') {
-      await injectChaosFault('kill_service', 'node-a', 30);
+      await injectChaosFault('kill_service', targetA, 30);
       setDemoBannerMessage(
-        'Scenario 3 Injected: Container SIGKILL crash on node-a! Observe cascade & pod restart.'
+        `Scenario 3 Injected: Container SIGKILL crash on ${targetA}! Observe cascade & pod restart.`
       );
     } else if (scenario === 'leak') {
-      await injectChaosFault('memory_leak', 'node-d', 40);
+      await injectChaosFault('memory_leak', targetD, 40);
       setDemoBannerMessage(
-        'Scenario 4 Injected: Memory leak on node-d! Observe bottom-up SCC DAG recovery ordering.'
+        `Scenario 4 Injected: Memory leak on ${targetD}! Observe bottom-up SCC DAG recovery ordering.`
       );
     }
     setTimeout(() => setDemoBannerMessage(null), 6000);
@@ -113,13 +123,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
             <h1 className="text-[24px] font-semibold text-white tracking-[-0.025em] leading-[32px]">
               Aegis Mission Control
             </h1>
-            <span className="flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-[#840032]/30 text-[#f07b9e] border border-[#840032]">
+            {isAutonomous && <span className="flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-[#840032]/30 text-[#f07b9e] border border-[#840032]">
               <Sparkles className="w-3 h-3" />
-              <span>SELF-HEALING ACTIVE</span>
-            </span>
+              <span>AUTONOMOUS POLICY ENABLED</span>
+            </span>}
           </div>
           <p className="text-[12px] text-gray-400 font-normal leading-[18px]">
-            Real-time topology observation, TGNN graph anomaly prediction, and closed-loop DAG remediation
+            Live service signals, directed dependency analysis, and policy-gated recovery recommendations
           </p>
         </div>
 
@@ -132,7 +142,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
           <button
             onClick={() => triggerDemoScenario('cpu')}
             className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#151517] hover:bg-[#1f1f24] text-gray-200 hover:text-white rounded-md text-xs font-semibold border border-[#26262B] hover:border-[#AD2831] transition-all shadow-sm"
-            title="Inject CPU load on node-c and watch autonomous recovery"
+            title="Inject CPU load on a discovered service and watch autonomous recovery"
           >
             <Zap className="w-3.5 h-3.5 text-amber-400" />
             <span>CPU Cascade</span>
@@ -141,7 +151,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
           <button
             onClick={() => triggerDemoScenario('latency')}
             className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#151517] hover:bg-[#1f1f24] text-gray-200 hover:text-white rounded-md text-xs font-semibold border border-[#26262B] hover:border-[#D4A017] transition-all shadow-sm"
-            title="Inject 950ms latency on node-b and observe approval gate"
+            title="Inject latency on a discovered service and observe approval gate"
           >
             <Activity className="w-3.5 h-3.5 text-blue-400" />
             <span>Latency Gate</span>
@@ -150,7 +160,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
           <button
             onClick={() => triggerDemoScenario('leak')}
             className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#151517] hover:bg-[#1f1f24] text-gray-200 hover:text-white rounded-md text-xs font-semibold border border-[#26262B] hover:border-[#840032] transition-all shadow-sm"
-            title="Inject memory leak on node-d and observe DAG dependency ordering"
+            title="Inject memory pressure on a discovered service and observe DAG dependency ordering"
           >
             <BrainCircuit className="w-3.5 h-3.5 text-purple-400" />
             <span>Memory SCC</span>
@@ -179,41 +189,50 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
       )}
 
       {/* Mission Control Status Metric Cards */}
+      {services.length === 0 || !hasFreshData || freshServiceCount < services.length ? (
+        <div className="rounded-lg border border-amber-700/50 bg-amber-950/20 px-4 py-3 text-xs text-amber-200" role="status">
+          {services.length === 0
+            ? 'No services are registered yet. Connect an OpenTelemetry source to discover services.'
+            : !hasFreshData
+              ? `Telemetry is unavailable or stale for all ${services.length} registered services. Health and incident state are unknown.`
+              : `Telemetry is fresh for ${freshServiceCount} of ${services.length} registered services. Stale services are excluded from current health summaries.`}
+        </div>
+      ) : null}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatusCard
           title="SYSTEM HEALTH"
-          value={isCritical ? 'CRITICAL' : isDegraded ? 'WARNING' : 'HEALTHY'}
+          value={!services.length || !hasFreshData ? 'UNKNOWN' : isCritical ? 'CRITICAL' : isDegraded ? 'WARNING' : 'HEALTHY'}
           icon={Activity}
-          statusColor={isCritical ? 'critical' : isDegraded ? 'warning' : 'healthy'}
-          badgeText={isCritical ? 'CRITICAL' : isDegraded ? 'WARNING' : 'HEALTHY'}
-          trend={`${services.length} Monitored Services`}
+          statusColor={!hasFreshData ? 'warning' : isCritical ? 'critical' : isDegraded ? 'warning' : 'healthy'}
+          badgeText={!services.length || !hasFreshData ? 'NO FRESH TELEMETRY' : isCritical ? 'CRITICAL' : isDegraded ? 'WARNING' : 'HEALTHY'}
+          trend={`${services.length} discovered services`}
         />
 
         <StatusCard
           title="FAILURE RISK"
-          value={`${risk}%`}
+          value={!hasFreshData ? 'UNKNOWN' : isIncident ? `${risk}%` : 'NOMINAL'}
           icon={ShieldAlert}
           statusColor={risk > 70 ? 'critical' : risk > 30 ? 'warning' : 'healthy'}
-          badgeText={risk > 70 ? 'CRITICAL RISK' : risk > 30 ? 'ATTN' : 'STABLE'}
-          trend={activeFaults.length > 0 ? `${activeFaults.length} Active Faults` : `${activeAlertsCount} Alerts`}
+          badgeText={!hasFreshData ? 'NO FRESH DATA' : isIncident ? (risk > 70 ? 'HIGH SCORE' : 'ANOMALY') : 'NO INCIDENT'}
+          trend={isIncident ? (prediction.faultFamily ? `Fault: ${prediction.faultFamily}` : `${activeAlertsCount} Alerts`) : hasFreshData ? 'No current anomaly evidence' : 'Awaiting telemetry'}
         />
 
         <StatusCard
           title="PREDICTION HORIZON"
-          value={`${prediction.estimatedFailureSec}s`}
+          value={isIncident && prediction.estimatedFailureSec > 0 ? `${prediction.estimatedFailureSec}s` : 'n/a'}
           icon={Clock}
           statusColor="intervention"
-          badgeText="TGNN"
-          trend={`Confidence: ${prediction.confidence}%`}
+          badgeText="Baseline"
+          trend={isIncident && prediction.confidence > 0 ? `Confidence: ${prediction.confidence}%` : 'Model: Nominal'}
         />
 
         <StatusCard
           title="RUNNING SERVICES"
-          value={`${runningServicesCount}/${services.length}`}
+          value={!services.length || !hasFreshData ? '—' : `${runningServicesCount}/${services.length}`}
           icon={Server}
           statusColor="healthy"
-          badgeText="MESH"
-          trend="All Tiers Active"
+          badgeText={hasFreshData ? 'OBSERVED' : 'UNKNOWN'}
+          trend={hasFreshData ? 'Based on reported service state' : 'Waiting for telemetry'}
         />
 
         <StatusCard
@@ -227,7 +246,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
       </div>
 
       {/* Active Anomaly Diagnostic Callout Banner */}
-      {risk > 30 && (
+      {isIncident && (
         <div className="p-4 bg-[#840032]/20 border border-[#840032] rounded-lg flex flex-wrap items-center justify-between gap-4 shadow-sm animate-pulse">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-[#840032] text-white border border-[#a80f49] rounded-md">
@@ -236,14 +255,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
             <div>
               <div className="flex items-center space-x-2">
                 <span className="text-[11px] font-semibold text-[#f07b9e] uppercase tracking-[0.07em] leading-[16px]">
-                  LIVE INCIDENT DETECTED BY TGNN
+                  LIVE INCIDENT FROM OBSERVED SIGNALS
                 </span>
                 <span className="text-[10px] font-mono font-semibold tracking-[0.04em] uppercase bg-[#840032] text-white px-2 py-0.5 rounded">
-                  {prediction.failureProbability}% PROBABILITY
+                  {prediction.failureProbability}% SCORE
                 </span>
               </div>
               <p className="text-[12px] font-normal leading-[18px] text-gray-300 mt-0.5">
-                Root Cause isolated to:{' '}
+                Leading candidate:{' '}
                 <span className="font-mono font-semibold text-white">
                   {prediction.rootCauseServiceName || prediction.rootCauseServiceId}
                 </span>{' '}
