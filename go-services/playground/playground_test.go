@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -99,6 +100,21 @@ func NewTestNode(id string, deps []string) *TestNode {
 }
 
 func TestPlaygroundTopologyMesh(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("playground integration test requires loopback sockets: %v", err)
+	}
+	probe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	response, requestErr := http.Get(probe.URL)
+	if response != nil {
+		_ = response.Body.Close()
+	}
+	probe.Close()
+	_ = listener.Close()
+	if requestErr != nil {
+		t.Skipf("playground integration test requires loopback socket connections: %v", requestErr)
+	}
+
 	// Build simulated mesh: Gateway -> Node-A -> (Node-B, Node-C -> Node-D)
 	nodeD := NewTestNode("node-d", []string{})
 	defer nodeD.Server.Close()

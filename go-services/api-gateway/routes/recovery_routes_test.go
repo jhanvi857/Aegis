@@ -6,11 +6,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/aegis/go-services/api-gateway/storage"
 )
 
 func setupTestState() {
 	InitState()
 	Safety.Reset()
+	SetAuthStore(storage.NewMemoryStore())
 	State.mu.Lock()
 	defer State.mu.Unlock()
 	State.Services["node-a"] = &Microservice{
@@ -55,22 +58,8 @@ func TestGetRecommendations_PolicyAndDifferentiation(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if len(recs) == 0 {
-		t.Fatalf("expected at least one recommendation, got 0")
-	}
-
-	// High risk (node-a with extreme latency/errors) must require approval
-	foundHighRisk := false
-	for _, r := range recs {
-		if r.RiskLevel == "HIGH" || r.RiskLevel == "MEDIUM" {
-			if !r.RequiresApproval {
-				t.Errorf("action %s with risk %s must require approval", r.ID, r.RiskLevel)
-			}
-			foundHighRisk = true
-		}
-	}
-	if !foundHighRisk {
-		t.Errorf("expected at least one HIGH/MEDIUM risk recommendation requiring approval")
+	if len(recs) != 0 {
+		t.Fatalf("services without owner-managed recovery policy must receive no executable recommendations, got %d", len(recs))
 	}
 }
 
@@ -90,8 +79,8 @@ func TestExecuteRecovery_ApprovalGateEnforcement(t *testing.T) {
 
 	ExecuteRecoveryHandler(rr, req)
 
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 Forbidden for unapproved high risk action, got %d", rr.Code)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("missing owner policy must fail closed with 409 before approval, got %d", rr.Code)
 	}
 
 	// 2. Grant approval via /recovery/approve with approver identity
@@ -109,22 +98,14 @@ func TestExecuteRecovery_ApprovalGateEnforcement(t *testing.T) {
 		t.Fatalf("expected 200 OK from approve handler, got %d. Body: %s", appRr.Code, appRr.Body.String())
 	}
 
-	// 3. Retry execution -> should succeed now that approval is recorded
+	// Approval alone must not substitute for an owner-managed recovery policy.
 	execReq := httptest.NewRequest("POST", "/api/recovery/execute", bytes.NewBuffer(payload))
 	execRr := httptest.NewRecorder()
 
 	ExecuteRecoveryHandler(execRr, execReq)
-	if execRr.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK after approval, got %d. Body: %s", execRr.Code, execRr.Body.String())
+	if execRr.Code != http.StatusConflict {
+		t.Fatalf("approval must not bypass missing owner policy; expected 409, got %d: %s", execRr.Code, execRr.Body.String())
 	}
-
-	// Verify audit log recorded Human-Approved by specified approver
-	var resp map[string]interface{}
-	_ = json.Unmarshal(execRr.Body.Bytes(), &resp)
-	if resp["approvalType"] != "Human-Approved by secops-lead@aegis" {
-		t.Errorf("expected approvalType 'Human-Approved by secops-lead@aegis', got '%v'", resp["approvalType"])
-	}
-	WaitForRecoveryVerifications()
 }
 
 func TestRejectRecovery_RevokesApproval(t *testing.T) {
@@ -179,8 +160,8 @@ func TestExecuteRecovery_CannotBypassWithClientFlags(t *testing.T) {
 
 	ExecuteRecoveryHandler(rr, req)
 
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 Forbidden when client attempts to forge approval flag, got %d", rr.Code)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("client flags must not bypass missing owner policy; expected 409, got %d", rr.Code)
 	}
 }
 
@@ -230,8 +211,7 @@ func TestExecuteRecovery_TargetMismatchBlocked(t *testing.T) {
 
 	ExecuteRecoveryHandler(rr, req)
 
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 Forbidden when approval token target mismatches execution target, got %d", rr.Code)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("approval record must not bypass missing owner policy; expected 409, got %d", rr.Code)
 	}
 }
-

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/aegis/go-services/api-gateway/storage"
@@ -37,13 +38,11 @@ func TestServiceBuilder_Phase3_RecoveryGatesAndTopologyVersion(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("Expected 400 Bad Request for observe-only service, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("Expected 403 Forbidden for observe-only service, got %d: %s", w.Code, w.Body.String())
 	}
-	var errResp map[string]interface{}
-	_ = json.Unmarshal(w.Body.Bytes(), &errResp)
-	if errResp["status"] != "rejected" {
-		t.Fatalf("Expected status 'rejected', got %v", errResp)
+	if !strings.Contains(w.Body.String(), "service monitoring mode does not permit recovery execution") {
+		t.Fatalf("Expected explicit observe-mode rejection, got %q", w.Body.String())
 	}
 
 	// 2. Create service in recommend mode but with NO recovery binding -> Must be rejected
@@ -68,8 +67,8 @@ func TestServiceBuilder_Phase3_RecoveryGatesAndTopologyVersion(t *testing.T) {
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("Expected 400 Bad Request for service without binding, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusConflict {
+		t.Fatalf("Expected 409 Conflict for service without binding, got %d: %s", w.Code, w.Body.String())
 	}
 
 	// 3. Create service with recovery binding that only allows "scale" -> Attempting "restart" must be rejected
@@ -79,7 +78,9 @@ func TestServiceBuilder_Phase3_RecoveryGatesAndTopologyVersion(t *testing.T) {
 		MonitoringMode: "recommend",
 		Namespace:      "default",
 		RecoveryBinding: &storage.RecoveryBinding{
-			Runtime:        "kubernetes",
+			// Supported executor runtime: the disallowed action must be rejected
+			// by the binding allowlist, before any dispatch can occur.
+			Runtime:        "docker",
 			Target:         "default/scale-only-svc",
 			AllowedActions: []string{"scale"},
 		},
@@ -99,8 +100,8 @@ func TestServiceBuilder_Phase3_RecoveryGatesAndTopologyVersion(t *testing.T) {
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("Expected 400 Bad Request for disallowed action, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("Expected 403 Forbidden for disallowed action, got %d: %s", w.Code, w.Body.String())
 	}
 
 	// 4. Executing allowed action "scale" on scale-only-svc in dry-run mode -> Should succeed

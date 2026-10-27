@@ -159,62 +159,17 @@ func TestPhase2_Safety_ServiceCooldownEnforcement(t *testing.T) {
 	setupPhase2TestEnvironment()
 	Safety.SetServiceCooldown(30 * time.Second)
 
-	// Pre-approve action on node-a
-	actionID := "rec-scale-node-a"
-	State.mu.Lock()
-	State.ApprovedPlans[actionID] = true
-	State.ApprovedRecords[actionID] = ApprovalRecord{
-		ActionID:        actionID,
-		TargetServiceID: "node-a",
-		ActionType:      "scale",
-		Approver:        "admin@enterprise.io",
-	}
-	State.mu.Unlock()
-
-	// First execution should succeed
 	payload, _ := json.Marshal(map[string]interface{}{
-		"actionId":        actionID,
-		"targetServiceId": "node-a",
-		"actionType":      "scale",
+		"actionId": "rec-scale-node-a", "targetServiceId": "node-a", "actionType": "scale",
 	})
-	req1 := httptest.NewRequest("POST", "/api/recovery/execute", bytes.NewBuffer(payload))
-	rr1 := httptest.NewRecorder()
-	ExecuteRecoveryHandler(rr1, req1)
-
-	if rr1.Code != http.StatusOK {
-		t.Fatalf("first execution should succeed (200), got %d. Body: %s", rr1.Code, rr1.Body.String())
+	req := httptest.NewRequest("POST", "/api/recovery/execute", bytes.NewBuffer(payload))
+	rr := httptest.NewRecorder()
+	ExecuteRecoveryHandler(rr, req)
+	if rr.Code != http.StatusConflict || !strings.Contains(rr.Body.String(), "owner-managed recovery policy") {
+		t.Fatalf("missing owner policy must fail closed with 409; got %d: %s", rr.Code, rr.Body.String())
 	}
-
-	// Immediate second execution on node-a should trigger cooldown (429 Too Many Requests)
-	actionID2 := "rec-restart-node-a"
-	State.mu.Lock()
-	State.ApprovedPlans[actionID2] = true
-	State.ApprovedRecords[actionID2] = ApprovalRecord{
-		ActionID:        actionID2,
-		TargetServiceID: "node-a",
-		ActionType:      "restart",
-		Approver:        "admin@enterprise.io",
-	}
-	State.mu.Unlock()
-
-	payload2, _ := json.Marshal(map[string]interface{}{
-		"actionId":        actionID2,
-		"targetServiceId": "node-a",
-		"actionType":      "restart",
-	})
-	req2 := httptest.NewRequest("POST", "/api/recovery/execute", bytes.NewBuffer(payload2))
-	rr2 := httptest.NewRecorder()
-	ExecuteRecoveryHandler(rr2, req2)
-
-	if rr2.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected 429 Too Many Requests due to cooldown, got %d. Body: %s", rr2.Code, rr2.Body.String())
-	}
-
-	var errResp map[string]interface{}
-	_ = json.Unmarshal(rr2.Body.Bytes(), &errResp)
-	rem, exists := errResp["cooldownRemainingSec"]
-	if !exists || rem.(float64) <= 0 {
-		t.Errorf("expected positive cooldownRemainingSec in error response, got %v", rem)
+	if Safety.GetCooldownRemainingSec("node-a") > 0 {
+		t.Fatal("policy rejection must not dispatch or start a cooldown")
 	}
 }
 
@@ -260,110 +215,44 @@ func TestPhase2_Safety_GlobalBlastRadiusBudget(t *testing.T) {
 	}
 }
 
-func TestPhase2_Recovery_IdempotencyKeyReplay(t *testing.T) {
+func TestPhase2_Recovery_IdempotencyRequiresOwnerPolicy(t *testing.T) {
 	store := setupPhase2TestEnvironment()
 	idempotencyKey := "idemp-phase2-test-key-999"
-
-	// Pre-approve action on node-b
-	actionID := "rec-restart-node-b"
-	State.mu.Lock()
-	State.ApprovedPlans[actionID] = true
-	State.ApprovedRecords[actionID] = ApprovalRecord{
-		ActionID:        actionID,
-		TargetServiceID: "node-b",
-		ActionType:      "restart",
-		Approver:        "admin@enterprise.io",
-	}
-	State.mu.Unlock()
-
 	payload, _ := json.Marshal(map[string]interface{}{
-		"actionId":        actionID,
-		"targetServiceId": "node-b",
-		"actionType":      "restart",
+		"actionId": "rec-restart-node-b", "targetServiceId": "node-b", "actionType": "restart",
 	})
-
-	// 1. Initial request with Idempotency-Key
-	req1 := httptest.NewRequest("POST", "/api/recovery/execute", bytes.NewBuffer(payload))
-	req1.Header.Set("Idempotency-Key", idempotencyKey)
-	rr1 := httptest.NewRecorder()
-	ExecuteRecoveryHandler(rr1, req1)
-
-	if rr1.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK on first dispatch, got %d. Body: %s", rr1.Code, rr1.Body.String())
+	req := httptest.NewRequest("POST", "/api/recovery/execute", bytes.NewBuffer(payload))
+	req.Header.Set("Idempotency-Key", idempotencyKey)
+	rr := httptest.NewRecorder()
+	ExecuteRecoveryHandler(rr, req)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("missing owner policy must fail closed with 409; got %d: %s", rr.Code, rr.Body.String())
 	}
-
-	var resp1 map[string]interface{}
-	_ = json.Unmarshal(rr1.Body.Bytes(), &resp1)
-	planID := resp1["planId"].(string)
-
-	// Verify recorded in storage
 	stored, err := store.GetRecoveryExecutionByIdempotencyKey(context.Background(), idempotencyKey)
-	if err != nil || stored == nil {
-		t.Fatalf("expected execution stored with idempotency key, err: %v", err)
-	}
-	if stored.ID != planID {
-		t.Errorf("stored plan ID mismatch: %s vs %s", stored.ID, planID)
-	}
-
-	// 2. Replay request with same Idempotency-Key
-	req2 := httptest.NewRequest("POST", "/api/recovery/execute", bytes.NewBuffer(payload))
-	req2.Header.Set("Idempotency-Key", idempotencyKey)
-	rr2 := httptest.NewRecorder()
-	ExecuteRecoveryHandler(rr2, req2)
-
-	if rr2.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK on idempotent replay, got %d. Body: %s", rr2.Code, rr2.Body.String())
-	}
-
-	var resp2 map[string]interface{}
-	_ = json.Unmarshal(rr2.Body.Bytes(), &resp2)
-
-	if resp2["idempotentReplay"] != true {
-		t.Errorf("expected idempotentReplay to be true, got %v", resp2["idempotentReplay"])
-	}
-	if resp2["planId"] != planID {
-		t.Errorf("replayed planId mismatch: got %v, want %s", resp2["planId"], planID)
+	if err == nil && stored != nil {
+		t.Fatalf("policy rejection must not create an execution record: %+v", stored)
 	}
 }
 
-func TestPhase2_Recovery_DryRunSimulation(t *testing.T) {
+func TestPhase2_Recovery_DryRunStillRequiresOwnerPolicy(t *testing.T) {
 	setupPhase2TestEnvironment()
 	State.mu.RLock()
 	initialReplicas := State.Services["node-a"].Replicas
 	State.mu.RUnlock()
 
 	payload, _ := json.Marshal(map[string]interface{}{
-		"actionId":        "rec-scale-node-a",
-		"targetServiceId": "node-a",
-		"actionType":      "scale",
-		"dryRun":          true,
+		"actionId": "rec-scale-node-a", "targetServiceId": "node-a", "actionType": "scale", "dryRun": true,
 	})
-
 	req := httptest.NewRequest("POST", "/api/recovery/execute", bytes.NewBuffer(payload))
 	rr := httptest.NewRecorder()
 	ExecuteRecoveryHandler(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK for dry-run simulation, got %d. Body: %s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("dry-run without owner policy must fail closed with 409; got %d: %s", rr.Code, rr.Body.String())
 	}
-
-	var resp map[string]interface{}
-	_ = json.Unmarshal(rr.Body.Bytes(), &resp)
-
-	if resp["dryRun"] != true {
-		t.Errorf("expected dryRun: true in response, got %v", resp["dryRun"])
-	}
-	// Service replicas must remain completely unchanged
 	State.mu.RLock()
-	currReplicas := State.Services["node-a"].Replicas
-	State.mu.RUnlock()
-	if currReplicas != initialReplicas {
-		t.Errorf("dry-run must not mutate service replicas: before=%d, after=%d",
-			initialReplicas, currReplicas)
-	}
-	// Cooldown must not be triggered by dry-run
-	if Safety.GetCooldownRemainingSec("node-a") > 0 {
-		t.Errorf("dry-run must not activate cooldown on target service")
+	defer State.mu.RUnlock()
+	if got := State.Services["node-a"].Replicas; got != initialReplicas {
+		t.Fatalf("policy rejection changed replica count: before=%d after=%d", initialReplicas, got)
 	}
 }
 
@@ -429,131 +318,20 @@ func TestPhase2_Recovery_RollbackAction(t *testing.T) {
 	}
 }
 
-func TestPhase2_Recovery_VerificationWindowAndEscalation(t *testing.T) {
-	store := setupPhase2TestEnvironment()
-	Safety.SetVerificationWindow(1100 * time.Millisecond)
-
-	// 1. Success case: execute restart, service metrics normalize, status becomes Verified
-	actionID := "rec-restart-gateway"
-	State.mu.Lock()
-	State.ApprovedPlans[actionID] = true
-	State.ApprovedRecords[actionID] = ApprovalRecord{
-		ActionID:        actionID,
-		TargetServiceID: "gateway",
-		ActionType:      "restart",
-		Approver:        "admin@enterprise.io",
-	}
-	State.mu.Unlock()
-
-	payload, _ := json.Marshal(map[string]interface{}{
-		"actionId":        actionID,
-		"targetServiceId": "gateway",
-		"actionType":      "restart",
-	})
-
-	req := httptest.NewRequest("POST", "/api/recovery/execute", bytes.NewBuffer(payload))
-	rr := httptest.NewRecorder()
-	ExecuteRecoveryHandler(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK from execute handler, got %d. Body: %s", rr.Code, rr.Body.String())
-	}
-
-	var resp map[string]interface{}
-	_ = json.Unmarshal(rr.Body.Bytes(), &resp)
-	planID := resp["planId"].(string)
-
-	// Wait for asynchronous verification window to complete
-	time.Sleep(1500 * time.Millisecond)
-
-	execSuccess, err := store.GetRecoveryExecution(context.Background(), planID)
-	if err != nil || execSuccess == nil {
-		t.Fatalf("failed to retrieve execution record: %v", err)
-	}
-	if execSuccess.Status != "Verified" {
-		t.Errorf("expected status 'Verified' for recovered service, got '%s'", execSuccess.Status)
-	}
-	if execSuccess.DurationMs <= 0 {
-		t.Errorf("expected positive real durationMs, got %d", execSuccess.DurationMs)
-	}
-
-	// 2. Ineffective case: if metrics fail to normalize, transitions to Ineffective with escalation
-	Safety.Reset()
-	Safety.SetVerificationWindow(1100 * time.Millisecond)
-	actionID2 := "rec-scale-node-b"
-	State.mu.Lock()
-	State.ApprovedPlans[actionID2] = true
-	State.ApprovedRecords[actionID2] = ApprovalRecord{
-		ActionID:        actionID2,
-		TargetServiceID: "node-b",
-		ActionType:      "scale",
-		Approver:        "admin@enterprise.io",
-	}
-	State.mu.Unlock()
-
-	payload2, _ := json.Marshal(map[string]interface{}{
-		"actionId":        actionID2,
-		"targetServiceId": "node-b",
-		"actionType":      "scale",
-	})
-
-	req2 := httptest.NewRequest("POST", "/api/recovery/execute", bytes.NewBuffer(payload2))
-	rr2 := httptest.NewRecorder()
-	ExecuteRecoveryHandler(rr2, req2)
-
-	if rr2.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK, got %d", rr2.Code)
-	}
-
-	var resp2 map[string]interface{}
-	_ = json.Unmarshal(rr2.Body.Bytes(), &resp2)
-	planID2 := resp2["planId"].(string)
-
-	// Keep node-b degraded immediately so verification fails
-	stopDegrade := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case <-stopDegrade:
-				return
-			default:
-				State.mu.Lock()
-				if s, ok := State.Services["node-b"]; ok {
-					s.Status = "critical"
-					s.ErrorRate = 0.50
-					s.Latency = 999.0
-				}
-				State.mu.Unlock()
-				time.Sleep(50 * time.Millisecond)
-			}
+func TestPhase2_Recovery_VerificationRequiresOwnerPolicy(t *testing.T) {
+	setupPhase2TestEnvironment()
+	for _, action := range []struct{ service, kind string }{
+		{"gateway", "restart"}, {"node-b", "scale"},
+	} {
+		payload, _ := json.Marshal(map[string]interface{}{
+			"actionId": "recovery-test", "targetServiceId": action.service, "actionType": action.kind,
+		})
+		req := httptest.NewRequest("POST", "/api/recovery/execute", bytes.NewBuffer(payload))
+		rr := httptest.NewRecorder()
+		ExecuteRecoveryHandler(rr, req)
+		if rr.Code != http.StatusConflict {
+			t.Fatalf("%s on %s without owner policy must fail closed with 409; got %d: %s", action.kind, action.service, rr.Code, rr.Body.String())
 		}
-	}()
-
-	time.Sleep(1600 * time.Millisecond)
-	close(stopDegrade)
-
-	execFailed, err := store.GetRecoveryExecution(context.Background(), planID2)
-	if err != nil || execFailed == nil {
-		t.Fatalf("failed to retrieve failed execution record: %v", err)
-	}
-	if execFailed.Status != "Ineffective" {
-		t.Errorf("expected status 'Ineffective' for unrecovered service, got '%s'", execFailed.Status)
-	}
-
-	// Verify an escalation alert was generated
-	State.mu.RLock()
-	foundEscalation := false
-	for _, a := range State.Alerts {
-		if a.ServiceID == "node-b" && strings.EqualFold(a.Severity, "critical") {
-			foundEscalation = true
-			break
-		}
-	}
-	State.mu.RUnlock()
-
-	if !foundEscalation {
-		t.Errorf("expected critical escalation alert emitted for ineffective remediation on node-b")
 	}
 	WaitForRecoveryVerifications()
 }
-

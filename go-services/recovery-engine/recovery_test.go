@@ -2,10 +2,26 @@ package main
 
 import (
 	"context"
+	"os/exec"
 	"testing"
+	"time"
 )
 
+func requireDockerDaemon(t *testing.T) {
+	t.Helper()
+	docker, err := exec.LookPath("docker")
+	if err != nil {
+		t.Skip("Docker integration test requires the Docker CLI")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := exec.CommandContext(ctx, docker, "info", "--format", "{{.ServerVersion}}").Run(); err != nil {
+		t.Skipf("Docker integration test requires a reachable daemon: %v", err)
+	}
+}
+
 func TestExecutor_ExecuteStep(t *testing.T) {
+	requireDockerDaemon(t)
 	executor := NewExecutor()
 	ctx := context.Background()
 
@@ -40,6 +56,7 @@ func TestExecutor_ExecuteStep(t *testing.T) {
 }
 
 func TestExecutor_ExecutePlan(t *testing.T) {
+	requireDockerDaemon(t)
 	executor := NewExecutor()
 	ctx := context.Background()
 
