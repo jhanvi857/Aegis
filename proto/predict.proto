@@ -28,6 +28,11 @@ message RootCause {
   repeated string contributing_metrics = 4;
   string fault_family = 5;
   repeated Evidence evidence = 6;
+  string uncertainty = 7;
+  double ranking_score = 8;
+  repeated string trace_refs = 9;
+  repeated string log_refs = 10;
+  int64 anomaly_onset_unix_nano = 11;
 }
 
 message PropagationPath {
