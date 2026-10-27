@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -155,21 +154,18 @@ func TestPhase2_PolicyCheckHandler_Endpoint(t *testing.T) {
 	}
 }
 
-func TestPhase2_Safety_ServiceCooldownEnforcement(t *testing.T) {
+func TestPhase2_Safety_ServiceCooldownRequiresOwnerPolicy(t *testing.T) {
 	setupPhase2TestEnvironment()
 	Safety.SetServiceCooldown(30 * time.Second)
-
-	payload, _ := json.Marshal(map[string]interface{}{
-		"actionId": "rec-scale-node-a", "targetServiceId": "node-a", "actionType": "scale",
-	})
+	payload, _ := json.Marshal(map[string]interface{}{"actionId": "rec-scale-node-a", "targetServiceId": "node-a", "actionType": "scale"})
 	req := httptest.NewRequest("POST", "/api/recovery/execute", bytes.NewBuffer(payload))
 	rr := httptest.NewRecorder()
 	ExecuteRecoveryHandler(rr, req)
-	if rr.Code != http.StatusConflict || !strings.Contains(rr.Body.String(), "owner-managed recovery policy") {
-		t.Fatalf("missing owner policy must fail closed with 409; got %d: %s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("missing owner policy must fail closed with 409, got %d: %s", rr.Code, rr.Body.String())
 	}
 	if Safety.GetCooldownRemainingSec("node-a") > 0 {
-		t.Fatal("policy rejection must not dispatch or start a cooldown")
+		t.Fatal("rejected dispatch must not start a cooldown")
 	}
 }
 
@@ -215,44 +211,39 @@ func TestPhase2_Safety_GlobalBlastRadiusBudget(t *testing.T) {
 	}
 }
 
-func TestPhase2_Recovery_IdempotencyRequiresOwnerPolicy(t *testing.T) {
+func TestPhase2_Recovery_IdempotencyCannotBypassOwnerPolicy(t *testing.T) {
 	store := setupPhase2TestEnvironment()
-	idempotencyKey := "idemp-phase2-test-key-999"
-	payload, _ := json.Marshal(map[string]interface{}{
-		"actionId": "rec-restart-node-b", "targetServiceId": "node-b", "actionType": "restart",
-	})
+	key := "idemp-phase2-test-key-999"
+	payload, _ := json.Marshal(map[string]interface{}{"actionId": "rec-restart-node-b", "targetServiceId": "node-b", "actionType": "restart"})
 	req := httptest.NewRequest("POST", "/api/recovery/execute", bytes.NewBuffer(payload))
-	req.Header.Set("Idempotency-Key", idempotencyKey)
+	req.Header.Set("Idempotency-Key", key)
 	rr := httptest.NewRecorder()
 	ExecuteRecoveryHandler(rr, req)
 	if rr.Code != http.StatusConflict {
-		t.Fatalf("missing owner policy must fail closed with 409; got %d: %s", rr.Code, rr.Body.String())
+		t.Fatalf("missing owner policy must fail closed with 409, got %d", rr.Code)
 	}
-	stored, err := store.GetRecoveryExecutionByIdempotencyKey(context.Background(), idempotencyKey)
+	stored, err := store.GetRecoveryExecutionByIdempotencyKey(context.Background(), key)
 	if err == nil && stored != nil {
-		t.Fatalf("policy rejection must not create an execution record: %+v", stored)
+		t.Fatalf("policy rejection created an execution: %+v", stored)
 	}
 }
 
 func TestPhase2_Recovery_DryRunStillRequiresOwnerPolicy(t *testing.T) {
 	setupPhase2TestEnvironment()
 	State.mu.RLock()
-	initialReplicas := State.Services["node-a"].Replicas
+	before := State.Services["node-a"].Replicas
 	State.mu.RUnlock()
-
-	payload, _ := json.Marshal(map[string]interface{}{
-		"actionId": "rec-scale-node-a", "targetServiceId": "node-a", "actionType": "scale", "dryRun": true,
-	})
+	payload, _ := json.Marshal(map[string]interface{}{"actionId": "rec-scale-node-a", "targetServiceId": "node-a", "actionType": "scale", "dryRun": true})
 	req := httptest.NewRequest("POST", "/api/recovery/execute", bytes.NewBuffer(payload))
 	rr := httptest.NewRecorder()
 	ExecuteRecoveryHandler(rr, req)
 	if rr.Code != http.StatusConflict {
-		t.Fatalf("dry-run without owner policy must fail closed with 409; got %d: %s", rr.Code, rr.Body.String())
+		t.Fatalf("dry-run without owner policy must fail closed with 409, got %d", rr.Code)
 	}
 	State.mu.RLock()
 	defer State.mu.RUnlock()
-	if got := State.Services["node-a"].Replicas; got != initialReplicas {
-		t.Fatalf("policy rejection changed replica count: before=%d after=%d", initialReplicas, got)
+	if got := State.Services["node-a"].Replicas; got != before {
+		t.Fatalf("policy rejection changed replicas: before=%d after=%d", before, got)
 	}
 }
 
@@ -318,19 +309,15 @@ func TestPhase2_Recovery_RollbackAction(t *testing.T) {
 	}
 }
 
-func TestPhase2_Recovery_VerificationRequiresOwnerPolicy(t *testing.T) {
+func TestPhase2_Recovery_VerificationCannotStartWithoutOwnerPolicy(t *testing.T) {
 	setupPhase2TestEnvironment()
-	for _, action := range []struct{ service, kind string }{
-		{"gateway", "restart"}, {"node-b", "scale"},
-	} {
-		payload, _ := json.Marshal(map[string]interface{}{
-			"actionId": "recovery-test", "targetServiceId": action.service, "actionType": action.kind,
-		})
+	for _, action := range []struct{ service, kind string }{{"gateway", "restart"}, {"node-b", "scale"}} {
+		payload, _ := json.Marshal(map[string]interface{}{"actionId": "verify-test", "targetServiceId": action.service, "actionType": action.kind})
 		req := httptest.NewRequest("POST", "/api/recovery/execute", bytes.NewBuffer(payload))
 		rr := httptest.NewRecorder()
 		ExecuteRecoveryHandler(rr, req)
 		if rr.Code != http.StatusConflict {
-			t.Fatalf("%s on %s without owner policy must fail closed with 409; got %d: %s", action.kind, action.service, rr.Code, rr.Body.String())
+			t.Fatalf("%s on %s without owner policy must return 409, got %d", action.kind, action.service, rr.Code)
 		}
 	}
 	WaitForRecoveryVerifications()

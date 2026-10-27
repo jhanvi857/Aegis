@@ -59,7 +59,7 @@ func TestGetRecommendations_PolicyAndDifferentiation(t *testing.T) {
 	}
 
 	if len(recs) != 0 {
-		t.Fatalf("services without owner-managed recovery policy must receive no executable recommendations, got %d", len(recs))
+		t.Fatalf("services without fresh telemetry and owner recovery policy must not receive recommendations, got %d", len(recs))
 	}
 }
 
@@ -98,13 +98,13 @@ func TestExecuteRecovery_ApprovalGateEnforcement(t *testing.T) {
 		t.Fatalf("expected 200 OK from approve handler, got %d. Body: %s", appRr.Code, appRr.Body.String())
 	}
 
-	// Approval alone must not substitute for an owner-managed recovery policy.
+	// An approval record alone must not replace the owner-managed policy.
 	execReq := httptest.NewRequest("POST", "/api/recovery/execute", bytes.NewBuffer(payload))
 	execRr := httptest.NewRecorder()
 
 	ExecuteRecoveryHandler(execRr, execReq)
 	if execRr.Code != http.StatusConflict {
-		t.Fatalf("approval must not bypass missing owner policy; expected 409, got %d: %s", execRr.Code, execRr.Body.String())
+		t.Fatalf("approval must not bypass missing owner policy; expected 409, got %d", execRr.Code)
 	}
 }
 

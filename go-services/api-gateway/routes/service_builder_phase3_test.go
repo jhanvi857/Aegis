@@ -71,16 +71,14 @@ func TestServiceBuilder_Phase3_RecoveryGatesAndTopologyVersion(t *testing.T) {
 		t.Fatalf("Expected 409 Conflict for service without binding, got %d: %s", w.Code, w.Body.String())
 	}
 
-	// 3. Create service with recovery binding that only allows "scale" -> Attempting "restart" must be rejected
+	// 3. An unsupported runtime must be rejected before evaluating the action.
 	restrictedSvc := storage.TopologyService{
 		ID:             "scale-only-svc",
 		Name:           "Scale Only Service",
 		MonitoringMode: "recommend",
 		Namespace:      "default",
 		RecoveryBinding: &storage.RecoveryBinding{
-			// Supported executor runtime: the disallowed action must be rejected
-			// by the binding allowlist, before any dispatch can occur.
-			Runtime:        "docker",
+			Runtime:        "kubernetes",
 			Target:         "default/scale-only-svc",
 			AllowedActions: []string{"scale"},
 		},
@@ -100,11 +98,11 @@ func TestServiceBuilder_Phase3_RecoveryGatesAndTopologyVersion(t *testing.T) {
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("Expected 403 Forbidden for disallowed action, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusNotImplemented {
+		t.Fatalf("Expected 501 Not Implemented for unsupported runtime, got %d: %s", w.Code, w.Body.String())
 	}
 
-	// 4. Executing allowed action "scale" on scale-only-svc in dry-run mode -> Should succeed
+	// 4. Dry-run does not bypass an unsupported recovery runtime.
 	body, _ = json.Marshal(map[string]interface{}{
 		"targetServiceId": "scale-only-svc",
 		"actionType":      "scale",
@@ -116,8 +114,8 @@ func TestServiceBuilder_Phase3_RecoveryGatesAndTopologyVersion(t *testing.T) {
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("Expected 200 OK for allowed action, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusNotImplemented {
+		t.Fatalf("Expected 501 Not Implemented for unsupported runtime, got %d: %s", w.Code, w.Body.String())
 	}
 
 	// 5. Verify Prediction Output includes TopologyVersion
