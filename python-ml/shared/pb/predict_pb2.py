@@ -22,38 +22,42 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-import graph_pb2 as graph__pb2
 import telemetry_pb2 as telemetry__pb2
+import graph_pb2 as graph__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\rpredict.proto\x12\raegis.predict\x1a\x0bgraph.proto\x1a\x0ftelemetry.proto\"|\n\x11\x46\x61ilurePrediction\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x1b\n\x13\x66\x61ilure_probability\x18\x02 \x01(\x01\x12\x12\n\nconfidence\x18\x03 \x01(\x01\x12%\n\x1d\x65stimated_time_to_failure_sec\x18\x04 \x01(\x03\"Y\n\x08\x45vidence\x12\x0e\n\x06metric\x18\x01 \x01(\t\x12\x16\n\x0eobserved_value\x18\x02 \x01(\x01\x12\x17\n\x0fthreshold_value\x18\x03 \x01(\x01\x12\x0c\n\x04unit\x18\x04 \x01(\t\"\x98\x02\n\tRootCause\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x13\n\x0bprobability\x18\x02 \x01(\x01\x12\x13\n\x0b\x65xplanation\x18\x03 \x01(\t\x12\x1c\n\x14\x63ontributing_metrics\x18\x04 \x03(\t\x12\x14\n\x0c\x66\x61ult_family\x18\x05 \x01(\t\x12)\n\x08\x65vidence\x18\x06 \x03(\x0b\x32\x17.aegis.predict.Evidence\x12\x13\n\x0buncertainty\x18\x07 \x01(\t\x12\x15\n\rranking_score\x18\x08 \x01(\x01\x12\x12\n\ntrace_refs\x18\t \x03(\t\x12\x10\n\x08log_refs\x18\n \x03(\t\x12\x1f\n\x17\x61nomaly_onset_unix_nano\x18\x0b \x01(\x03\"?\n\x0fPropagationPath\x12\x12\n\npath_nodes\x18\x01 \x03(\t\x12\x18\n\x10propagation_risk\x18\x02 \x01(\x01\"^\n\x0c\x41\x66\x66\x65\x63tedNode\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x14\n\x0chop_distance\x18\x02 \x01(\x05\x12\x13\n\x0b\x65ta_seconds\x18\x03 \x01(\x03\x12\x12\n\nrisk_score\x18\x04 \x01(\x01\"\xb9\x02\n\x14\x41\x63tionRecommendation\x12\x11\n\taction_id\x18\x01 \x01(\t\x12\x13\n\x0b\x61\x63tion_type\x18\x02 \x01(\t\x12\x16\n\x0etarget_node_id\x18\x03 \x01(\t\x12\r\n\x05title\x18\x04 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x05 \x01(\t\x12\x12\n\nrisk_level\x18\x06 \x01(\t\x12\x19\n\x11requires_approval\x18\x07 \x01(\x08\x12\x12\n\nconfidence\x18\x08 \x01(\x01\x12G\n\nparameters\x18\t \x03(\x0b\x32\x33.aegis.predict.ActionRecommendation.ParametersEntry\x1a\x31\n\x0fParametersEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x94\x01\n\x0ePredictRequest\x12/\n\x05graph\x18\x01 \x01(\x0b\x32 .aegis.graph.GraphRepresentation\x12\x39\n\x10recent_telemetry\x18\x02 \x01(\x0b\x32\x1f.aegis.telemetry.TelemetryBatch\x12\x16\n\x0etarget_node_id\x18\x03 \x01(\t\"\x94\x03\n\x0fPredictResponse\x12=\n\x13\x66\x61ilure_predictions\x18\x01 \x03(\x0b\x32 .aegis.predict.FailurePrediction\x12-\n\x0broot_causes\x18\x02 \x03(\x0b\x32\x18.aegis.predict.RootCause\x12\x39\n\x11propagation_paths\x18\x03 \x03(\x0b\x32\x1e.aegis.predict.PropagationPath\x12\x1b\n\x13timestamp_unix_nano\x18\x04 \x01(\x03\x12\x33\n\x0e\x61\x66\x66\x65\x63ted_nodes\x18\x05 \x03(\x0b\x32\x1b.aegis.predict.AffectedNode\x12@\n\x13recommended_actions\x18\x06 \x03(\x0b\x32#.aegis.predict.ActionRecommendation\x12\x0e\n\x06\x65ngine\x18\x07 \x01(\t\x12\x15\n\rmodel_version\x18\x08 \x01(\t\x12\x1d\n\x15\x63\x61librated_confidence\x18\t \x01(\x01\x32]\n\x11PredictionService\x12H\n\x07Predict\x12\x1d.aegis.predict.PredictRequest\x1a\x1e.aegis.predict.PredictResponseB:Z8github.com/aegis/go-services/shared/pb/predict;predictpbb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\rpredict.proto\x12\raegis.predict\x1a\x0ftelemetry.proto\x1a\x0bgraph.proto\"|\n\x11\x46\x61ilurePrediction\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x1b\n\x13\x66\x61ilure_probability\x18\x02 \x01(\x01\x12\x12\n\nconfidence\x18\x03 \x01(\x01\x12%\n\x1d\x65stimated_time_to_failure_sec\x18\x04 \x01(\x05\"v\n\x0eMetricEvidence\x12\x0e\n\x06metric\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x01\x12\x11\n\tthreshold\x18\x03 \x01(\x01\x12\x0c\n\x04unit\x18\x04 \x01(\t\x12\x0e\n\x06source\x18\x05 \x01(\t\x12\x14\n\x0csample_count\x18\x06 \x01(\x03\"\x87\x01\n\x08TraceRef\x12\x10\n\x08trace_id\x18\x01 \x01(\t\x12\x0f\n\x07span_id\x18\x02 \x01(\t\x12\x12\n\nservice_id\x18\x03 \x01(\t\x12\x1b\n\x13timestamp_unix_nano\x18\x04 \x01(\x03\x12\x12\n\nlatency_ms\x18\x05 \x01(\x01\x12\x13\n\x0bstatus_code\x18\x06 \x01(\x05\"l\n\x06LogRef\x12\x0e\n\x06log_id\x18\x01 \x01(\t\x12\x12\n\nservice_id\x18\x02 \x01(\t\x12\x1b\n\x13timestamp_unix_nano\x18\x03 \x01(\x03\x12\x10\n\x08severity\x18\x04 \x01(\t\x12\x0f\n\x07message\x18\x05 \x01(\t\"\xad\x02\n\tRootCause\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x13\n\x0bprobability\x18\x02 \x01(\x01\x12\x15\n\rranking_score\x18\x03 \x01(\x01\x12\x14\n\x0c\x66\x61ult_family\x18\x04 \x01(\t\x12/\n\x08\x65vidence\x18\x05 \x03(\x0b\x32\x1d.aegis.predict.MetricEvidence\x12\x1c\n\x14\x63ontributing_metrics\x18\x06 \x03(\t\x12\x13\n\x0b\x65xplanation\x18\x07 \x01(\t\x12\x13\n\x0buncertainty\x18\x08 \x01(\t\x12+\n\ntrace_refs\x18\t \x03(\x0b\x32\x17.aegis.predict.TraceRef\x12\'\n\x08log_refs\x18\n \x03(\x0b\x32\x15.aegis.predict.LogRef\"4\n\x0fPropagationPath\x12\x0c\n\x04path\x18\x01 \x03(\t\x12\x13\n\x0bprobability\x18\x02 \x01(\x01\"?\n\x0c\x41\x66\x66\x65\x63tedNode\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x0e\n\x06status\x18\x02 \x01(\t\x12\x0e\n\x06reason\x18\x03 \x01(\t\"\xc4\x02\n\x14\x41\x63tionRecommendation\x12\x11\n\taction_id\x18\x01 \x01(\t\x12\r\n\x05title\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\x12\x16\n\x0etarget_node_id\x18\x04 \x01(\t\x12\x13\n\x0b\x61\x63tion_type\x18\x05 \x01(\t\x12G\n\nparameters\x18\x06 \x03(\x0b\x32\x33.aegis.predict.ActionRecommendation.ParametersEntry\x12\x12\n\nrisk_level\x18\x07 \x01(\t\x12\x19\n\x11requires_approval\x18\x08 \x01(\x08\x12\x1d\n\x15\x62last_radius_services\x18\t \x03(\t\x1a\x31\n\x0fParametersEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x8d\x01\n\x0ePredictRequest\x12/\n\x05graph\x18\x01 \x01(\x0b\x32 .aegis.graph.GraphRepresentation\x12\x32\n\ttelemetry\x18\x02 \x01(\x0b\x32\x1f.aegis.telemetry.TelemetryBatch\x12\x16\n\x0etarget_node_id\x18\x03 \x01(\t\"\xad\x03\n\x0fPredictResponse\x12=\n\x13\x66\x61ilure_predictions\x18\x01 \x03(\x0b\x32 .aegis.predict.FailurePrediction\x12-\n\x0broot_causes\x18\x02 \x03(\x0b\x32\x18.aegis.predict.RootCause\x12\x39\n\x11propagation_paths\x18\x03 \x03(\x0b\x32\x1e.aegis.predict.PropagationPath\x12\x1b\n\x13timestamp_unix_nano\x18\x04 \x01(\x03\x12\x33\n\x0e\x61\x66\x66\x65\x63ted_nodes\x18\x05 \x03(\x0b\x32\x1b.aegis.predict.AffectedNode\x12@\n\x13recommended_actions\x18\x06 \x03(\x0b\x32#.aegis.predict.ActionRecommendation\x12\x0e\n\x06\x65ngine\x18\x07 \x01(\t\x12\x15\n\rmodel_version\x18\x08 \x01(\t\x12\x1d\n\x15\x63\x61librated_confidence\x18\t \x01(\x01\x12\x17\n\x0f\x66\x61llback_reason\x18\n \x01(\t2]\n\x11PredictionService\x12H\n\x07Predict\x12\x1d.aegis.predict.PredictRequest\x1a\x1e.aegis.predict.PredictResponseB0Z.github.com/aegis/go-services/shared/pb/predictb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'predict_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'Z8github.com/aegis/go-services/shared/pb/predict;predictpb'
+  _globals['DESCRIPTOR']._serialized_options = b'Z.github.com/aegis/go-services/shared/pb/predict'
   _globals['_ACTIONRECOMMENDATION_PARAMETERSENTRY']._loaded_options = None
   _globals['_ACTIONRECOMMENDATION_PARAMETERSENTRY']._serialized_options = b'8\001'
   _globals['_FAILUREPREDICTION']._serialized_start=62
   _globals['_FAILUREPREDICTION']._serialized_end=186
-  _globals['_EVIDENCE']._serialized_start=188
-  _globals['_EVIDENCE']._serialized_end=277
-  _globals['_ROOTCAUSE']._serialized_start=280
-  _globals['_ROOTCAUSE']._serialized_end=560
-  _globals['_PROPAGATIONPATH']._serialized_start=562
-  _globals['_PROPAGATIONPATH']._serialized_end=625
-  _globals['_AFFECTEDNODE']._serialized_start=627
-  _globals['_AFFECTEDNODE']._serialized_end=721
-  _globals['_ACTIONRECOMMENDATION']._serialized_start=724
-  _globals['_ACTIONRECOMMENDATION']._serialized_end=1037
-  _globals['_ACTIONRECOMMENDATION_PARAMETERSENTRY']._serialized_start=988
-  _globals['_ACTIONRECOMMENDATION_PARAMETERSENTRY']._serialized_end=1037
-  _globals['_PREDICTREQUEST']._serialized_start=1040
-  _globals['_PREDICTREQUEST']._serialized_end=1188
-  _globals['_PREDICTRESPONSE']._serialized_start=1191
-  _globals['_PREDICTRESPONSE']._serialized_end=1595
-  _globals['_PREDICTIONSERVICE']._serialized_start=1597
-  _globals['_PREDICTIONSERVICE']._serialized_end=1690
+  _globals['_METRICEVIDENCE']._serialized_start=188
+  _globals['_METRICEVIDENCE']._serialized_end=306
+  _globals['_TRACEREF']._serialized_start=309
+  _globals['_TRACEREF']._serialized_end=444
+  _globals['_LOGREF']._serialized_start=446
+  _globals['_LOGREF']._serialized_end=554
+  _globals['_ROOTCAUSE']._serialized_start=557
+  _globals['_ROOTCAUSE']._serialized_end=858
+  _globals['_PROPAGATIONPATH']._serialized_start=860
+  _globals['_PROPAGATIONPATH']._serialized_end=912
+  _globals['_AFFECTEDNODE']._serialized_start=914
+  _globals['_AFFECTEDNODE']._serialized_end=977
+  _globals['_ACTIONRECOMMENDATION']._serialized_start=980
+  _globals['_ACTIONRECOMMENDATION']._serialized_end=1304
+  _globals['_ACTIONRECOMMENDATION_PARAMETERSENTRY']._serialized_start=1255
+  _globals['_ACTIONRECOMMENDATION_PARAMETERSENTRY']._serialized_end=1304
+  _globals['_PREDICTREQUEST']._serialized_start=1307
+  _globals['_PREDICTREQUEST']._serialized_end=1448
+  _globals['_PREDICTRESPONSE']._serialized_start=1451
+  _globals['_PREDICTRESPONSE']._serialized_end=1880
+  _globals['_PREDICTIONSERVICE']._serialized_start=1882
+  _globals['_PREDICTIONSERVICE']._serialized_end=1975
 # @@protoc_insertion_point(module_scope)

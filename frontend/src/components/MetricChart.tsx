@@ -11,6 +11,7 @@ import {
 
 interface DataPoint {
   timestamp: string;
+  observedSignals?: string[];
   [key: string]: any;
 }
 
@@ -31,7 +32,10 @@ export const MetricChart: React.FC<MetricChartProps> = ({
   unit = '',
   height = 180,
 }) => {
-  const latestValue = data.length > 0 ? data[data.length - 1][dataKey] : 0;
+  const latestPoint = data.length > 0 ? data[data.length - 1] : undefined;
+  const hasLatestValue = latestPoint?.[dataKey] !== undefined && latestPoint?.[dataKey] !== null
+    && (!latestPoint.observedSignals || latestPoint.observedSignals.includes(dataKey));
+  const latestValue = hasLatestValue ? latestPoint?.[dataKey] : '—';
 
   return (
     <div className="p-4 bg-[#151517] border border-[#26262B] rounded-lg shadow-sm font-sans">
@@ -43,7 +47,7 @@ export const MetricChart: React.FC<MetricChartProps> = ({
           </h4>
         </div>
         <div className="font-mono text-[14px] font-semibold text-white">
-          {latestValue}
+              {latestValue}
           <span className="font-sans text-[11px] text-gray-400 font-normal ml-1">{unit}</span>
         </div>
       </div>

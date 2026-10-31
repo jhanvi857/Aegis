@@ -1,0 +1,54 @@
+# Copy to a private deployment config and set AEGIS_DETECTION_CONFIG.
+# Thresholds are signal-specific. Missing signals remain missing; no defaults
+# are emitted for features not supplied by an application.
+min_baseline_samples: 8
+history_limit: 120
+robust_z_threshold: 4.0
+
+signals:
+  cpu_usage:
+    threshold: 85.0
+    direction: high
+    unit: percent
+  memory_usage:
+    threshold: 90.0
+    direction: high
+    unit: percent
+  p95_latency_ms:
+    threshold: 300.0
+    direction: high
+    unit: ms
+  p99_latency_ms:
+    threshold: 1000.0
+    direction: high
+    unit: ms
+  error_rate:
+    threshold: 0.05
+    direction: high
+    unit: ratio
+  queue_depth:
+    threshold: 10
+    direction: high
+    unit: items
+  db_connection_wait_ms:
+    threshold: 200.0
+    direction: high
+    unit: ms
+  cache_miss_rate:
+    threshold: 0.70
+    direction: high
+    unit: ratio
+  packet_loss_rate:
+    threshold: 0.15
+    direction: high
+    unit: ratio
+
+# Optional overrides are keyed by the exact OpenTelemetry service.name. Remove
+# this commented example or replace the key with an owner-managed service name.
+# services:
+#   example-service:
+#     signals:
+#       p95_latency_ms:
+#         threshold: 180
+#         direction: high
+#         unit: ms

@@ -205,7 +205,7 @@ export const AuthPage: React.FC = () => {
         </div>
         <div className="flex items-center space-x-1.5">
           <Cpu className="w-3.5 h-3.5 text-[#e2588a]" />
-          <span>TGNN Neural Diagnostics Active</span>
+          <span>Service Baseline Diagnostics</span>
         </div>
         <div className="flex items-center space-x-1.5">
           <CheckCircle2 className="w-3.5 h-3.5 text-[#52b767]" />

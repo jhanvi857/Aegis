@@ -21,7 +21,7 @@ export const Predictions: React.FC = () => {
           </h1>
         </div>
         <p className="text-[12px] text-gray-400 font-normal leading-[18px]">
-          Temporal Graph Neural Network (TGNN) failure forecasting, root cause isolation, and propagation cascade
+          Service-level threshold and rolling-baseline signals with evidence-ranked, explicitly uncertain root-cause candidates
         </p>
       </div>
 
@@ -57,7 +57,7 @@ export const Predictions: React.FC = () => {
         <div className="p-4 bg-[#151517] border border-[#26262B] rounded-lg">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] font-semibold tracking-[0.06em] text-gray-400 uppercase leading-[14px]">
-              TGNN CONFIDENCE
+              DETECTION METHOD
             </span>
             <div className="p-1.5 bg-[#3F8E4F]/20 text-[#52b767] border border-[#3F8E4F]/50 rounded-md">
               <CheckCircle2 className="w-3.5 h-3.5" />
@@ -65,9 +65,9 @@ export const Predictions: React.FC = () => {
           </div>
           <div className="flex items-baseline space-x-2">
             <span className="text-[28px] font-semibold tracking-[-0.03em] leading-[32px] font-mono text-[#3F8E4F]">
-              {prediction.confidence}%
+              {prediction.engine || 'Waiting for data'}
             </span>
-            <span className="text-[10px] font-semibold tracking-[0.04em] uppercase text-gray-400">CLASSIFIER</span>
+            <span className="text-[10px] font-semibold tracking-[0.04em] uppercase text-gray-400">No calibrated probability</span>
           </div>
         </div>
 
@@ -178,25 +178,46 @@ export const Predictions: React.FC = () => {
           </div>
 
           {(() => {
+            const isNominal =
+              !prediction.rootCauseServiceId ||
+              prediction.rootCauseServiceId === 'None' ||
+              prediction.rootCauseServiceId === '' ||
+              prediction.recommendedActionId === 'act-none' ||
+              (prediction.failureProbability < 30 && (!prediction.recommendedActions || prediction.recommendedActions.length === 0));
+
+            if (isNominal) {
+              return (
+                <div className="p-6 bg-[#0B0B0C] border border-[#26262B] rounded-lg text-center space-y-2">
+                  <div className="inline-flex p-2 bg-emerald-950/40 border border-emerald-800/60 rounded-full text-emerald-400 mb-1">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                  <div className="text-sm font-semibold text-gray-200">
+                    Cluster Nominal â€” Continuous Observation Active
+                  </div>
+                  <p className="text-xs text-gray-400 max-w-md mx-auto">
+                    All microservice telemetry metrics conform to nominal SLA thresholds. Policy maintains continuous automated observation; no remediation intervention required.
+                  </p>
+                </div>
+              );
+            }
+
             const primaryAction =
               prediction.recommendedActions && prediction.recommendedActions.length > 0
                 ? prediction.recommendedActions[0]
                 : null;
+            if (!primaryAction) {
+              return (
+                <div className="p-6 bg-[#0B0B0C] border border-amber-800/50 rounded-lg text-center text-sm text-amber-200">
+                  The decision service did not return an executable recovery recommendation. No action was dispatched.
+                </div>
+              );
+            }
 
-            const deduceActionType = (recId?: string, title?: string, family?: string): string => {
-              const s = `${recId || ''} ${title || ''} ${family || ''}`.toLowerCase();
-              if (s.includes('pool') || s.includes('database')) return 'increase_pool';
-              if (s.includes('flush') || s.includes('cache')) return 'flush_cache';
-              if (s.includes('reroute') || s.includes('latency')) return 'reroute_traffic';
-              if (s.includes('isolate')) return 'isolate';
-              if (s.includes('scale') || s.includes('cpu') || s.includes('queue')) return 'scale';
-              return 'restart';
-            };
-
-            const actionType = primaryAction
-              ? primaryAction.actionType
-              : deduceActionType(prediction.recommendedActionId, prediction.recommendedAction, prediction.faultFamily);
-            const actionTitle = primaryAction ? primaryAction.title : prediction.recommendedAction;
+            const actionType = primaryAction.actionType;
+            const actionTitle = primaryAction.title;
+            // Keep approval and execution bound to the exact recommendation ID
+            // emitted by the decision engine (for example, act-restart-service-1).
+            const actionId = primaryAction.id;
             const actionDesc =
               primaryAction?.description ||
               prediction.rootCauseReason ||
@@ -212,22 +233,24 @@ export const Predictions: React.FC = () => {
               ? Boolean(primaryAction.requiresApproval)
               : prediction.failureProbability > 30;
 
+            const targetDisplay = primaryAction.targetServiceId;
+
             return (
               <RecommendationCard
                 title={actionTitle}
                 description={actionDesc}
-                targetService={prediction.rootCauseServiceName}
+                targetService={targetDisplay}
                 confidence={prediction.confidence}
                 actionType={actionType}
                 riskLevel={riskLevel}
                 requiresApproval={requiresApproval}
                 faultFamily={prediction.faultFamily}
-                onExecute={() => {
-                  executeRecoveryAction(
+                onExecute={async () => {
+                  await executeRecoveryAction(
                     actionType,
-                    prediction.rootCauseServiceId,
-                    actionTitle,
-                    !requiresApproval
+                    primaryAction.targetServiceId,
+                    actionId,
+                    true
                   );
                 }}
               />

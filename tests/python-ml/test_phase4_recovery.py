@@ -172,50 +172,42 @@ class TestPhase4RecoveryPlanner(unittest.TestCase):
             self.assertIn(action["target_node_id"], ["node-c", "node-d"])
             self.assertGreaterEqual(action["execution_order"], 1)
 
+    def test_cyclic_affected_graph_blocks_sequential_recovery(self):
+        cycle = nx.DiGraph([("api", "worker"), ("worker", "database"), ("database", "worker")])
+        plan = self.builder.build_plan(
+            graph=cycle,
+            root_causes=[{"node_id": "worker", "fault_family": "cpu_saturation", "evidence": [{"metric": "cpu", "value": 95}]}],
+            propagation_set=["database"],
+            telemetry_by_node={"worker": {"cpu_usage": 95}},
+        )
+        self.assertEqual(plan["status"], "blocked_topology")
+        self.assertEqual(plan["actions"], [])
+        self.assertEqual(plan["cyclic_dependency_groups"], [["database", "worker"]])
+        self.assertTrue(plan["risk"]["requires_approval"])
+
     def test_live_prediction_engine_action_selection(self):
-        """
-        Verifies that PredictionEngine.predict() in the actual serving path
-        converts live telemetry batches into telemetry_by_node and selects
-        root-cause proportional actions (e.g. SCALE_UP for CPU, INCREASE_POOL for DB)
-        rather than falling through to default RESTART.
-        """
-        from serving.grpc_server import PredictionEngine
-        from graph.service import GraphPreprocessingService
-        from ingestion.kafka_consumer import TelemetryConsumer
+        """The shared baseline emits evidence-linked recovery recommendations."""
+        from serving.baseline_engine import PredictionEngine
 
-        service = GraphPreprocessingService(topology_path="configs/topology.yaml", structural_ttl_sec=0.01)
-        engine = PredictionEngine(checkpoint_path="python-ml/models/checkpoints/tgnn_best.pt")
-        consumer = TelemetryConsumer()
-
-        # 1. Pipeline-generated CPU stress batch -> triggers SCALE_UP
-        cpu_batch = consumer.generate_simulated_batch(fault_node="node-c", fault_type="cpu_stress")
-        rep_cpu = service.process_telemetry_batch(cpu_batch)
-        pred_cpu = engine.predict(rep_cpu, telemetry_batch=cpu_batch, target_node_id="node-c")
-        plan_cpu = pred_cpu.get("recovery_plan")
-        self.assertIsNotNone(plan_cpu)
-        self.assertGreater(len(plan_cpu["actions"]), 0)
-        action_types_cpu = [a["action_type"] for a in plan_cpu["actions"]]
-        self.assertIn("SCALE_UP", action_types_cpu)
-
-        # 2. Pipeline-generated DB lock batch -> natively contains db_connection_wait_ms >= 500ms -> triggers INCREASE_POOL
-        db_batch = consumer.generate_simulated_batch(fault_node="node-d", fault_type="db_lock")
-        rep_db = service.process_telemetry_batch(db_batch)
-        pred_db = engine.predict(rep_db, telemetry_batch=db_batch, target_node_id="node-d")
-        plan_db = pred_db.get("recovery_plan")
-        self.assertIsNotNone(plan_db)
-        action_types_db = [a["action_type"] for a in plan_db["actions"]]
-        self.assertIn("INCREASE_POOL", action_types_db)
-
-        # 3. Pipeline-generated cache down batch -> natively contains cache_miss_rate >= 0.70 -> triggers FLUSH_CACHE
-        cache_batch = consumer.generate_simulated_batch(fault_node="node-b", fault_type="cache_down")
-        rep_cache = service.process_telemetry_batch(cache_batch)
-        pred_cache = engine.predict(rep_cache, telemetry_batch=cache_batch, target_node_id="node-b")
-        plan_cache = pred_cache.get("recovery_plan")
-        self.assertIsNotNone(plan_cache)
-        action_types_cache = [a["action_type"] for a in plan_cache["actions"]]
-        self.assertIn("FLUSH_CACHE", action_types_cache)
-
-
+        graph_representation = {
+            "node_ids": ["worker"],
+            "snapshot": {
+                "nodes": [{"id": "worker", "status": "degraded", "metrics": {
+                    "cpu_usage": 96.0, "p95_latency_ms": 1500.0, "error_rate": 0.20,
+                }}],
+                "edges": [],
+            },
+        }
+        engine = PredictionEngine()
+        engine.incident_models = None
+        prediction = engine.predict(graph_representation, target_node_id="worker")
+        self.assertEqual(prediction["engine"], "baseline")
+        self.assertTrue(prediction["root_causes"])
+        self.assertIn("inconclusive", prediction["root_causes"][0]["uncertainty"])
+        plan = prediction["recovery_plan"]
+        self.assertIsNotNone(plan)
+        self.assertGreater(len(plan["actions"]), 0)
+        self.assertEqual(plan["actions"][0]["target_node_id"], "worker")
+        self.assertTrue(plan["actions"][0]["requires_approval"])
 if __name__ == "__main__":
     unittest.main()
-

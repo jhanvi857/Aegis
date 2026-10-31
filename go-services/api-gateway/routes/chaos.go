@@ -171,6 +171,19 @@ func ChaosStopHandler(w http.ResponseWriter, r *http.Request) {
 
 	delete(State.ActiveFaults, id)
 
+	// Restore target service metrics to healthy baseline
+	if svc, ok := State.Services[fault.TargetServiceID]; ok {
+		svc.Status = "healthy"
+		svc.CPU = 25.0
+		svc.Latency = 20.0
+		svc.ErrorRate = 0.001
+		svc.DBWait = 0.0
+		svc.CacheMiss = 0.0
+		svc.PacketLoss = 0.0
+		svc.QueueDepth = 1
+		svc.ActiveThreads = 10
+	}
+
 	// Forward stop request to Chaos Engine to physically revert fault
 	go func(target, fid string) {
 		client := &http.Client{Timeout: 3 * time.Second}

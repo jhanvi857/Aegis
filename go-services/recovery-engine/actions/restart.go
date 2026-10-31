@@ -2,6 +2,7 @@ package actions
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	orchestrator "github.com/aegis/go-services/orchestrator-adapter"
@@ -23,16 +24,17 @@ func NewRestartAction(adapter orchestrator.OrchestratorAdapter) *RestartAction {
 func (a *RestartAction) Name() string { return "restart" }
 
 func (a *RestartAction) Execute(ctx context.Context, targetNode string, params map[string]string) error {
+	if a.Adapter == nil {
+		return fmt.Errorf("restart action is unavailable: no orchestrator adapter is configured")
+	}
 	gracePeriod := params["grace_period_sec"]
 	if gracePeriod == "" {
 		gracePeriod = "5"
 	}
 	log.Printf("[action-restart] Initiating rolling restart for node %s (grace period: %ss)", targetNode, gracePeriod)
-	if a.Adapter != nil {
-		if err := a.Adapter.RestartContainer(ctx, targetNode); err != nil {
-			log.Printf("[action-restart] Adapter returned error for %s: %v", targetNode, err)
-			return err
-		}
+	if err := a.Adapter.RestartContainer(ctx, targetNode); err != nil {
+		log.Printf("[action-restart] Adapter returned error for %s: %v", targetNode, err)
+		return err
 	}
 	log.Printf("[action-restart] Node %s container restarted successfully.", targetNode)
 	return nil

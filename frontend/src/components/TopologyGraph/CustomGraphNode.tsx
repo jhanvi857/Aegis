@@ -41,6 +41,7 @@ export const CustomGraphNode = memo(({ data, selected }: { data: CustomNodeData;
   const isUnmonitored = data.isUnmonitored || data.monitoringMode === 'ignore';
   const isCritical = data.status === 'critical' || data.status === 'degraded_critical';
   const isWarning = data.status === 'degraded' || data.status === 'no_data' || data.status === 'stale';
+  const isRemediating = data.status === 'remediating';
 
   const typeIconMap: Record<string, any> = {
     gateway: Activity,
@@ -69,6 +70,8 @@ export const CustomGraphNode = memo(({ data, selected }: { data: CustomNodeData;
           ? 'bg-[#151517]/90 border-2 border-dashed border-gray-600 bg-[repeating-linear-gradient(45deg,#1f1f23,#1f1f23_10px,#151517_10px,#151517_20px)]'
           : isUnconnected
           ? 'bg-[#18181b] border-2 border-dashed border-amber-500/60'
+          : isRemediating
+          ? 'bg-[#151517] border-2 border-cyan-500 ring-2 ring-cyan-500/50 animate-pulse'
           : isCritical
           ? 'bg-[#151517] border-2 border-[#AD2831] ring-2 ring-[#AD2831]/50'
           : isWarning
@@ -89,6 +92,8 @@ export const CustomGraphNode = memo(({ data, selected }: { data: CustomNodeData;
                 ? 'bg-amber-950/40 text-amber-400 border-amber-700/50'
                 : isUnmonitored
                 ? 'bg-gray-800 text-gray-400 border-gray-700'
+                : isRemediating
+                ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/60'
                 : isCritical
                 ? 'bg-[#AD2831]/20 text-[#f87171] border-[#AD2831]/60'
                 : isWarning

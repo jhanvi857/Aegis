@@ -12,6 +12,7 @@ import networkx as nx
 from detection.service_detector import ServiceDetector, group_metric_points
 from decision_engine.diagnosis import diagnose_fault
 from recovery_planner.plan_builder import RecoveryPlanBuilder
+from serving.incident_models import IncidentModels
 
 
 class PredictionEngine:
@@ -26,6 +27,7 @@ class PredictionEngine:
         detector_config = os.environ.get("AEGIS_DETECTION_CONFIG", "").strip()
         self.detector = ServiceDetector.from_yaml(detector_config) if detector_config else ServiceDetector()
         self.plan_builder = RecoveryPlanBuilder()
+        self.incident_models, self.incident_models_load_error = IncidentModels.load_configured()
 
     def predict(
         self,
@@ -142,210 +144,203 @@ class PredictionEngine:
                 telemetry_by_node=metrics_by_service,
             )
 
+        engine_name = "baseline"
+        model_version = "service-baseline-v1"
+        fallback_reason = self.incident_models_load_error or ""
+        calibrated_confidence = 0.0
+
+        if self.incident_models is not None:
+            try:
+                ml_predictions, coverage = self.incident_models.predict(metrics_by_service)
+                if not ml_predictions:
+                    fallback_reason = "insufficient service metrics for trained model inference"
+                else:
+                    scored_services = sorted(
+                        ml_predictions.items(),
+                        key=lambda item: (-item[1]["root_score"], item[0]),
+                    )
+                    qualifying = [item for item in scored_services if item[1]["root_score"] >= item[1]["root_threshold"]]
+                    if not qualifying and anomalies and scored_services:
+                        qualifying = scored_services[:1]
+
+                    ml_root_causes = []
+                    for service_id, prediction in qualifying:
+                        measured = metrics_by_service.get(service_id, {})
+                        ml_evidence = [{"metric": "ml_root_cause_score", "value": round(prediction["root_score"], 4),
+                                        "threshold": round(prediction["root_threshold"], 4), "unit": "uncalibrated score",
+                                        "source": prediction["root_model"]}]
+                        ml_evidence.extend({"metric": metric, "value": value, "threshold": 0.0, "unit": "observed"}
+                                           for metric, value in sorted(measured.items()))
+                        ml_root_causes.append({
+                            "node_id": service_id,
+                            "probability": 0.0,
+                            "ranking_score": round(prediction["root_score"], 4),
+                            "fault_family": prediction["fault_family"],
+                            "evidence": ml_evidence,
+                            "contributing_metrics": [entry["metric"] for entry in ml_evidence],
+                            "explanation": (
+                                f"{service_id} ranks as an incident root-service candidate under the trained "
+                                f"{prediction['root_model']} model (score {prediction['root_score']:.3f}); "
+                                f"the trained {prediction['fault_model']} model predicts {prediction['raw_fault']} "
+                                f"(score {prediction['fault_score']:.3f}). This is not calibrated causal confidence."
+                            ),
+                            "uncertainty": "supervised score trained on RCAEval incident labels; not calibrated and not proof of causality",
+                            "trace_refs": [],
+                            "log_refs": [],
+                            "observed_metrics": measured,
+                            "ml_fault_score": round(prediction["fault_score"], 4),
+                        })
+
+                    if ml_root_causes:
+                        root_causes = ml_root_causes
+                        primary = ml_root_causes[0]
+                        incidents = [{"incident_id": "ml-ranked-incident", "affected_services": [primary["node_id"]],
+                                      "method": "supervised_root_service_model", "uncertainty": primary["uncertainty"]}]
+                        propagation = self._blast_radius(graph, [primary["node_id"]])
+                        if generate_plan:
+                            plan = self.plan_builder.build_plan(
+                                graph=graph,
+                                root_causes=[primary],
+                                propagation_set=[primary["node_id"]],
+                                telemetry_by_node=metrics_by_service,
+                            )
+                        failure_predictions = [
+                            {"node_id": s_id, "failure_probability": float(pred["root_score"]),
+                             "confidence": 0.0, "estimated_time_to_failure_sec": 0}
+                            for s_id, pred in sorted(ml_predictions.items())
+                        ]
+                        engine_name = f"trained:{self.incident_models.model_type}"
+                        model_version = (
+                            f"root-{self.incident_models.model_names.get('root_cause', 'unknown')}-"
+                            f"fault-{self.incident_models.model_names.get('fault_family', 'unknown')}-v1"
+                        )
+                        fallback_reason = ""
+            except Exception as exc:
+                fallback_reason = f"inference fallback: {exc}"
+                engine_name = "baseline"
+
         return {
             "failure_predictions": failure_predictions,
             "root_causes": root_causes,
             "propagation_paths": propagation,
             "recovery_plan": plan,
             "timestamp_unix_nano": int(now.timestamp() * 1e9),
-            "engine": "statistical_baseline",
-            "model_version": "service-baseline-v1",
-            "calibrated_confidence": 0.0,
+            "engine": engine_name,
+            "fallback_reason": fallback_reason,
+            "model_version": model_version,
+            "calibrated_confidence": calibrated_confidence,
             "detections": detections,
             "incidents": incidents,
-            # The protobuf probability field has no calibration contract. Keep
-            # it at zero; ranking_score and evidence explain candidate order.
             "rca_uncertain": bool(root_causes),
         }
 
     @staticmethod
-    def _valid_metrics(metrics: Mapping[str, Any]) -> Dict[str, float]:
-        from math import isfinite
-
-        valid = {}
+    def _valid_metrics(metrics: Dict[str, Any]) -> Dict[str, float]:
+        cleaned = {}
         for key, value in metrics.items():
             try:
-                number = float(value)
+                numeric = float(value)
             except (TypeError, ValueError):
                 continue
-            if isfinite(number):
-                valid[str(key)] = number
-        return valid
-
-    @staticmethod
-    def _rank_candidates(
-        anomalies: List[Dict[str, Any]],
-        metrics: Mapping[str, Mapping[str, float]],
-        graph: nx.DiGraph,
-        target_node_id: Optional[str],
-        traces: Optional[List[Mapping[str, Any]]] = None,
-        logs: Optional[List[Mapping[str, Any]]] = None,
-    ) -> List[Dict[str, Any]]:
-        """Rank abnormal nodes while explicitly avoiding causal certainty claims."""
-        if not anomalies:
-            return []
-        ranked = []
-        onset_by_service = {}
-        for anomaly in anomalies:
-            try:
-                onset_by_service[anomaly["service_id"]] = datetime.fromisoformat(anomaly.get("anomaly_onset") or anomaly["observed_at"])
-            except (TypeError, ValueError):
-                continue
-        earliest_onset = min(onset_by_service.values(), default=None)
-        for item in anomalies:
-            service_id = item["service_id"]
-            fault = diagnose_fault(service_id, dict(metrics.get(service_id, {})))
-            direct_score = float(item["score"])
-            evidence = list(item["evidence"])
-            service_traces = [span for span in (traces or []) if span.get("service_id") == service_id]
-            error_spans = [span for span in service_traces if int(span.get("status_code", 0) or 0) >= 400]
-            error_span_times = [int(span.get("start_time_unix_nano", 0) or 0) for span in error_spans if int(span.get("start_time_unix_nano", 0) or 0) > 0]
-            service_logs = [entry for entry in (logs or []) if entry.get("service_id") == service_id]
-            error_logs = [entry for entry in service_logs if str(entry.get("level", "")).upper() in {"ERROR", "FATAL", "SEVERE"}]
-            score = direct_score + min(0.3, 0.1 * len(error_spans)) + min(0.15, 0.05 * len(error_logs))
-            onset = onset_by_service.get(service_id)
-            if earliest_onset is not None and onset == earliest_onset and len(onset_by_service) > 1:
-                score += 0.05
-                evidence.append({"metric": "relative_anomaly_onset_order", "value": 1, "threshold": 1, "unit": "earliest_in_incident"})
-            if error_spans:
-                evidence.append({"metric": "trace_error_span_count", "value": len(error_spans), "threshold": 1, "unit": "spans"})
-                if error_span_times:
-                    evidence.append({"metric": "earliest_error_span_unix_nano", "value": min(error_span_times), "threshold": 0, "unit": "unix_ns"})
-            if error_logs:
-                evidence.append({"metric": "error_log_count", "value": len(error_logs), "threshold": 1, "unit": "records"})
-            if target_node_id and service_id == target_node_id:
-                evidence.append({"metric": "requested_target", "value": 1, "threshold": 1, "unit": "boolean"})
-            ranked.append({
-                "node_id": service_id,
-                # This normalized value is a ranking share, not a calibrated probability.
-                "probability": 0.0,
-                "ranking_score": round(score, 4),
-                "fault_family": fault.get("fault_family", "degraded"),
-                "evidence": evidence,
-                "contributing_metrics": [entry["metric"] for entry in evidence],
-                "explanation": (
-                    f"{service_id} is an abnormal-service candidate based on "
-                    f"{', '.join(entry['metric'] for entry in evidence)}. "
-                    "Telemetry and trace/log evidence prioritize this candidate; this does not establish causality."
-                ),
-                "uncertainty": "causal attribution remains inconclusive; topology and correlated telemetry are supporting evidence, not proof",
-                "observed_at": item["observed_at"],
-                "anomaly_onset": item.get("anomaly_onset"),
-                "trace_refs": sorted({str(span.get("trace_id", "")) for span in error_spans if span.get("trace_id")}),
-                # OTLP log records do not carry an Aegis database ID through
-                # the prediction contract. Preserve a deterministic source
-                # reference from their service, event time, and trace ID.
-                "log_refs": sorted({
-                    str(entry.get("id") or "log:{service}:{timestamp}:{trace}".format(
-                        service=service_id,
-                        timestamp=entry.get("timestamp_unix_nano") or entry.get("timestamp", "unknown-time"),
-                        trace=entry.get("trace_id") or "no-trace",
-                    ))
-                    for entry in error_logs
-                }),
-                "score": direct_score,
-            })
-        return sorted(ranked, key=lambda item: (-item["ranking_score"], item["node_id"]))
+            import math
+            if math.isfinite(numeric):
+                cleaned[key] = numeric
+        return cleaned
 
     @staticmethod
     def _correlate_incidents(
-        anomalies: List[Dict[str, Any]], graph: nx.DiGraph,
-        traces: List[Mapping[str, Any]], logs: List[Mapping[str, Any]],
-        correlation_window_seconds: float = 60.0,
+        anomalies: List[Dict[str, Any]],
+        graph: nx.DiGraph,
+        traces: Optional[List[Dict[str, Any]]] = None,
+        logs: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
-        """Group only anomalies with temporal and direct trace/topology evidence."""
+        del traces, logs
         if not anomalies:
             return []
-        parent = list(range(len(anomalies)))
+        affected = {item["service_id"] for item in anomalies}
+        subgraph = graph.subgraph(affected).to_undirected()
+        components = list(nx.connected_components(subgraph))
+        grouped = []
+        covered = set()
+        for comp in components:
+            members = sorted(comp)
+            covered.update(members)
+            digest = hashlib.sha256("::".join(members).encode("utf-8")).hexdigest()[:12]
+            grouped.append({"incident_id": f"inc-{digest}", "affected_services": members})
+        for item in anomalies:
+            sid = item["service_id"]
+            if sid not in covered:
+                digest = hashlib.sha256(sid.encode("utf-8")).hexdigest()[:12]
+                grouped.append({"incident_id": f"inc-{digest}", "affected_services": [sid]})
+                covered.add(sid)
+        return grouped
 
-        def find(index: int) -> int:
-            while parent[index] != index:
-                parent[index] = parent[parent[index]]
-                index = parent[index]
-            return index
-
-        def union(left: int, right: int) -> None:
-            root_left, root_right = find(left), find(right)
-            if root_left != root_right:
-                parent[root_right] = root_left
-
-        by_trace: Dict[str, set[str]] = {}
-        for span in traces:
-            trace_id, service_id = str(span.get("trace_id", "")), str(span.get("service_id", ""))
-            if trace_id and service_id:
-                by_trace.setdefault(trace_id, set()).add(service_id)
-        shared_trace_pairs = set()
-        for members in by_trace.values():
-            for left in members:
-                for right in members:
-                    if left != right:
-                        shared_trace_pairs.add((left, right))
-        log_services_by_trace: Dict[str, set[str]] = {}
-        for entry in logs:
-            trace_id, service_id = str(entry.get("trace_id", "")), str(entry.get("service_id", ""))
-            if trace_id and service_id:
-                log_services_by_trace.setdefault(trace_id, set()).add(service_id)
-        for members in log_services_by_trace.values():
-            for left in members:
-                for right in members:
-                    if left != right:
-                        shared_trace_pairs.add((left, right))
-
-        for left in range(len(anomalies)):
-            for right in range(left + 1, len(anomalies)):
-                a, b = anomalies[left], anomalies[right]
-                try:
-                    onset_a = datetime.fromisoformat(a.get("anomaly_onset") or a["observed_at"])
-                    onset_b = datetime.fromisoformat(b.get("anomaly_onset") or b["observed_at"])
-                    close_in_time = abs((onset_a - onset_b).total_seconds()) <= correlation_window_seconds
-                except (TypeError, ValueError):
-                    close_in_time = False
-                if not close_in_time:
-                    continue
-                svc_a, svc_b = a["service_id"], b["service_id"]
-                shares_trace = (svc_a, svc_b) in shared_trace_pairs
-                directly_connected = graph.has_edge(svc_a, svc_b) or graph.has_edge(svc_b, svc_a)
-                if shares_trace or directly_connected:
-                    union(left, right)
-
-        grouped: Dict[int, List[Dict[str, Any]]] = {}
-        for index, anomaly in enumerate(anomalies):
-            grouped.setdefault(find(index), []).append(anomaly)
-        incidents = []
-        for members in grouped.values():
-            services = sorted(item["service_id"] for item in members)
-            onset = min(item.get("anomaly_onset") or item["observed_at"] for item in members)
-            identity = hashlib.sha1(("|".join(services) + "|" + onset).encode("utf-8")).hexdigest()[:12]
-            incidents.append({
-                "incident_id": f"inc-{identity}",
-                "started_at": onset,
-                "affected_services": services,
-                "anomaly_evidence": [item for item in members],
-                "trace_ids": sorted({str(span.get("trace_id", "")) for span in traces if span.get("service_id") in services and span.get("trace_id")}),
-                "log_refs": [str(entry.get("id", "")) for entry in logs if entry.get("service_id") in services and entry.get("id")],
-                "correlation_window_seconds": correlation_window_seconds,
+    def _rank_candidates(
+        self,
+        candidates: List[Dict[str, Any]],
+        telemetry: Dict[str, Dict[str, float]],
+        graph: nx.DiGraph,
+        target_node_id: Optional[str] = None,
+        traces: Optional[List[Dict[str, Any]]] = None,
+        logs: Optional[List[Dict[str, Any]]] = None,
+    ) -> List[Dict[str, Any]]:
+        ranked = []
+        total_nodes = max(graph.number_of_nodes(), 1)
+        for item in candidates:
+            service_id = item["service_id"]
+            obs = telemetry.get(service_id, {})
+            diagnosis = diagnose_fault(service_id, obs)
+            reachable = nx.descendants(graph, service_id) if service_id in graph else set()
+            topological_depth = len(reachable) / total_nodes
+            temporal_lead = 1.0 if any(e.get("source") == "derived_from_trace_status" for e in item["evidence"]) else 0.5
+            target_boost = 1.0 if target_node_id and service_id == target_node_id else 0.0
+            score = 0.4 * item["score"] + 0.3 * topological_depth + 0.2 * temporal_lead + 0.1 * target_boost
+            service_traces = [
+                {"trace_id": str(t.get("trace_id", "")), "span_id": str(t.get("span_id", "")),
+                 "service_id": service_id, "timestamp_unix_nano": int(t.get("timestamp_unix_nano", 0) or 0),
+                 "latency_ms": float(t.get("duration_ms", 0) or 0), "status_code": int(t.get("status_code", 0) or 0)}
+                for t in (traces or [])
+                if str(t.get("service_id", "")) == service_id
+            ][:5]
+            service_logs = [
+                {"log_id": str(l.get("log_id", "")), "service_id": service_id,
+                 "timestamp_unix_nano": int(l.get("timestamp_unix_nano", 0) or 0),
+                 "severity": str(l.get("severity", "INFO")), "message": str(l.get("message", ""))}
+                for l in (logs or [])
+                if str(l.get("service_id", "")) == service_id
+            ][:5]
+            ranked.append({
+                "node_id": service_id,
+                "probability": 0.0,
+                "ranking_score": round(score, 4),
+                "fault_family": diagnosis["fault_family"],
+                "evidence": item["evidence"],
+                "contributing_metrics": [e["metric"] for e in item["evidence"]],
+                "explanation": (
+                    f"{service_id} flagged with {len(item['evidence'])} metric breaches; "
+                    f"ranked by topology, metric severity, and trace onset. Statistical ranking only; "
+                    f"does not establish causality."
+                ),
+                "uncertainty": "inconclusive: multiple upstream and downstream nodes may share correlated symptoms",
+                "trace_refs": service_traces,
+                "log_refs": service_logs,
+                "observed_metrics": obs,
+                "diagnosis_confidence": diagnosis["confidence"],
             })
-        return sorted(incidents, key=lambda incident: (incident["started_at"], incident["incident_id"]))
+        ranked.sort(key=lambda r: (-r["ranking_score"], r["node_id"]))
+        return ranked
 
     @staticmethod
-    def _blast_radius(graph: nx.DiGraph, roots: List[str]) -> List[Dict[str, Any]]:
-        """BFS over configured A-calls-B edges; results are potential impact only."""
-        paths: List[Dict[str, Any]] = []
-        for root in roots:
+    def _blast_radius(graph: nx.DiGraph, root_nodes: List[str]) -> List[Dict[str, Any]]:
+        paths = []
+        for root in root_nodes:
             if root not in graph:
                 continue
-            queue = deque([(root, [root])])
-            visited = {root}
-            while queue:
-                node, path = queue.popleft()
-                if len(path) > 1:
-                    paths.append({
-                        "path_nodes": path,
-                        "propagation_risk": 0.0,
-                        "potential_impact": True,
-                    })
-                for neighbor in sorted(graph.successors(node)):
-                    if neighbor not in visited:
-                        visited.add(neighbor)
-                        queue.append((neighbor, path + [neighbor]))
+            for target in nx.descendants(graph, root):
+                try:
+                    for path in nx.all_simple_paths(graph, root, target, cutoff=4):
+                        paths.append({"path": path, "path_nodes": path, "probability": 0.0, "potential_impact": True, "propagation_risk": 0})
+                except nx.NetworkXError:
+                    continue
+        paths.sort(key=lambda item: (len(item["path"]), item["path"]))
         return paths

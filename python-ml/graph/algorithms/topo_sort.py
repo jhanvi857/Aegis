@@ -66,26 +66,17 @@ def topological_sort_flattened(
     criticality_scores: Optional[Dict[str, float]] = None,
 ) -> List[str]:
     """
-    Returns a flattened 1D list of individual node IDs in topological order.
-    For SCC components containing multiple nodes (cycles), nodes within the component
-    are tie-broken using their criticality scores (highest criticality first).
+    Return node order only for acyclic graphs. A cyclic graph has no node-level
+    topological order, so callers must use ``topological_sort_condensed`` and
+    handle the returned SCC groups explicitly.
     """
+    if not nx.is_directed_acyclic_graph(graph):
+        raise ValueError("node-level topological order is undefined for a cyclic graph; inspect SCC groups")
     condensed_order = topological_sort_condensed(graph)
     flattened: List[str] = []
 
     for component in condensed_order:
-        if len(component) == 1:
-            flattened.append(component[0])
-        else:
-            if criticality_scores:
-                sorted_members = sorted(
-                    component,
-                    key=lambda n: criticality_scores.get(n, 0.0),
-                    reverse=True,
-                )
-            else:
-                sorted_members = sorted(component)
-            flattened.extend(sorted_members)
+        flattened.extend(component)
 
     return flattened
 

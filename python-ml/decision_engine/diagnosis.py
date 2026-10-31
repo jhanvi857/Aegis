@@ -290,55 +290,116 @@ def _get_metric(metrics: Dict[str, float], names: List[str]) -> Optional[float]:
     return None
 
 
-# --- Fault family to action mapping (used by plan_builder) ---
+# --- Fault family to action mapping (used by plan_builder & decision engine) ---
+# Invariant: Never RESTART for contention or latency families.
+# Unknown family -> advisory only, no executable action.
 
-FAULT_FAMILY_ACTIONS = {
+DEFAULT_FAULT_FAMILY_ACTIONS = {
     "database": [
-        {"action": "INCREASE_POOL", "risk": "MEDIUM", "reason": "Expand connection pool to relieve lock contention", "expected_effect": "Reduce db_connection_wait_ms below threshold"},
-        {"action": "RESTART", "risk": "LOW", "reason": "Restart to clear stuck connections and locks", "expected_effect": "Reset connection state"},
+        {"action": "INCREASE_POOL", "risk": "LOW", "reason": "Expand connection pool to relieve lock contention", "expected_effect": "Reduce db_connection_wait_ms below threshold"},
+        {"action": "KILL_BLOCKING_QUERY", "risk": "MEDIUM", "reason": "Terminate blocking query holding row locks", "expected_effect": "Release locks and restore transactional throughput"},
+    ],
+    "db_lock": [
+        {"action": "INCREASE_POOL", "risk": "LOW", "reason": "Expand connection pool to relieve lock contention", "expected_effect": "Reduce db_connection_wait_ms below threshold"},
+        {"action": "KILL_BLOCKING_QUERY", "risk": "MEDIUM", "reason": "Terminate blocking query holding row locks", "expected_effect": "Release locks and restore transactional throughput"},
+    ],
+    "db_contention": [
+        {"action": "INCREASE_POOL", "risk": "LOW", "reason": "Expand connection pool to relieve lock contention", "expected_effect": "Reduce db_connection_wait_ms below threshold"},
+        {"action": "KILL_BLOCKING_QUERY", "risk": "MEDIUM", "reason": "Terminate blocking query holding row locks", "expected_effect": "Release locks and restore transactional throughput"},
+    ],
+    "slow_query": [
+        {"action": "INCREASE_POOL", "risk": "LOW", "reason": "Expand pool to absorb query latency", "expected_effect": "Prevent connection starvation"},
+        {"action": "KILL_BLOCKING_QUERY", "risk": "MEDIUM", "reason": "Cancel long-running slow query execution", "expected_effect": "Free compute resources"},
     ],
     "cache": [
         {"action": "FLUSH_CACHE", "risk": "LOW", "reason": "Purge corrupted cache entries", "expected_effect": "Rebuild cache from backing store"},
-        {"action": "RESTART", "risk": "LOW", "reason": "Restart to reinitialize cache subsystem", "expected_effect": "Full cache cold start"},
+        {"action": "FAILOVER", "risk": "MEDIUM", "reason": "Failover to replica cache cluster", "expected_effect": "Restore cache availability and reduce miss rate"},
+    ],
+    "cache_down": [
+        {"action": "FLUSH_CACHE", "risk": "LOW", "reason": "Purge corrupted cache entries", "expected_effect": "Rebuild cache from backing store"},
+        {"action": "FAILOVER", "risk": "MEDIUM", "reason": "Failover to replica cache cluster", "expected_effect": "Restore cache availability and reduce miss rate"},
     ],
     "queue": [
-        {"action": "SCALE_UP", "risk": "MEDIUM", "reason": "Scale consumers to drain backlog", "expected_effect": "Reduce queue_depth to normal levels"},
-        {"action": "RESTART", "risk": "LOW", "reason": "Restart to clear stuck consumers", "expected_effect": "Reset consumer state"},
+        {"action": "SCALE_UP", "risk": "LOW", "reason": "Scale consumers to drain backlog", "expected_effect": "Reduce queue_depth to normal levels"},
+        {"action": "DRAIN_QUEUE", "risk": "MEDIUM", "reason": "Route messages to secondary consumers or dead-letter queue", "expected_effect": "Clear processing bottleneck"},
+    ],
+    "mq_lag": [
+        {"action": "SCALE_UP", "risk": "LOW", "reason": "Scale consumers to drain backlog", "expected_effect": "Reduce queue_depth to normal levels"},
+        {"action": "DRAIN_QUEUE", "risk": "MEDIUM", "reason": "Route messages to secondary consumers or dead-letter queue", "expected_effect": "Clear processing bottleneck"},
     ],
     "memory_leak": [
-        {"action": "RESTART", "risk": "LOW", "reason": "Restart to reclaim leaked heap memory", "expected_effect": "Reset memory usage to baseline"},
+        {"action": "RESTART", "risk": "HIGH", "reason": "Restart to reclaim leaked heap memory", "expected_effect": "Reset memory usage to baseline"},
         {"action": "SCALE_UP", "risk": "MEDIUM", "reason": "Add replicas to distribute memory pressure", "expected_effect": "Reduce per-instance memory load"},
     ],
     "cpu_saturation": [
-        {"action": "SCALE_UP", "risk": "MEDIUM", "reason": "Scale replicas to distribute CPU load", "expected_effect": "Reduce per-instance CPU usage below threshold"},
-        {"action": "RESTART", "risk": "LOW", "reason": "Restart to clear CPU-bound stuck processes", "expected_effect": "Release compute resources"},
+        {"action": "SCALE_UP", "risk": "LOW", "reason": "Scale replicas to distribute CPU load", "expected_effect": "Reduce per-instance CPU usage below threshold"},
+        {"action": "RESTART", "risk": "MEDIUM", "reason": "Restart container to terminate runaway CPU loop", "expected_effect": "Release compute resources"},
+    ],
+    "cpu_stress": [
+        {"action": "SCALE_UP", "risk": "LOW", "reason": "Scale replicas to distribute CPU load", "expected_effect": "Reduce per-instance CPU usage below threshold"},
+        {"action": "RESTART", "risk": "MEDIUM", "reason": "Restart container to terminate runaway CPU loop", "expected_effect": "Release compute resources"},
     ],
     "network_latency": [
-        {"action": "REROUTE_TRAFFIC", "risk": "HIGH", "reason": "Divert traffic away from high-latency path", "expected_effect": "Restore end-to-end latency SLA"},
-        {"action": "RESTART", "risk": "LOW", "reason": "Restart to reset network connections", "expected_effect": "Clear stale connections"},
+        {"action": "REROUTE_TRAFFIC", "risk": "MEDIUM", "reason": "Divert traffic away from high-latency path", "expected_effect": "Restore end-to-end latency SLA"},
+        {"action": "CIRCUIT_BREAK", "risk": "HIGH", "reason": "Trip circuit breaker to isolate degraded link", "expected_effect": "Prevent cascade failure to callers"},
+    ],
+    "latency": [
+        {"action": "REROUTE_TRAFFIC", "risk": "MEDIUM", "reason": "Divert traffic away from high-latency path", "expected_effect": "Restore end-to-end latency SLA"},
+        {"action": "CIRCUIT_BREAK", "risk": "HIGH", "reason": "Trip circuit breaker to isolate degraded link", "expected_effect": "Prevent cascade failure to callers"},
     ],
     "crash": [
-        {"action": "RESTART", "risk": "LOW", "reason": "Restart crashed service process", "expected_effect": "Restore service availability"},
+        {"action": "RESTART", "risk": "HIGH", "reason": "Restart crashed service process", "expected_effect": "Restore service availability"},
+        {"action": "SCALE_UP", "risk": "MEDIUM", "reason": "Add replicas for redundancy", "expected_effect": "Ensure capacity during recovery"},
+    ],
+    "kill_service": [
+        {"action": "RESTART", "risk": "HIGH", "reason": "Restart crashed service process", "expected_effect": "Restore service availability"},
         {"action": "SCALE_UP", "risk": "MEDIUM", "reason": "Add replicas for redundancy", "expected_effect": "Ensure capacity during recovery"},
     ],
     "packet_loss": [
-        {"action": "REROUTE_TRAFFIC", "risk": "HIGH", "reason": "Divert traffic away from packet loss degraded network interface", "expected_effect": "Eliminate packet drops on critical path"},
-        {"action": "RESTART", "risk": "LOW", "reason": "Restart container network stack", "expected_effect": "Reset TCP socket buffer"},
+        {"action": "REROUTE_TRAFFIC", "risk": "MEDIUM", "reason": "Divert traffic away from packet loss degraded network interface", "expected_effect": "Eliminate packet drops on critical path"},
+        {"action": "CIRCUIT_BREAK", "risk": "HIGH", "reason": "Trip circuit breaker to isolate packet-dropping link", "expected_effect": "Force traffic through healthy path"},
     ],
     "thread_exhaustion": [
-        {"action": "SCALE_UP", "risk": "MEDIUM", "reason": "Scale service replicas to distribute thread pool pressure", "expected_effect": "Reduce active threads per instance below threshold"},
-        {"action": "RESTART", "risk": "LOW", "reason": "Restart container to reset starved thread workers", "expected_effect": "Reclaim stuck worker threads"},
+        {"action": "SCALE_UP", "risk": "LOW", "reason": "Scale service replicas to distribute thread pool pressure", "expected_effect": "Reduce active threads per instance below threshold"},
+        {"action": "CIRCUIT_BREAK", "risk": "HIGH", "reason": "Shed incoming traffic to relieve thread pool", "expected_effect": "Prevent complete process starvation"},
     ],
-    "nominal": [
-        {"action": "RESTART", "risk": "LOW", "reason": "Precautionary restart", "expected_effect": "No expected change"},
-    ],
+    "nominal": [],
 }
+
+
+def _load_actions_from_rulebook() -> Dict[str, List[Dict[str, Any]]]:
+    """Dynamically loads fault_family_actions from rulebook.yaml if available."""
+    try:
+        import yaml
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        path = os.path.join(base_dir, "rulebook.yaml")
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+                if isinstance(data, dict) and "fault_family_actions" in data:
+                    res: Dict[str, List[Dict[str, Any]]] = {}
+                    for fam, acts in data["fault_family_actions"].items():
+                        if isinstance(acts, list):
+                            res[fam] = acts
+                    if res:
+                        return res
+    except Exception:
+        pass
+    return DEFAULT_FAULT_FAMILY_ACTIONS
+
+
+FAULT_FAMILY_ACTIONS = _load_actions_from_rulebook()
 
 
 def get_candidate_actions(fault_family: str, top_k: int = 3) -> List[Dict[str, Any]]:
     """
     Returns the top-k ranked candidate recovery actions for a given fault family.
     Each candidate includes action type, risk level, reason, and expected effect.
+    Returns empty list for nominal or unmapped states (advisory only).
     """
-    candidates = FAULT_FAMILY_ACTIONS.get(fault_family, FAULT_FAMILY_ACTIONS["nominal"])
+    if not fault_family or fault_family == "nominal":
+        return []
+    actions_map = _load_actions_from_rulebook()
+    candidates = actions_map.get(fault_family, [])
     return candidates[:top_k]
+

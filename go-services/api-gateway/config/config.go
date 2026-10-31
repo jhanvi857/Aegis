@@ -11,26 +11,32 @@ import (
 )
 
 type Config struct {
-	ServerPort          string
-	Environment         string // development, staging, production
-	DatabaseURL         string
-	RedisURL            string
-	PythonGRPCAddr      string
-	ChaosEngineURL      string
-	RecoveryEngineURL   string
-	TLSEnabled          bool
-	TLSCertFile         string
-	TLSKeyFile          string
-	CORSAllowedOrigins  []string
-	ShutdownTimeout     time.Duration
-	LogLevel            string
-	DemoMode            bool
-	AutonomousRecovery  bool
-	ChaosEnabled        bool
+	ServerPort           string
+	Environment          string // development, staging, production
+	DatabaseURL          string
+	RedisURL             string
+	PythonGRPCAddr       string
+	ChaosEngineURL       string
+	RecoveryEngineURL    string
+	TLSEnabled           bool
+	TLSCertFile          string
+	TLSKeyFile           string
+	CORSAllowedOrigins   []string
+	ShutdownTimeout      time.Duration
+	LogLevel             string
+	DemoMode             bool
+	AutonomousRecovery   bool
+	ChaosEnabled         bool
 	AllowProductionChaos bool
-	MetricsEnabled      bool
-	BootstrapAdminEmail string
-	BootstrapAdminPass  string
+	MetricsEnabled       bool
+	OTLPHTTPPort         string
+	OTLPGRPCPort         string
+	IngestToken          string
+	PrometheusURL        string
+	ScrapeTargets        []string
+	ScrapeFileSD         string
+	BootstrapAdminEmail  string
+	BootstrapAdminPass   string
 }
 
 func LoadConfig() (*Config, error) {
@@ -85,6 +91,13 @@ func LoadConfig() (*Config, error) {
 		metricsEnabled = parseBool(val)
 	}
 
+	scrapeTargets := make([]string, 0)
+	for _, target := range strings.Split(os.Getenv("AEGIS_SCRAPE_TARGETS"), ",") {
+		if target = strings.TrimSpace(target); target != "" {
+			scrapeTargets = append(scrapeTargets, target)
+		}
+	}
+
 	chaosDefault := "true"
 	if env == "production" {
 		chaosDefault = "false"
@@ -117,6 +130,12 @@ func LoadConfig() (*Config, error) {
 		ChaosEnabled:         chaosEnabled,
 		AllowProductionChaos: allowProdChaos,
 		MetricsEnabled:       metricsEnabled,
+		OTLPHTTPPort:         getEnv("AEGIS_OTLP_HTTP_PORT", "4318"),
+		OTLPGRPCPort:         getEnv("AEGIS_OTLP_GRPC_PORT", ""),
+		IngestToken:          os.Getenv("AEGIS_INGEST_TOKEN"),
+		PrometheusURL:        getEnv("AEGIS_PROM_URL", ""),
+		ScrapeTargets:        scrapeTargets,
+		ScrapeFileSD:         getEnv("AEGIS_SCRAPE_FILE_SD", ""),
 		BootstrapAdminEmail:  adminEmail,
 		BootstrapAdminPass:   adminPass,
 	}

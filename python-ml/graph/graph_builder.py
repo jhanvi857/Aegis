@@ -5,6 +5,7 @@ Annotates nodes and edges with real-time health, latency, CPU, and error rate me
 
 from typing import Dict, Any, List, Optional
 import time
+import math
 import os
 import yaml
 import networkx as nx
@@ -60,15 +61,10 @@ class GraphBuilder:
                     port=node.get("port", 8080),
                     health_endpoint=node.get("health_endpoint", "/health"),
                     metrics_endpoint=node.get("metrics_endpoint", "/metrics"),
-                    status="healthy",
+                    # A configured node is not proof that it is currently healthy.
+                    status="unknown",
                     metadata=node.get("metadata", {}),
-                    metrics={
-                        "cpu_usage": 20.0,
-                        "memory_usage": 40.0,
-                        "p95_latency_ms": 25.0,
-                        "error_rate": 0.001,
-                        "rps": 150.0,
-                    },
+                    metrics={},
                     last_updated_ns=now_ns,
                 )
 
@@ -79,9 +75,7 @@ class GraphBuilder:
                         source_id,
                         dep_id,
                         relationship="calls",
-                        latency_ms=25.0,
-                        error_rate=0.001,
-                        throughput=150.0,
+                        provenance="configured",
                         last_updated_ns=now_ns,
                     )
 
@@ -113,7 +107,12 @@ class GraphBuilder:
         for m in metrics_list:
             svc_id = m.get("service_id")
             name = m.get("metric_name")
-            val = float(m.get("value", 0.0))
+            try:
+                val = float(m["value"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not math.isfinite(val):
+                continue
             if svc_id and name:
                 if svc_id not in node_metric_updates:
                     node_metric_updates[svc_id] = {}
@@ -127,7 +126,7 @@ class GraphBuilder:
                     id=node_id,
                     name=node_id,
                     type="service",
-                    status="healthy",
+                    status="unknown",
                     metadata={},
                     metrics={},
                     last_updated_ns=now_ns,
@@ -139,14 +138,24 @@ class GraphBuilder:
             self.graph.nodes[node_id]["last_updated_ns"] = now_ns
 
             # Dynamic Health Assessment
-            cpu = current_metrics.get("cpu_usage", 0.0)
-            mem = current_metrics.get("memory_usage", 0.0)
-            lat = current_metrics.get("p95_latency_ms", 0.0)
-            err = current_metrics.get("error_rate", 0.0)
+            # Only evaluate signals that were actually observed. Missing signals
+            # are not zeros and cannot be used as evidence of healthy behavior.
+            err = current_metrics.get("error_rate")
+            lat = current_metrics.get("p95_latency_ms")
+            cpu = current_metrics.get("cpu_usage")
+            mem = current_metrics.get("memory_usage")
+            observed = {key: value for key, value in metrics.items()}
+            if not observed:
+                continue
 
-            if err >= 0.20 or lat >= 3000.0:
+            if (err is not None and err >= 0.20) or (lat is not None and lat >= 3000.0):
                 status = "critical"
-            elif cpu >= 85.0 or mem >= 85.0 or err >= 0.05 or lat >= 500.0:
+            elif (
+                (cpu is not None and cpu >= 85.0)
+                or (mem is not None and mem >= 85.0)
+                or (err is not None and err >= 0.05)
+                or (lat is not None and lat >= 500.0)
+            ):
                 status = "degraded"
             else:
                 status = "healthy"
@@ -157,8 +166,10 @@ class GraphBuilder:
             # Propagate updated latency and error rate to incoming edges
             for caller in self.graph.predecessors(node_id):
                 if self.graph.has_edge(caller, node_id):
-                    self.graph.edges[caller, node_id]["latency_ms"] = lat
-                    self.graph.edges[caller, node_id]["error_rate"] = err
+                    if lat is not None:
+                        self.graph.edges[caller, node_id]["latency_ms"] = lat
+                    if err is not None:
+                        self.graph.edges[caller, node_id]["error_rate"] = err
                     if "rps" in current_metrics:
                         self.graph.edges[caller, node_id]["throughput"] = current_metrics["rps"]
                     self.graph.edges[caller, node_id]["last_updated_ns"] = now_ns
@@ -184,7 +195,7 @@ class GraphBuilder:
                 "id": node_id,
                 "name": data.get("name", node_id),
                 "type": data.get("type", "service"),
-                "status": data.get("status", "healthy"),
+                "status": data.get("status", "unknown"),
                 "metadata": {str(k): str(v) for k, v in data.get("metadata", {}).items()},
                 "metrics": {str(k): float(v) for k, v in data.get("metrics", {}).items()},
             })

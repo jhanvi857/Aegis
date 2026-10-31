@@ -233,9 +233,6 @@ func CreateRegistryServiceHandler(w http.ResponseWriter, r *http.Request) {
 	if svc.Tier == "" {
 		svc.Tier = "tier-2"
 	}
-	if svc.Capabilities == "" {
-		svc.Capabilities = "scale,restart"
-	}
 	if svc.Replicas <= 0 {
 		svc.Replicas = 1
 	}
@@ -879,10 +876,20 @@ type TopologyImportPayload struct {
 	Description string                    `json:"description,omitempty"`
 	Owner       string                    `json:"owner,omitempty"`
 	Services    []storage.TopologyService `json:"services,omitempty"`
-	Nodes       []struct {
-		storage.TopologyService
-		Dependencies []string `json:"dependencies"`
-	} `json:"nodes,omitempty"`
+	Nodes []struct {
+		ID           string   `json:"id" yaml:"id"`
+		Name         string   `json:"name" yaml:"name"`
+		Type         string   `json:"type" yaml:"type"`
+		Host         string   `json:"host" yaml:"host"`
+		Port         int      `json:"port" yaml:"port"`
+		Tier         string   `json:"tier" yaml:"tier"`
+		Dependencies []string `json:"dependencies" yaml:"dependencies"`
+		Metadata     struct {
+			Role string `json:"role" yaml:"role"`
+			Tier string `json:"tier" yaml:"tier"`
+		} `json:"metadata" yaml:"metadata"`
+		storage.TopologyService `yaml:",inline"`
+	} `json:"nodes,omitempty" yaml:"nodes,omitempty"`
 	Edges []storage.TopologyEdge `json:"edges,omitempty"`
 }
 
@@ -905,7 +912,7 @@ func ImportTopologyHandler(w http.ResponseWriter, r *http.Request) {
 
 	var payload TopologyImportPayload
 	contentType := r.Header.Get("Content-Type")
-	isYAML := strings.Contains(contentType, "yaml") || strings.HasPrefix(strings.TrimSpace(string(bodyBytes)), "---") || strings.Contains(string(bodyBytes), "services:")
+	isYAML := strings.Contains(contentType, "yaml") || strings.HasPrefix(strings.TrimSpace(string(bodyBytes)), "---") || strings.Contains(string(bodyBytes), "services:") || strings.Contains(string(bodyBytes), "nodes:")
 	isCSV := strings.Contains(contentType, "csv")
 
 	if isYAML && !strings.Contains(contentType, "json") {
@@ -973,8 +980,37 @@ func ImportTopologyHandler(w http.ResponseWriter, r *http.Request) {
 		payload.Services = make([]storage.TopologyService, 0, len(payload.Nodes))
 		for _, n := range payload.Nodes {
 			svc := n.TopologyService
+			if svc.ID == "" {
+				svc.ID = strings.TrimSpace(n.ID)
+			}
+			if svc.Name == "" {
+				svc.Name = strings.TrimSpace(n.Name)
+			}
+			if svc.Name == "" {
+				svc.Name = svc.ID
+			}
+			if svc.Type == "" {
+				svc.Type = strings.TrimSpace(n.Type)
+			}
+			if svc.Tier == "" {
+				if n.Tier != "" {
+					svc.Tier = strings.TrimSpace(n.Tier)
+				} else if n.Metadata.Tier != "" {
+					svc.Tier = strings.TrimSpace(n.Metadata.Tier)
+				}
+			}
+			if svc.MonitoringMode == "" {
+				svc.MonitoringMode = "observe"
+			}
+			if svc.ID == "" {
+				continue
+			}
 			payload.Services = append(payload.Services, svc)
 			for _, dep := range n.Dependencies {
+				dep = strings.TrimSpace(dep)
+				if dep == "" {
+					continue
+				}
 				payload.Edges = append(payload.Edges, storage.TopologyEdge{
 					SourceServiceID:  svc.ID,
 					TargetServiceID:  dep,

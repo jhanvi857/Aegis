@@ -13,21 +13,21 @@ import (
 )
 
 type IngestSpanItem struct {
-	TraceID         string                 `json:"traceId"`
-	SpanID          string                 `json:"spanId"`
-	ParentSpanID    string                 `json:"parentSpanId,omitempty"`
-	ServiceID       string                 `json:"serviceId"`
-	SourceServiceID string                 `json:"sourceServiceId,omitempty"`
-	TargetServiceID string                 `json:"targetServiceId,omitempty"`
-	OperationName   string                 `json:"operationName,omitempty"`
-	StartTimeUnixNano int64                `json:"startTimeUnixNano,omitempty"`
-	EndTimeUnixNano   int64                `json:"endTimeUnixNano,omitempty"`
-	DurationMs      float64                `json:"durationMs"`
-	StatusCode      int                    `json:"statusCode"`
-	Attributes      map[string]interface{} `json:"attributes,omitempty"`
-	Namespace       string                 `json:"namespace,omitempty"`
-	ClusterID       string                 `json:"clusterId,omitempty"`
-	ResourceAttributes map[string]string   `json:"resourceAttributes,omitempty"`
+	TraceID            string                 `json:"traceId"`
+	SpanID             string                 `json:"spanId"`
+	ParentSpanID       string                 `json:"parentSpanId,omitempty"`
+	ServiceID          string                 `json:"serviceId"`
+	SourceServiceID    string                 `json:"sourceServiceId,omitempty"`
+	TargetServiceID    string                 `json:"targetServiceId,omitempty"`
+	OperationName      string                 `json:"operationName,omitempty"`
+	StartTimeUnixNano  int64                  `json:"startTimeUnixNano,omitempty"`
+	EndTimeUnixNano    int64                  `json:"endTimeUnixNano,omitempty"`
+	DurationMs         float64                `json:"durationMs"`
+	StatusCode         int                    `json:"statusCode"`
+	Attributes         map[string]interface{} `json:"attributes,omitempty"`
+	Namespace          string                 `json:"namespace,omitempty"`
+	ClusterID          string                 `json:"clusterId,omitempty"`
+	ResourceAttributes map[string]string      `json:"resourceAttributes,omitempty"`
 }
 
 type IngestSpansPayload struct {
@@ -88,7 +88,7 @@ func IngestSpansHandler(w http.ResponseWriter, r *http.Request) {
 		if store == nil {
 			continue
 		}
-			edge, err := store.AutoDiscoverSpanEdge(r.Context(), source, target, ns, cluster, span.DurationMs, isErr)
+		edge, err := store.AutoDiscoverSpanEdge(r.Context(), source, target, ns, cluster, span.DurationMs, isErr)
 		if err == nil && edge != nil {
 			discoveredCount++
 			updatedEdges = append(updatedEdges, edge)
@@ -130,8 +130,8 @@ func IngestSpansHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Add target to source dependencies only if edge is active
-			if edge.State == "active" {
+			// Add target to source dependencies unless rejected
+			if edge.State != "rejected" {
 				srcSvc := State.Services[source]
 				hasDep := false
 				for _, d := range srcSvc.Dependencies {
@@ -158,39 +158,47 @@ func IngestSpansHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func rememberRecentSpans(spans []IngestSpanItem) {
-	if len(spans) == 0 { return }
+	if len(spans) == 0 {
+		return
+	}
 	State.mu.Lock()
 	defer State.mu.Unlock()
 	seen := make(map[string]struct{}, len(State.Traces)+len(spans))
 	for _, existing := range State.Traces {
-		if existing.TraceID != "" && existing.SpanID != "" { seen[existing.TraceID+":"+existing.SpanID] = struct{}{} }
+		if existing.TraceID != "" && existing.SpanID != "" {
+			seen[existing.TraceID+":"+existing.SpanID] = struct{}{}
+		}
 	}
 	for _, span := range spans {
 		key := span.TraceID + ":" + span.SpanID
 		if span.TraceID != "" && span.SpanID != "" {
-			if _, exists := seen[key]; exists { continue }
+			if _, exists := seen[key]; exists {
+				continue
+			}
 			seen[key] = struct{}{}
 		}
 		State.Traces = append(State.Traces, span)
 	}
-	if len(State.Traces) > 10000 { State.Traces = State.Traces[len(State.Traces)-10000:] }
+	if len(State.Traces) > 10000 {
+		State.Traces = State.Traces[len(State.Traces)-10000:]
+	}
 }
 
 type IngestMetricItem struct {
-	ServiceID  string  `json:"serviceId"`
-	CPU        float64 `json:"cpu"`
-	Memory     float64 `json:"memory"`
-	Latency    float64 `json:"latency"`
-	RPS        float64 `json:"rps"`
-	ErrorRate  float64 `json:"errorRate"`
-	QueueDepth int     `json:"queueDepth,omitempty"`
-	Status     string  `json:"status,omitempty"`
-	Source     string  `json:"source,omitempty"`
-	Namespace  string  `json:"namespace,omitempty"`
-	ClusterID  string  `json:"clusterId,omitempty"`
-	ResourceAttributes map[string]string `json:"resourceAttributes,omitempty"`
+	ServiceID          string               `json:"serviceId"`
+	CPU                float64              `json:"cpu"`
+	Memory             float64              `json:"memory"`
+	Latency            float64              `json:"latency"`
+	RPS                float64              `json:"rps"`
+	ErrorRate          float64              `json:"errorRate"`
+	QueueDepth         int                  `json:"queueDepth,omitempty"`
+	Status             string               `json:"status,omitempty"`
+	Source             string               `json:"source,omitempty"`
+	Namespace          string               `json:"namespace,omitempty"`
+	ClusterID          string               `json:"clusterId,omitempty"`
+	ResourceAttributes map[string]string    `json:"resourceAttributes,omitempty"`
 	ObservedTimestamps map[string]time.Time `json:"observedTimestamps,omitempty"`
-	DBWait     float64 `json:"dbWait,omitempty"`
+	DBWait             float64              `json:"dbWait,omitempty"`
 	// Observed preserves sparse telemetry semantics for OTLP and clients that
 	// explicitly submit partial service measurements.
 	Observed map[string]float64 `json:"observed,omitempty"`
@@ -203,33 +211,65 @@ type IngestMetricsPayload struct {
 // EnsureDiscoveredService creates identity records without claiming that metric
 // data was received. Logs and traces can discover a service independently.
 func EnsureDiscoveredService(ctx context.Context, id, source, namespace, clusterID string, resourceAttributes map[string]string) {
-	if id == "" { return }
+	if id == "" {
+		return
+	}
 	store := GetAuthStore()
 	if store != nil {
 		registered, err := store.GetService(ctx, id)
 		if err != nil {
-			if namespace == "" { namespace = "default" }
-			if clusterID == "" { clusterID = "default" }
-			_ = store.UpsertService(ctx, &storage.TopologyService{ID:id, Name:id, Type:"service", Namespace:namespace, ClusterID:clusterID, Tier:"tier-2", Replicas:1, MaxReplicas:10, MonitoringMode:"observe", Source:source, DataStatus:"unknown", ResourceAttributes:resourceAttributes})
+			if namespace == "" {
+				namespace = "default"
+			}
+			if clusterID == "" {
+				clusterID = "default"
+			}
+			_ = store.UpsertService(ctx, &storage.TopologyService{ID: id, Name: id, Type: "service", Namespace: namespace, ClusterID: clusterID, Tier: "tier-2", Replicas: 1, MaxReplicas: 10, MonitoringMode: "observe", Source: source, DataStatus: "unknown", ResourceAttributes: resourceAttributes})
 		} else {
 			changed := false
-			if registered.ResourceAttributes == nil { registered.ResourceAttributes = map[string]string{} }
-			for key, value := range resourceAttributes { if registered.ResourceAttributes[key] != value { registered.ResourceAttributes[key] = value; changed = true } }
-			if source != "" && registered.Source != source { registered.Source = source; changed = true }
-			if namespace != "" && registered.Namespace != namespace { registered.Namespace = namespace; changed = true }
-			if clusterID != "" && registered.ClusterID != clusterID { registered.ClusterID = clusterID; changed = true }
-			if changed { _ = store.UpsertService(ctx, registered) }
+			if registered.ResourceAttributes == nil {
+				registered.ResourceAttributes = map[string]string{}
+			}
+			for key, value := range resourceAttributes {
+				if registered.ResourceAttributes[key] != value {
+					registered.ResourceAttributes[key] = value
+					changed = true
+				}
+			}
+			if source != "" && registered.Source != source {
+				registered.Source = source
+				changed = true
+			}
+			if namespace != "" && registered.Namespace != namespace {
+				registered.Namespace = namespace
+				changed = true
+			}
+			if clusterID != "" && registered.ClusterID != clusterID {
+				registered.ClusterID = clusterID
+				changed = true
+			}
+			if changed {
+				_ = store.UpsertService(ctx, registered)
+			}
 		}
 	}
 	State.mu.Lock()
 	defer State.mu.Unlock()
 	if existing, ok := State.Services[id]; ok {
-		if source != "" { existing.Source = source }
-		if namespace != "" { existing.Namespace = namespace }
-		if clusterID != "" { existing.ClusterID = clusterID }
-		if len(resourceAttributes) > 0 { existing.ResourceAttributes = resourceAttributes }
+		if source != "" {
+			existing.Source = source
+		}
+		if namespace != "" {
+			existing.Namespace = namespace
+		}
+		if clusterID != "" {
+			existing.ClusterID = clusterID
+		}
+		if len(resourceAttributes) > 0 {
+			existing.ResourceAttributes = resourceAttributes
+		}
 	} else {
-		State.Services[id] = &Microservice{ID:id, Name:id, Type:"service", Status:"unknown", DataStatus:"unknown", Replicas:1, MaxReplicas:10, Namespace:namespace, ClusterID:clusterID, ResourceAttributes:resourceAttributes, Source:source, Dependencies:[]string{}, History:[]ServiceMetric{}, SignalLastSeen:map[string]time.Time{}}
+		State.Services[id] = &Microservice{ID: id, Name: id, Type: "service", Status: "unknown", DataStatus: "unknown", Replicas: 1, MaxReplicas: 10, Namespace: namespace, ClusterID: clusterID, ResourceAttributes: resourceAttributes, Source: source, Dependencies: []string{}, History: []ServiceMetric{}, SignalLastSeen: map[string]time.Time{}}
 		State.ServiceOrder = append(State.ServiceOrder, id)
 	}
 }
@@ -336,14 +376,26 @@ func IngestMetricsBatch(ctx context.Context, metrics []IngestMetricItem) int {
 		arrivalTime := time.Now().UTC()
 		accepted := make(map[string]float64, len(observed))
 		signalTimes := make(map[string]time.Time, len(observed))
-		if svc.SignalLastSeen == nil { svc.SignalLastSeen = make(map[string]time.Time) }
+		if svc.SignalLastSeen == nil {
+			svc.SignalLastSeen = make(map[string]time.Time)
+		}
 		for signal, value := range observed {
-			if math.IsNaN(value) || math.IsInf(value, 0) { continue }
+			if math.IsNaN(value) || math.IsInf(value, 0) {
+				continue
+			}
 			signalTime := m.ObservedTimestamps[signal]
-			if signalTime.IsZero() { signalTime = arrivalTime }
-			if signalTime.After(arrivalTime.Add(30 * time.Second)) { continue }
-			if signalTime.After(arrivalTime) { signalTime = arrivalTime }
-			if previous := svc.SignalLastSeen[signal]; !previous.IsZero() && !signalTime.After(previous) { continue }
+			if signalTime.IsZero() {
+				signalTime = arrivalTime
+			}
+			if signalTime.After(arrivalTime.Add(30 * time.Second)) {
+				continue
+			}
+			if signalTime.After(arrivalTime) {
+				signalTime = arrivalTime
+			}
+			if previous := svc.SignalLastSeen[signal]; !previous.IsZero() && !signalTime.After(previous) {
+				continue
+			}
 			accepted[signal] = value
 			signalTimes[signal] = signalTime
 			svc.SignalLastSeen[signal] = signalTime
@@ -355,13 +407,38 @@ func IngestMetricsBatch(ctx context.Context, metrics []IngestMetricItem) int {
 				svc.DataStatus = "fresh"
 				svc.LastSeen = arrivalTime
 				svc.LastIngestTime = arrivalTime
-				if regSvc != nil && store != nil { regSvc.Status = "offline"; regSvc.DataStatus = "fresh"; regSvc.LastSeen = &arrivalTime; regSvc.LastTelemetryTime = &arrivalTime; _ = store.UpsertService(ctx, regSvc) }
+				if regSvc != nil && store != nil {
+					regSvc.Status = "offline"
+					regSvc.DataStatus = "fresh"
+					regSvc.LastSeen = &arrivalTime
+					regSvc.LastTelemetryTime = &arrivalTime
+					_ = store.UpsertService(ctx, regSvc)
+				}
+			} else if m.Source == "prom" && m.Status == "unknown" {
+				// A successful Prometheus `up` sample is fresh reachability evidence,
+				// but it is not application-health evidence. Keep health unknown and
+				// advance freshness without inventing a metric value.
+				svc.Status = "unknown"
+				svc.DataStatus = "fresh"
+				svc.LastSeen = arrivalTime
+				svc.LastIngestTime = arrivalTime
+				svc.Source = m.Source
+				if regSvc != nil && store != nil {
+					regSvc.Status = "unknown"
+					regSvc.DataStatus = "fresh"
+					regSvc.LastSeen = &arrivalTime
+					regSvc.LastTelemetryTime = &arrivalTime
+					regSvc.Source = m.Source
+					_ = store.UpsertService(ctx, regSvc)
+				}
 			}
 			updatedCount++
 			continue
 		}
 		svc.ObservedSignals = svc.ObservedSignals[:0]
-		for signal := range svc.SignalLastSeen { svc.ObservedSignals = append(svc.ObservedSignals, signal) }
+		for signal := range svc.SignalLastSeen {
+			svc.ObservedSignals = append(svc.ObservedSignals, signal)
+		}
 		sort.Strings(svc.ObservedSignals)
 		if value, ok := observed["cpu"]; ok {
 			svc.CPU = value
@@ -385,22 +462,41 @@ func IngestMetricsBatch(ctx context.Context, metrics []IngestMetricItem) int {
 			svc.DBWait = value
 		}
 		svc.LastSeen = arrivalTime
-		for _, signalTime := range signalTimes { if signalTime.After(svc.LastIngestTime) { svc.LastIngestTime = signalTime } }
+		for _, signalTime := range signalTimes {
+			if signalTime.After(svc.LastIngestTime) {
+				svc.LastIngestTime = signalTime
+			}
+		}
 		freshnessWindow := 2 * time.Duration(getIncidentGateConfig().ScrapeIntervalSec) * time.Second
-		if freshnessWindow <= 0 { freshnessWindow = 2 * time.Second }
+		if freshnessWindow <= 0 {
+			freshnessWindow = 2 * time.Second
+		}
 		svc.DataStatus = "fresh"
-		if arrivalTime.Sub(svc.LastIngestTime) > freshnessWindow { svc.DataStatus = "stale"; svc.Status = "unknown" }
+		if arrivalTime.Sub(svc.LastIngestTime) > freshnessWindow {
+			svc.DataStatus = "stale"
+			svc.Status = "unknown"
+		}
 		if regSvc != nil && store != nil {
 			latestSignalTime := svc.LastIngestTime.UTC()
 			regSvc.LastTelemetryTime = &latestSignalTime
 			regSvc.LastSeen = &arrivalTime
 			regSvc.DataStatus = svc.DataStatus
-			if m.Source != "" { regSvc.Source = m.Source }
-			if m.Namespace != "" { regSvc.Namespace = m.Namespace }
-			if m.ClusterID != "" { regSvc.ClusterID = m.ClusterID }
+			if m.Source != "" {
+				regSvc.Source = m.Source
+			}
+			if m.Namespace != "" {
+				regSvc.Namespace = m.Namespace
+			}
+			if m.ClusterID != "" {
+				regSvc.ClusterID = m.ClusterID
+			}
 			if len(m.ResourceAttributes) > 0 {
-				if regSvc.ResourceAttributes == nil { regSvc.ResourceAttributes = make(map[string]string) }
-				for key, value := range m.ResourceAttributes { regSvc.ResourceAttributes[key] = value }
+				if regSvc.ResourceAttributes == nil {
+					regSvc.ResourceAttributes = make(map[string]string)
+				}
+				for key, value := range m.ResourceAttributes {
+					regSvc.ResourceAttributes[key] = value
+				}
 			}
 		}
 		if m.Source != "" {
@@ -414,7 +510,9 @@ func IngestMetricsBatch(ctx context.Context, metrics []IngestMetricItem) int {
 		}
 		if len(m.ResourceAttributes) > 0 {
 			svc.ResourceAttributes = make(map[string]string, len(m.ResourceAttributes))
-			for key, value := range m.ResourceAttributes { svc.ResourceAttributes[key] = value }
+			for key, value := range m.ResourceAttributes {
+				svc.ResourceAttributes[key] = value
+			}
 		}
 		if regSvc != nil && store != nil {
 			if value, ok := observed["cpu"]; ok {

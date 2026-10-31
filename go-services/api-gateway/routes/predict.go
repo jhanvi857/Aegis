@@ -35,7 +35,7 @@ func getIncidentGateConfig() IncidentGateConfig {
 	return IncidentGateConfig{
 		MinProb:                getEnvFloat("AEGIS_INCIDENT_MIN_PROB", 50.0),
 		MinWindows:             getEnvInt("AEGIS_INCIDENT_MIN_WINDOWS", 2),
-		ScrapeIntervalSec:      getEnvInt("AEGIS_SCRAPE_INTERVAL_SEC", 2),
+		ScrapeIntervalSec:      getEnvInt("AEGIS_SCRAPE_INTERVAL_SEC", getEnvInt("AEGIS_SCRAPE_INTERVAL", 2)),
 		CPUThreshold:           getEnvFloat("AEGIS_CPU_BREACH_THRESHOLD", 85.0),
 		LatencyThreshold:       getEnvFloat("AEGIS_LATENCY_BREACH_THRESHOLD", 300.0),
 		ErrorThreshold:         getEnvFloat("AEGIS_ERROR_BREACH_THRESHOLD", 0.10),
@@ -73,7 +73,8 @@ func isMetricBreached(svc *Microservice, cfg IncidentGateConfig) bool {
 	if svc == nil {
 		return false
 	}
-	return svc.CPU >= cfg.CPUThreshold ||
+	return svc.Status == "offline" || svc.Status == "failed" ||
+		svc.CPU >= cfg.CPUThreshold ||
 		svc.Latency >= cfg.LatencyThreshold ||
 		svc.ErrorRate >= cfg.ErrorThreshold ||
 		svc.DBWait >= cfg.DBWaitThreshold ||
@@ -224,6 +225,9 @@ func ComputePredictionOutput() PredictionOutput {
 		}
 		// Compute deviation score from normalized telemetry metrics
 		dev := 0.0
+		if svc.Status == "offline" || svc.Status == "failed" {
+			dev = math.Max(dev, cfg.MinProb/8.0)
+		}
 		if svc.DBWait > 0 {
 			dev += (svc.DBWait / 200.0) * 4.0
 		}
@@ -336,33 +340,45 @@ func ComputePredictionOutput() PredictionOutput {
 		nodeMetrics := make(map[string]float64)
 		for name, value := range allNodeMetrics {
 			signal := name
-			if signal == "latency_ms" { signal = "latency" }
-			if signal == "db_connection_wait_ms" { signal = "db_wait" }
+			if signal == "latency_ms" {
+				signal = "latency"
+			}
+			if signal == "db_connection_wait_ms" {
+				signal = "db_wait"
+			}
 			lastSeen, observed := svc.SignalLastSeen[signal]
-			if !observed || time.Since(lastSeen) > staleThreshold { continue }
+			if !observed || time.Since(lastSeen) > staleThreshold {
+				continue
+			}
 			// Explicitly observed zero values are valid telemetry.
 			nodeMetrics[name] = value
 			metricPoints = append(metricPoints, &telemetrypb.MetricPoint{
-					TimestampUnixNano: lastSeen.UnixNano(),
-					ServiceId:         svc.ID,
-					MetricName:        name,
-					Value:             value,
-					Unit:              metricUnit(name),
-					Labels:            svc.ResourceAttributes,
-				})
+				TimestampUnixNano: lastSeen.UnixNano(),
+				ServiceId:         svc.ID,
+				MetricName:        name,
+				Value:             value,
+				Unit:              metricUnit(name),
+				Labels:            svc.ResourceAttributes,
+			})
 		}
 
 		metadata := make(map[string]string, len(svc.ResourceAttributes)+2)
-		if svc.Namespace != "" { metadata["service.namespace"] = svc.Namespace }
-		if svc.ClusterID != "" { metadata["k8s.cluster.name"] = svc.ClusterID }
-		for key, value := range svc.ResourceAttributes { metadata[key] = value }
+		if svc.Namespace != "" {
+			metadata["service.namespace"] = svc.Namespace
+		}
+		if svc.ClusterID != "" {
+			metadata["k8s.cluster.name"] = svc.ClusterID
+		}
+		for key, value := range svc.ResourceAttributes {
+			metadata[key] = value
+		}
 		snapshotNodes = append(snapshotNodes, &graphpb.Node{
-			Id:      svc.ID,
-			Name:    svc.Name,
-			Type:    svc.Type,
-			Status:  svc.Status,
+			Id:       svc.ID,
+			Name:     svc.Name,
+			Type:     svc.Type,
+			Status:   svc.Status,
 			Metadata: metadata,
-			Metrics: nodeMetrics,
+			Metrics:  nodeMetrics,
 		})
 
 		for _, dep := range svc.Dependencies {
@@ -381,22 +397,36 @@ func ComputePredictionOutput() PredictionOutput {
 	// records to the RCA stage. No relationship is inferred from log text alone.
 	cutoffNs := nowNs - int64(5*time.Minute)
 	for _, entry := range State.Logs {
-		if entry.ServiceID == "" { continue }
+		if entry.ServiceID == "" {
+			continue
+		}
 		timestampNs := nowNs
-		if parsed, err := time.Parse(time.RFC3339Nano, entry.Timestamp); err == nil { timestampNs = parsed.UnixNano() }
-		if timestampNs < cutoffNs { continue }
+		if parsed, err := time.Parse(time.RFC3339Nano, entry.Timestamp); err == nil {
+			timestampNs = parsed.UnixNano()
+		}
+		if timestampNs < cutoffNs {
+			continue
+		}
 		logRecords = append(logRecords, &telemetrypb.LogEntry{
 			TimestampUnixNano: timestampNs, ServiceId: entry.ServiceID, Level: entry.Level,
 			Message: entry.Message, TraceId: entry.TraceID, Attributes: entry.ResourceAttributes,
 		})
 	}
 	traceStart := 0
-	if len(State.Traces) > 2000 { traceStart = len(State.Traces) - 2000 }
+	if len(State.Traces) > 2000 {
+		traceStart = len(State.Traces) - 2000
+	}
 	for _, span := range State.Traces[traceStart:] {
-		if span.ServiceID == "" || span.EndTimeUnixNano < cutoffNs { continue }
+		if span.ServiceID == "" || span.EndTimeUnixNano < cutoffNs {
+			continue
+		}
 		attributes := make(map[string]string, len(span.Attributes)+len(span.ResourceAttributes))
-		for key, value := range span.ResourceAttributes { attributes[key] = value }
-		for key, value := range span.Attributes { attributes[key] = fmt.Sprint(value) }
+		for key, value := range span.ResourceAttributes {
+			attributes[key] = value
+		}
+		for key, value := range span.Attributes {
+			attributes[key] = fmt.Sprint(value)
+		}
 		traceSpans = append(traceSpans, &telemetrypb.TraceSpan{
 			TraceId: span.TraceID, SpanId: span.SpanID, ParentSpanId: span.ParentSpanID,
 			ServiceId: span.ServiceID, OperationName: span.OperationName,
@@ -416,8 +446,8 @@ func ComputePredictionOutput() PredictionOutput {
 		},
 		RecentTelemetry: &telemetrypb.TelemetryBatch{
 			Metrics: metricPoints,
-			Logs: logRecords,
-			Traces: traceSpans,
+			Logs:    logRecords,
+			Traces:  traceSpans,
 		},
 		TargetNodeId: targetServiceID,
 	}
@@ -434,6 +464,7 @@ func ComputePredictionOutput() PredictionOutput {
 	rawConf := 0.0
 	var perNodeScores = make(map[string]float64)
 	engineName := "evidence_only_advisory"
+	fallbackReason := ""
 	modelVersion := "evidence-only"
 	calibratedConf := 0.0
 	confLabel := "uncalibrated statistical ranking"
@@ -447,8 +478,9 @@ func ComputePredictionOutput() PredictionOutput {
 		if grpcErr == nil && resp != nil {
 			engineName = resp.Engine
 			if engineName == "" {
-				engineName = "statistical_baseline"
+				engineName = "baseline"
 			}
+			fallbackReason = resp.FallbackReason
 			modelVersion = resp.ModelVersion
 			if modelVersion == "" {
 				modelVersion = "service-baseline-v1"
@@ -476,9 +508,11 @@ func ComputePredictionOutput() PredictionOutput {
 					Explanation: candidate.Explanation, TraceRefs: append([]string(nil), candidate.TraceRefs...),
 					LogRefs: append([]string(nil), candidate.LogRefs...),
 				}
-				if candidate.AnomalyOnsetUnixNano > 0 { item.AnomalyOnset = time.Unix(0, candidate.AnomalyOnsetUnixNano).UTC().Format(time.RFC3339Nano) }
+				if candidate.AnomalyOnsetUnixNano > 0 {
+					item.AnomalyOnset = time.Unix(0, candidate.AnomalyOnsetUnixNano).UTC().Format(time.RFC3339Nano)
+				}
 				for _, evidence := range candidate.Evidence {
-					item.Evidence = append(item.Evidence, ActionEvidence{Metric:evidence.Metric, Value:evidence.ObservedValue, Threshold:evidence.ThresholdValue, Unit:evidence.Unit})
+					item.Evidence = append(item.Evidence, ActionEvidence{Metric: evidence.Metric, Value: evidence.ObservedValue, Threshold: evidence.ThresholdValue, Unit: evidence.Unit})
 				}
 				rootCauseCandidates = append(rootCauseCandidates, item)
 			}
@@ -510,6 +544,10 @@ func ComputePredictionOutput() PredictionOutput {
 	if grpcErr != nil || GlobalGRPCClient == nil || len(chosenActions) == 0 {
 		if grpcErr != nil {
 			log.Printf("[predict] Notice: Python gRPC unavailable (%v); running topological evidence-based decision engine", grpcErr)
+			if fallbackReason == "" {
+				fallbackReason = fmt.Sprintf("Python gRPC unavailable: %v", grpcErr)
+			}
+			engineName = "baseline"
 		}
 
 		if targetServiceID != "" && State.Services[targetServiceID] != nil {
@@ -517,7 +555,7 @@ func ComputePredictionOutput() PredictionOutput {
 			chosenRootCauseID = rcSvc.ID
 
 			// Classify fault family strictly from evidence metrics (crash process death evaluated first)
-			if rcSvc.Status == "failed" || (rcSvc.ErrorRate >= 0.80 && rcSvc.CPU <= 5.0) {
+			if rcSvc.Status == "offline" || rcSvc.Status == "failed" || (rcSvc.ErrorRate >= 0.80 && rcSvc.CPU <= 5.0) {
 				chosenFaultFamily = "crash"
 			} else if rcSvc.DBWait >= cfg.DBWaitThreshold {
 				chosenFaultFamily = "db_contention"
@@ -537,7 +575,7 @@ func ComputePredictionOutput() PredictionOutput {
 
 			if chosenFaultFamily != "nominal" {
 				chosenRootCauseReason = fmt.Sprintf("%s is an anomalous-service candidate from observed %s signals; causal attribution is inconclusive without correlated temporal or trace evidence.", rcSvc.ID, chosenFaultFamily)
-				rootCauseCandidates = append(rootCauseCandidates, RootCauseCandidate{ServiceID:rcSvc.ID, FaultFamily:chosenFaultFamily, Uncertainty:"evidence-only fallback; causal attribution is inconclusive", Explanation:chosenRootCauseReason})
+				rootCauseCandidates = append(rootCauseCandidates, RootCauseCandidate{ServiceID: rcSvc.ID, FaultFamily: chosenFaultFamily, Uncertainty: "evidence-only fallback; causal attribution is inconclusive", Explanation: chosenRootCauseReason})
 				rawProb = math.Min(95.0, 50.0+(highestDev*8.0))
 				rawConf = 0.0 // uncalibrated / evidence mode
 				confLabel = "model unavailable, evidence-only mode"
@@ -688,6 +726,7 @@ func ComputePredictionOutput() PredictionOutput {
 			RecommendedActionID:  "act-none",
 			RecommendedActions:   []RecoveryAction{},
 			Engine:               engineName,
+			FallbackReason:       fallbackReason,
 			ModelVersion:         modelVersion,
 			CalibratedConfidence: 0.0,
 		}
@@ -726,6 +765,7 @@ func ComputePredictionOutput() PredictionOutput {
 			RecommendedActionID:  recActionID,
 			RecommendedActions:   chosenActions,
 			Engine:               engineName,
+			FallbackReason:       fallbackReason,
 			ModelVersion:         modelVersion,
 			CalibratedConfidence: calibratedConf,
 		}
@@ -786,12 +826,18 @@ func ComputePredictionOutput() PredictionOutput {
 
 func metricUnit(name string) string {
 	switch name {
-	case "cpu", "memory": return "percent"
-	case "latency_ms", "db_connection_wait_ms": return "ms"
-	case "error_rate", "cache_miss_rate", "packet_loss_rate": return "ratio"
-	case "rps": return "requests_per_second"
-	case "queue_depth", "active_threads": return "count"
-	default: return ""
+	case "cpu", "memory":
+		return "percent"
+	case "latency_ms", "db_connection_wait_ms":
+		return "ms"
+	case "error_rate", "cache_miss_rate", "packet_loss_rate":
+		return "ratio"
+	case "rps":
+		return "requests_per_second"
+	case "queue_depth", "active_threads":
+		return "count"
+	default:
+		return ""
 	}
 }
 func GetPredictionHistoryHandler(w http.ResponseWriter, r *http.Request) {

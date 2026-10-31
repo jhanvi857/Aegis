@@ -2,6 +2,7 @@ package routes
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -91,6 +92,9 @@ func TestExecuteRecovery_ApprovalGateEnforcement(t *testing.T) {
 		"approver":        "secops-lead@aegis",
 	})
 	appReq := httptest.NewRequest("POST", "/api/recovery/approve", bytes.NewBuffer(approvePayload))
+	appReq = appReq.WithContext(context.WithValue(appReq.Context(), CallerCtxKey, &storage.CallerContext{
+		ActorID: "secops-lead", Email: "secops-lead@aegis", Role: storage.RoleAdmin,
+	}))
 	appRr := httptest.NewRecorder()
 
 	ApproveRecoveryHandler(appRr, appReq)
@@ -165,10 +169,10 @@ func TestExecuteRecovery_CannotBypassWithClientFlags(t *testing.T) {
 	}
 }
 
-func TestApproveRecovery_RequiresApproverIdentity(t *testing.T) {
+func TestApproveRecoveryUsesAuthenticatedApproverIdentity(t *testing.T) {
 	setupTestState()
 
-	// Anonymous / empty approver must be rejected
+	// The identity comes from the authenticated request, not a client supplied email.
 	payload, _ := json.Marshal(map[string]interface{}{
 		"actionId":        "rec-scale-node-a",
 		"targetServiceId": "node-a",
@@ -176,12 +180,31 @@ func TestApproveRecovery_RequiresApproverIdentity(t *testing.T) {
 	})
 
 	req := httptest.NewRequest("POST", "/api/recovery/approve", bytes.NewBuffer(payload))
+	req = req.WithContext(context.WithValue(req.Context(), CallerCtxKey, &storage.CallerContext{
+		ActorID: "admin-1", Email: "admin@aegis", Role: storage.RoleAdmin,
+	}))
 	rr := httptest.NewRecorder()
 
 	ApproveRecoveryHandler(rr, req)
 
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 Bad Request for missing approver identity, got %d", rr.Code)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 using authenticated approver identity, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if got := State.ApprovedRecords["rec-scale-node-a"].Approver; got != "admin@aegis" {
+		t.Fatalf("approval should be attributed to authenticated operator, got %q", got)
+	}
+
+	spoofedPayload, _ := json.Marshal(map[string]interface{}{
+		"actionId": "rec-scale-node-a-2", "targetServiceId": "node-a", "approver": "victim@aegis",
+	})
+	spoofedReq := httptest.NewRequest("POST", "/api/recovery/approve", bytes.NewBuffer(spoofedPayload))
+	spoofedReq = spoofedReq.WithContext(context.WithValue(spoofedReq.Context(), CallerCtxKey, &storage.CallerContext{
+		ActorID: "admin-1", Email: "admin@aegis", Role: storage.RoleAdmin,
+	}))
+	spoofedRr := httptest.NewRecorder()
+	ApproveRecoveryHandler(spoofedRr, spoofedReq)
+	if spoofedRr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for spoofed approver identity, got %d", spoofedRr.Code)
 	}
 }
 

@@ -58,3 +58,14 @@ Thumbs.db
 
 # Workflow & memory directory
 workflow/
+
+# Artifacts, datasets, and cache
+*.pt
+*.joblib
+dataset/external/
+dataset/processed/rcaeval_re1_*
+dataset/processed/*.joblib
+dataset/live_episodes/phase2b/
+
+dataset/raw/episodes_metadata.json
+

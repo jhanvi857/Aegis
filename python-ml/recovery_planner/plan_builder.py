@@ -1,7 +1,7 @@
 """
 Recovery Plan Builder (Phase 4)
-Generates dependency-ordered, rule-evaluated RecoveryPlan protobuf structures from
-TGNN failure predictions, root-cause analysis, and topological DAG condensation.
+Generates dependency-ordered, policy-evaluated RecoveryPlan structures from
+evidence-based root-cause analysis and topological DAG condensation.
 """
 
 import time
@@ -10,17 +10,17 @@ from typing import Dict, Any, List, Optional, Set
 import networkx as nx
 
 try:
-    from .dependency_order import compute_recovery_order
+    from .dependency_order import compute_recovery_groups, compute_recovery_order
     from ..decision_engine.risk_assessment import RiskAssessmentEngine
 except (ImportError, ValueError):
-    from recovery_planner.dependency_order import compute_recovery_order
+    from recovery_planner.dependency_order import compute_recovery_groups, compute_recovery_order
     from decision_engine.risk_assessment import RiskAssessmentEngine
 
 
 class RecoveryPlanBuilder:
     """
     Builds structured, dependency-safe recovery plans conforming to proto/recovery.proto.
-    Integrates TGNN prediction task heads with the rulebook decision engine.
+    Integrates root-cause evidence with the rulebook decision engine.
     """
 
     def __init__(self, rulebook_path: Optional[str] = None):
@@ -65,11 +65,24 @@ class RecoveryPlanBuilder:
             }
 
         # 2. Compute dependency-safe execution sequence
-        ordered_node_ids = compute_recovery_order(
+        recovery_groups = compute_recovery_groups(
             graph,
             affected_nodes=affected_set,
             heal_dependencies_first=True,
         )
+        cyclic_groups = [group for group in recovery_groups if len(group) > 1 or graph.has_edge(group[0], group[0])]
+        if cyclic_groups:
+            return {
+                "plan_id": f"plan-blocked-{uuid.uuid4().hex[:8]}",
+                "status": "blocked_topology",
+                "actions": [],
+                "dependency_groups": recovery_groups,
+                "cyclic_dependency_groups": cyclic_groups,
+                "created_at_unix_nano": now_ns,
+                "risk": {"risk_level": "HIGH", "risk_score": 1.0, "requires_approval": True,
+                         "justification": "Recovery ordering is blocked because affected services contain circular dependencies; no sequential order is represented as topologically valid."},
+            }
+        ordered_node_ids = [node for group in recovery_groups for node in group]
 
         # 3. Determine recommended action per affected node
         actions = []
@@ -115,7 +128,7 @@ class RecoveryPlanBuilder:
                 fault_family=rc_fault_family,
             )
 
-            if not rec or not rec.get("action_type"):
+            if not rec or not rec.get("action_type") or rec.get("fault_family") == "nominal":
                 continue
 
             action_type = rec["action_type"]
@@ -129,15 +142,42 @@ class RecoveryPlanBuilder:
 
             plan_justifications.append(f"{action_type} on {node_id} ({risk_info['risk_level']} risk)")
 
+            # Extract evidence items from root cause or observed node metrics
+            node_evidence = []
+            if node_id in rc_map and rc_map[node_id].get("evidence"):
+                node_evidence = rc_map[node_id]["evidence"]
+            else:
+                for m_name, m_val in node_metrics.items():
+                    if (m_name in ["db_connection_wait_ms", "db_wait"] and m_val > 0) or \
+                       (m_name in ["cache_miss_rate", "cache_miss"] and m_val > 0.5) or \
+                       (m_name in ["cpu_usage", "cpu", "cpu_usage_percent"] and m_val > 80) or \
+                       (m_name in ["error_rate"] and m_val > 0.05) or \
+                       (m_name in ["p95_latency_ms", "latency", "latency_p99_ms"] and m_val > 250):
+                        node_evidence.append({"metric": m_name, "value": round(float(m_val), 3), "threshold": 0.0})
+
+            # Derive explicit why_this_target reasoning
+            if node_id in rc_map:
+                why_this_target = f"Diagnosed primary root cause exhibiting {rec.get('fault_family')} fault signature"
+            else:
+                why_this_target = f"Direct dependency in propagation path; healing required per SCC topological condensation"
+
             actions.append({
                 "action_id": f"act-{uuid.uuid4().hex[:8]}",
                 "action_type": action_type,
                 "target_node_id": node_id,
-                "execution_order": len(actions) + 1,
-                "parameters": params,
+                "target": node_id,
+                "fault_family": rec.get("fault_family", "degraded"),
+                "evidence": node_evidence,
+                "risk": risk_info["risk_level"],
                 "risk_level": risk_info["risk_level"],
                 "risk_score": risk_info["risk_score"],
+                "expected_effect": rec.get("expected_effect", f"Relieve {rec.get('fault_family')} symptoms on {node_id}"),
+                "why_this_target": why_this_target,
+                "execution_order": len(actions) + 1,
+                "parameters": params,
+                "requires_approval": risk_info["requires_approval"],
             })
+
 
         if not actions:
             return {
@@ -169,7 +209,10 @@ class RecoveryPlanBuilder:
 
         return {
             "plan_id": f"plan-{uuid.uuid4().hex[:8]}",
+            "status": "recommended",
             "actions": actions,
+            "dependency_groups": recovery_groups,
+            "cyclic_dependency_groups": [],
             "created_at_unix_nano": now_ns,
             "risk": {
                 "risk_level": plan_risk_level,

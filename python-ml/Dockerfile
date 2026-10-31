@@ -27,19 +27,18 @@ ENV PATH="/opt/venv/bin:$PATH" \
 
 COPY python-ml/requirements-serve.txt /tmp/requirements-serve.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-warn-script-location -r /tmp/requirements-serve.txt && \
-    python -c "import importlib.metadata as m, torch; assert torch.version.cuda is None, torch.version.cuda; assert not any(d.metadata['Name'].lower().startswith('nvidia-') for d in m.distributions()), 'CUDA package installed'"
+    pip install --no-warn-script-location -r /tmp/requirements-serve.txt
 
 COPY proto /app/proto
 COPY configs /app/configs
 COPY python-ml /app/python-ml
+COPY python-ml/artifacts /app/models
 COPY --from=proto-builder /build/generated/ /app/python-ml/shared/pb/
 
 ENV PYTHONPATH=/app/python-ml:/app/python-ml/shared/pb \
     PORT=50051 \
-    OMP_NUM_THREADS=2 \
-    AEGIS_TORCH_NUM_THREADS=2 \
-    AEGIS_CHECKPOINT_PATH=/app/python-ml/models/checkpoints/tgnn_best.pt
+    AEGIS_ML_MODEL_PATH=/app/models/incident_models.joblib \
+    OMP_NUM_THREADS=2
 
 RUN useradd --create-home --uid 10001 aegis && \
     chown -R aegis:aegis /app

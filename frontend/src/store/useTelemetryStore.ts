@@ -68,15 +68,17 @@ interface TelemetryState {
 }
 
 const DEFAULT_PREDICTION: PredictionOutput = {
-  failureProbability: 4.5,
-  confidence: 98.0,
-  estimatedFailureSec: 600,
+  failureProbability: 0,
+  confidence: 0,
+  estimatedFailureSec: 0,
   rootCauseServiceId: '',
-  rootCauseServiceName: 'None',
-  rootCauseReason: 'All observed services operating within normal SLA thresholds',
+  rootCauseServiceName: 'No candidate',
+  rootCauseReason: 'Waiting for fresh telemetry and a backend assessment',
   blastRadius: [],
-  recommendedAction: 'Cluster nominal; maintain continuous observation',
+  recommendedAction: 'No action recommended until fresh evidence is available',
   recommendedActionId: 'act-none',
+  incident: false,
+  state: 'nominal',
 };
 
 export const useTelemetryStore = create<TelemetryState>((set, get) => ({
@@ -266,7 +268,7 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
           targetServiceId,
           actionType,
           approverEmail
-        ).catch(() => {});
+        );
       }
 
       await recoveryApi.executeAction(actionType, targetServiceId, actionId, approved);
@@ -358,27 +360,15 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
   },
 }));
 
-// Helper function to calculate system failure risk percentage from live services and active faults
-export function calculateSystemRisk(services: Microservice[], faults: ChaosInjection[]): number {
-  if (faults.length > 0) {
-    const primaryFault = faults[0];
-    if (primaryFault.faultType === 'kill_service') return 98;
-    if (primaryFault.faultType === 'cpu_stress') return 91;
-    if (primaryFault.faultType === 'latency') return 84;
-    return 80;
+// Derive system failure risk percentage strictly from backend prediction
+export function calculateSystemRisk(_services?: Microservice[], _faults?: ChaosInjection[]): number {
+  const storeState = useTelemetryStore.getState();
+  const pred = storeState.latestPrediction;
+  if (!pred) return 0;
+  if (pred.incident === false || pred.state === 'nominal') {
+    return 0;
   }
-
-  const criticalNodes = services.filter((s) => s.status === 'critical');
-  const degradedNodes = services.filter((s) => s.status === 'degraded');
-
-  if (criticalNodes.length > 0) {
-    return Math.min(99, 80 + criticalNodes.length * 5);
-  }
-  if (degradedNodes.length > 0) {
-    return Math.min(75, 45 + degradedNodes.length * 8);
-  }
-
-  return 8;
+  return Math.round(pred.failureProbability);
 }
 
 // Return dynamic prediction output from the store or authentic state if not yet available
@@ -395,7 +385,7 @@ export function getMLPrediction(_services?: Microservice[], _faults?: ChaosInjec
     estimatedFailureSec: 0,
     rootCauseServiceId: '',
     rootCauseServiceName: 'Model Unavailable',
-    rootCauseReason: 'Awaiting TGNN inference output from backend',
+    rootCauseReason: 'Waiting for fresh telemetry and a backend assessment',
     blastRadius: [],
     recommendedAction: 'Awaiting model inference; no action recommended',
     recommendedActionId: 'act-none',

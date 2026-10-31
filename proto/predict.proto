@@ -2,66 +2,83 @@ syntax = "proto3";
 
 package aegis.predict;
 
-import "graph.proto";
-import "telemetry.proto";
+option go_package = "github.com/aegis/go-services/shared/pb/predict";
 
-option go_package = "github.com/aegis/go-services/shared/pb/predict;predictpb";
+import "telemetry.proto";
+import "graph.proto";
 
 message FailurePrediction {
   string node_id = 1;
   double failure_probability = 2;
   double confidence = 3;
-  int64 estimated_time_to_failure_sec = 4;
+  int32 estimated_time_to_failure_sec = 4;
 }
 
-message Evidence {
+message MetricEvidence {
   string metric = 1;
-  double observed_value = 2;
-  double threshold_value = 3;
+  double value = 2;
+  double threshold = 3;
   string unit = 4;
+  string source = 5;
+  int64 sample_count = 6;
+}
+
+message TraceRef {
+  string trace_id = 1;
+  string span_id = 2;
+  string service_id = 3;
+  int64 timestamp_unix_nano = 4;
+  double latency_ms = 5;
+  int32 status_code = 6;
+}
+
+message LogRef {
+  string log_id = 1;
+  string service_id = 2;
+  int64 timestamp_unix_nano = 3;
+  string severity = 4;
+  string message = 5;
 }
 
 message RootCause {
   string node_id = 1;
   double probability = 2;
-  string explanation = 3;
-  repeated string contributing_metrics = 4;
-  string fault_family = 5;
-  repeated Evidence evidence = 6;
-  string uncertainty = 7;
-  double ranking_score = 8;
-  repeated string trace_refs = 9;
-  repeated string log_refs = 10;
-  int64 anomaly_onset_unix_nano = 11;
+  double ranking_score = 3;
+  string fault_family = 4;
+  repeated MetricEvidence evidence = 5;
+  repeated string contributing_metrics = 6;
+  string explanation = 7;
+  string uncertainty = 8;
+  repeated TraceRef trace_refs = 9;
+  repeated LogRef log_refs = 10;
 }
 
 message PropagationPath {
-  repeated string path_nodes = 1;
-  double propagation_risk = 2;
+  repeated string path = 1;
+  double probability = 2;
 }
 
 message AffectedNode {
   string node_id = 1;
-  int32 hop_distance = 2;
-  int64 eta_seconds = 3;
-  double risk_score = 4;
+  string status = 2;
+  string reason = 3;
 }
 
 message ActionRecommendation {
   string action_id = 1;
-  string action_type = 2;
-  string target_node_id = 3;
-  string title = 4;
-  string description = 5;
-  string risk_level = 6;
-  bool requires_approval = 7;
-  double confidence = 8;
-  map<string, string> parameters = 9;
+  string title = 2;
+  string description = 3;
+  string target_node_id = 4;
+  string action_type = 5;
+  map<string, string> parameters = 6;
+  string risk_level = 7;
+  bool requires_approval = 8;
+  repeated string blast_radius_services = 9;
 }
 
 message PredictRequest {
   aegis.graph.GraphRepresentation graph = 1;
-  aegis.telemetry.TelemetryBatch recent_telemetry = 2;
+  aegis.telemetry.TelemetryBatch telemetry = 2;
   string target_node_id = 3;
 }
 
@@ -75,6 +92,7 @@ message PredictResponse {
   string engine = 7;
   string model_version = 8;
   double calibrated_confidence = 9;
+  string fallback_reason = 10;
 }
 
 service PredictionService {

@@ -15,6 +15,8 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
 }) => {
   const isCritical = service.status === 'critical';
   const isDegraded = service.status === 'degraded';
+  const isOffline = service.status === 'offline' || service.status === 'failed';
+  const isUnknown = service.status === 'unknown' || service.status === 'stale';
 
   const statusColorMap = {
     healthy: 'bg-[#3F8E4F]/15 text-[#52b767] border-[#3F8E4F]/50',
@@ -22,6 +24,9 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
     critical: 'bg-[#AD2831]/20 text-[#f87171] border-[#AD2831]/60 animate-pulse-subtle',
     remediating: 'bg-cyan-950/40 text-cyan-300 border-cyan-700 animate-pulse',
     unknown: 'bg-gray-800/50 text-gray-400 border-gray-600/60',
+    offline: 'bg-gray-800/50 text-gray-300 border-gray-500/70',
+    failed: 'bg-gray-800/50 text-gray-300 border-gray-500/70',
+    stale: 'bg-gray-800/50 text-gray-400 border-gray-600/60',
   };
 
   const statusLabel = {
@@ -30,6 +35,9 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
     critical: 'CRITICAL',
     remediating: 'REMEDIATING',
     unknown: service.dataStatus === 'stale' ? 'STALE' : 'UNKNOWN',
+    offline: 'OFFLINE',
+    failed: 'OFFLINE',
+    stale: 'STALE',
   };
 
   return (
@@ -51,7 +59,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
           <div className="flex items-center space-x-2">
             <span
               className={`w-1.5 h-1.5 rounded-full ${
-                isCritical ? 'bg-[#AD2831]' : isDegraded ? 'bg-[#D4A017]' : 'bg-[#3F8E4F]'
+                isOffline || isUnknown ? 'bg-gray-400' : isCritical ? 'bg-[#AD2831]' : isDegraded ? 'bg-[#D4A017]' : 'bg-[#3F8E4F]'
               }`}
             />
             <h3 className="font-mono text-[16px] font-semibold leading-[24px] text-white">{service.name}</h3>

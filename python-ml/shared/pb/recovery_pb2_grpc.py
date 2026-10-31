@@ -6,7 +6,7 @@ import warnings
 import predict_pb2 as predict__pb2
 import recovery_pb2 as recovery__pb2
 
-GRPC_GENERATED_VERSION = '1.68.1'
+GRPC_GENERATED_VERSION = '1.84.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -14,15 +14,15 @@ try:
     from grpc._utilities import first_version_is_lower
     _version_not_supported = first_version_is_lower(GRPC_VERSION, GRPC_GENERATED_VERSION)
 except ImportError:
-    _version_not_supported = False
+    _version_not_supported = True
 
 if _version_not_supported:
-    warnings.warn(
+    raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
         + ' but the generated code in recovery_pb2_grpc.py depends on'
-        + f' grpcio>={GRPC_GENERATED_VERSION}.',
-        RuntimeWarning,
-        stacklevel=2,
+        + f' grpcio>={GRPC_GENERATED_VERSION}.'
+        + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
+        + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
     )
 
 

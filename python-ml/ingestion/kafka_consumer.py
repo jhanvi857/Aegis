@@ -107,7 +107,7 @@ class TelemetryConsumer:
         and Phase 3 predictive lead-time modeling.
         """
         if node_ids is None:
-            node_ids = ["gateway", "node-a", "node-b", "node-c", "node-d"]
+            node_ids = []
 
         now_ns = int(time.time() * 1e9)
         metrics = []

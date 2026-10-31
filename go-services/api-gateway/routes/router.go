@@ -89,6 +89,10 @@ func SetupRouter(store storage.Store) *mux.Router {
 	r.HandleFunc("/healthz", LivenessHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/readyz", ReadinessHandler(store)).Methods("GET", "OPTIONS")
 	r.HandleFunc("/metrics", telemetry.Metrics.Handler()).Methods("GET", "OPTIONS")
+	r.Handle("/v1/traces", OTLPAuthMiddleware(http.HandlerFunc(IngestOTLPTracesHandler))).Methods("POST", "OPTIONS")
+	r.Handle("/v1/metrics", OTLPAuthMiddleware(http.HandlerFunc(IngestOTLPMetricsHandler))).Methods("POST", "OPTIONS")
+	r.Handle("/v1/logs", OTLPAuthMiddleware(http.HandlerFunc(IngestOTLPLogsHandler))).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/debug/targets", RequireRole(storage.RoleViewer, DebugTargetsHandler)).Methods("GET", "OPTIONS")
 
 	r.HandleFunc("/api/auth/login", LoginHandler).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/auth/signup", SignupHandler).Methods("POST", "OPTIONS")
@@ -117,6 +121,8 @@ func SetupRouter(store storage.Store) *mux.Router {
 	r.HandleFunc("/api/predict", RequireRole(storage.RoleViewer, PredictHandler)).Methods("GET", "POST", "OPTIONS")
 	r.HandleFunc("/api/prediction/latest", RequireRole(storage.RoleViewer, GetLatestPredictionHandler)).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/prediction/history", RequireRole(storage.RoleViewer, GetPredictionHistoryHandler)).Methods("GET", "OPTIONS")
+	r.HandleFunc("/debug/decision-trace", RequireRole(storage.RoleViewer, DecisionTraceHandler)).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/debug/decision-trace", RequireRole(storage.RoleViewer, DecisionTraceHandler)).Methods("GET", "OPTIONS")
 
 	// Autonomous Recovery (Read)
 	r.HandleFunc("/api/recovery", RequireRole(storage.RoleViewer, RecoveryHandler)).Methods("GET", "OPTIONS")
@@ -136,6 +142,7 @@ func SetupRouter(store storage.Store) *mux.Router {
 	r.HandleFunc("/api/registry/export", RequireRole(storage.RoleViewer, ExportTopologyHandler)).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/registry/versions", RequireRole(storage.RoleViewer, ListTopologyVersionsHandler)).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/system/mode", RequireRole(storage.RoleViewer, GetSystemModeHandler)).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/connect", RequireRole(storage.RoleViewer, ConnectConfigHandler)).Methods("GET", "OPTIONS")
 
 	// ─── Authenticated: Operator Role (Approve, Execute Low/Med, Topology Select) ───
 	r.HandleFunc("/api/topology/select", RequireRole(storage.RoleOperator, TopologySelectHandler)).Methods("POST", "OPTIONS")

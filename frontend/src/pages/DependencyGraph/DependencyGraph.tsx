@@ -251,7 +251,8 @@ const DependencyGraphContent: React.FC = () => {
       ? services
       : services.filter((s) => (s.namespace || 'default') === selectedNamespace);
 
-    const positions = computeAutoLayout(filteredServices, rawEdges);
+    const allEdges = [...rawEdges, ...suggestions];
+    const positions = computeAutoLayout(filteredServices, allEdges);
 
     const newNodes: any[] = filteredServices.map((svc) => {
       const pos = positions[svc.id] || { x: 100, y: 100 };
@@ -288,6 +289,8 @@ const DependencyGraphContent: React.FC = () => {
       id: e.id || `edge-${e.sourceServiceId}-${e.targetServiceId}-${idx}`,
       source: e.sourceServiceId,
       target: e.targetServiceId,
+      sourceHandle: 'right',
+      targetHandle: 'left',
       type: 'customEdge',
       data: {
         edgeId: e.id,
@@ -308,6 +311,8 @@ const DependencyGraphContent: React.FC = () => {
           id: sug.id || `sugg-${sug.sourceServiceId}-${sug.targetServiceId}-${idx}`,
           source: sug.sourceServiceId,
           target: sug.targetServiceId,
+          sourceHandle: 'right',
+          targetHandle: 'left',
           type: 'customEdge',
           data: {
             edgeId: sug.id,
@@ -365,7 +370,8 @@ const DependencyGraphContent: React.FC = () => {
 
   // Auto Layout action
   const handleAutoLayout = () => {
-    const positions = computeAutoLayout(services, rawEdges);
+    const allEdges = [...rawEdges, ...suggestions];
+    const positions = computeAutoLayout(services, allEdges);
     setNodes((prevNodes) =>
       prevNodes.map((n) => ({
         ...n,

@@ -18,49 +18,49 @@ import (
 )
 
 type ServiceMetric struct {
-	Timestamp  string  `json:"timestamp"`
-	CPU        float64 `json:"cpu"`
-	Memory     float64 `json:"memory"`
-	Latency    float64 `json:"latency"`
-	RPS        float64 `json:"rps"`
-	ErrorRate  float64 `json:"errorRate"`
-	QueueDepth int     `json:"queueDepth"`
+	Timestamp       string   `json:"timestamp"`
+	CPU             float64  `json:"cpu"`
+	Memory          float64  `json:"memory"`
+	Latency         float64  `json:"latency"`
+	RPS             float64  `json:"rps"`
+	ErrorRate       float64  `json:"errorRate"`
+	QueueDepth      int      `json:"queueDepth"`
 	ObservedSignals []string `json:"observedSignals,omitempty"`
 }
 
 type Microservice struct {
-	ID             string          `json:"id"`
-	Name           string          `json:"name"`
-	Type           string          `json:"type"`
-	Status         string          `json:"status"` // healthy, degraded, critical
-	Replicas       int             `json:"replicas"`
-	MaxReplicas    int             `json:"maxReplicas"`
-	CPU            float64         `json:"cpu"`
-	Memory         float64         `json:"memory"`
-	Latency        float64         `json:"latency"`
-	RPS            float64         `json:"rps"`
-	ErrorRate      float64         `json:"errorRate"`
-	QueueDepth     int             `json:"queueDepth"`
-	DBWait         float64         `json:"dbConnectionWaitMs"`
-	CacheMiss      float64         `json:"cacheMissRate"`
-	PacketLoss     float64         `json:"packetLossRate"`
-	ActiveThreads  int             `json:"activeThreads"`
-	Version        string          `json:"version"`
-	Uptime         string          `json:"uptime"`
-	Dependencies   []string        `json:"dependencies"`
-	Namespace      string          `json:"namespace,omitempty"`
-	ClusterID      string          `json:"clusterId,omitempty"`
-	ResourceAttributes map[string]string `json:"resourceAttributes,omitempty"`
-	History        []ServiceMetric `json:"history"`
-	Host           string          `json:"-"`
-	Port           int             `json:"-"`
-	LastIngestTime time.Time       `json:"-"`
-	Source         string          `json:"source,omitempty"`
-	LastSeen       time.Time       `json:"lastSeen,omitempty"`
-	DataStatus     string          `json:"dataStatus,omitempty"` // fresh, stale, unknown
-	ObservedSignals []string       `json:"observedSignals,omitempty"`
-	SignalLastSeen map[string]time.Time `json:"signalLastSeen,omitempty"`
-	BreachCount    int             `json:"breachCount,omitempty"`
+	ID                 string               `json:"id"`
+	Name               string               `json:"name"`
+	Type               string               `json:"type"`
+	Status             string               `json:"status"` // healthy, degraded, critical
+	Replicas           int                  `json:"replicas"`
+	MaxReplicas        int                  `json:"maxReplicas"`
+	CPU                float64              `json:"cpu"`
+	Memory             float64              `json:"memory"`
+	Latency            float64              `json:"latency"`
+	RPS                float64              `json:"rps"`
+	ErrorRate          float64              `json:"errorRate"`
+	QueueDepth         int                  `json:"queueDepth"`
+	DBWait             float64              `json:"dbConnectionWaitMs"`
+	CacheMiss          float64              `json:"cacheMissRate"`
+	PacketLoss         float64              `json:"packetLossRate"`
+	ActiveThreads      int                  `json:"activeThreads"`
+	Version            string               `json:"version"`
+	Uptime             string               `json:"uptime"`
+	Dependencies       []string             `json:"dependencies"`
+	Namespace          string               `json:"namespace,omitempty"`
+	ClusterID          string               `json:"clusterId,omitempty"`
+	ResourceAttributes map[string]string    `json:"resourceAttributes,omitempty"`
+	History            []ServiceMetric      `json:"history"`
+	Host               string               `json:"-"`
+	Port               int                  `json:"-"`
+	LastIngestTime     time.Time            `json:"-"`
+	Source             string               `json:"source,omitempty"`
+	LastSeen           time.Time            `json:"lastSeen,omitempty"`
+	DataStatus         string               `json:"dataStatus,omitempty"` // fresh, stale, unknown
+	ObservedSignals    []string             `json:"observedSignals,omitempty"`
+	SignalLastSeen     map[string]time.Time `json:"signalLastSeen,omitempty"`
+	BreachCount        int                  `json:"breachCount,omitempty"`
 }
 
 type ChaosInjection struct {
@@ -91,39 +91,40 @@ type ActionEvidence struct {
 }
 
 type RootCauseCandidate struct {
-	ServiceID string `json:"serviceId"`
-	FaultFamily string `json:"faultFamily"`
-	RankingScore float64 `json:"rankingScore"`
-	Uncertainty string `json:"uncertainty"`
-	Explanation string `json:"explanation"`
-	AnomalyOnset string `json:"anomalyOnset,omitempty"`
-	Evidence []ActionEvidence `json:"evidence,omitempty"`
-	TraceRefs []string `json:"traceRefs,omitempty"`
-	LogRefs []string `json:"logRefs,omitempty"`
+	ServiceID    string           `json:"serviceId"`
+	FaultFamily  string           `json:"faultFamily"`
+	RankingScore float64          `json:"rankingScore"`
+	Uncertainty  string           `json:"uncertainty"`
+	Explanation  string           `json:"explanation"`
+	AnomalyOnset string           `json:"anomalyOnset,omitempty"`
+	Evidence     []ActionEvidence `json:"evidence,omitempty"`
+	TraceRefs    []string         `json:"traceRefs,omitempty"`
+	LogRefs      []string         `json:"logRefs,omitempty"`
 }
 
 type PredictionOutput struct {
-	FailureProbability   float64            `json:"failureProbability"`
-	Confidence           float64            `json:"confidence"`
-	ConfidenceLabel      string             `json:"confidenceLabel,omitempty"`
-	Incident             bool               `json:"incident"`
-	State                string             `json:"state"` // nominal, watch, incident
-	DataFresh            bool               `json:"dataFresh"`
-	EstimatedFailureSec  int                `json:"estimatedFailureSec"`
-	RootCauseServiceID   string             `json:"rootCauseServiceId"`
-	RootCauseServiceName string             `json:"rootCauseServiceName"`
-	RootCauseReason      string             `json:"rootCauseReason"`
+	FailureProbability   float64              `json:"failureProbability"`
+	Confidence           float64              `json:"confidence"`
+	ConfidenceLabel      string               `json:"confidenceLabel,omitempty"`
+	Incident             bool                 `json:"incident"`
+	State                string               `json:"state"` // nominal, watch, incident
+	DataFresh            bool                 `json:"dataFresh"`
+	EstimatedFailureSec  int                  `json:"estimatedFailureSec"`
+	RootCauseServiceID   string               `json:"rootCauseServiceId"`
+	RootCauseServiceName string               `json:"rootCauseServiceName"`
+	RootCauseReason      string               `json:"rootCauseReason"`
 	RootCauseCandidates  []RootCauseCandidate `json:"rootCauseCandidates,omitempty"`
-	FaultFamily          string             `json:"faultFamily,omitempty"`
-	BlastRadius          []string           `json:"blastRadius"`
-	AffectedNodes        []AffectedNodeInfo `json:"affectedNodes,omitempty"`
-	RecommendedAction    string             `json:"recommendedAction"`
-	RecommendedActionID  string             `json:"recommendedActionId"`
-	RecommendedActions   []RecoveryAction   `json:"recommendedActions,omitempty"`
-	Engine               string             `json:"engine"`
-	ModelVersion         string             `json:"modelVersion"`
-	CalibratedConfidence float64            `json:"calibratedConfidence"`
-	TopologyVersion      int                `json:"topologyVersion,omitempty"`
+	FaultFamily          string               `json:"faultFamily,omitempty"`
+	BlastRadius          []string             `json:"blastRadius"`
+	AffectedNodes        []AffectedNodeInfo   `json:"affectedNodes,omitempty"`
+	RecommendedAction    string               `json:"recommendedAction"`
+	RecommendedActionID  string               `json:"recommendedActionId"`
+	RecommendedActions   []RecoveryAction     `json:"recommendedActions,omitempty"`
+	Engine               string               `json:"engine"`
+	FallbackReason       string               `json:"fallbackReason,omitempty"`
+	ModelVersion         string               `json:"modelVersion"`
+	CalibratedConfidence float64              `json:"calibratedConfidence"`
+	TopologyVersion      int                  `json:"topologyVersion,omitempty"`
 }
 
 type RecoveryAction struct {
@@ -181,14 +182,14 @@ type LiveAlert struct {
 }
 
 type LogEntry struct {
-	ID          string `json:"id"`
-	Timestamp   string `json:"timestamp"`
-	ServiceID   string `json:"serviceId"`
-	ServiceName string `json:"serviceName"`
-	Level       string `json:"level"`
-	Message     string `json:"message"`
-	TraceID     string `json:"traceId,omitempty"`
-	SpanID      string `json:"spanId,omitempty"`
+	ID                 string            `json:"id"`
+	Timestamp          string            `json:"timestamp"`
+	ServiceID          string            `json:"serviceId"`
+	ServiceName        string            `json:"serviceName"`
+	Level              string            `json:"level"`
+	Message            string            `json:"message"`
+	TraceID            string            `json:"traceId,omitempty"`
+	SpanID             string            `json:"spanId,omitempty"`
 	ResourceAttributes map[string]string `json:"resourceAttributes,omitempty"`
 }
 
@@ -586,7 +587,11 @@ func (s *ControlPlaneState) runTicker() {
 			if !probed {
 				// Only timestamped ingested telemetry keeps an unprobed service
 				// current. Registration state alone does not imply health.
-				if !svc.LastIngestTime.IsZero() && time.Since(svc.LastIngestTime) <= 4*time.Second {
+				freshnessWindow := 2 * time.Duration(getIncidentGateConfig().ScrapeIntervalSec) * time.Second
+				if freshnessWindow <= 0 {
+					freshnessWindow = 4 * time.Second
+				}
+				if !svc.LastIngestTime.IsZero() && time.Since(svc.LastIngestTime) <= freshnessWindow {
 					svc.DataStatus = "fresh"
 				} else {
 					svc.Status = "unknown"

@@ -99,7 +99,7 @@ kubectl scale deployment/cartservice -n online-boutique --replicas=0
 
 #### Observation in Aegis:
 1. Telemetry Agent detects 100% error rate and connection refusal on `cartservice`.
-2. TGNN Inference calculates:
+2. The baseline detection and evidence-based RCA pipeline evaluates:
    - Root Cause: `cartservice` (Confidence >= 0.94)
    - Blast Radius: `frontend`, `checkoutservice`
    - Failure Probability: 0.96

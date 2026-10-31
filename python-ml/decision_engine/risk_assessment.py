@@ -154,7 +154,7 @@ class RiskAssessmentEngine:
         # 1. Total score >= 0.55
         # 2. Critical traffic routing/isolation actions
         # 3. Large blast radius (>= 3 downstream dependencies)
-        # 4. Central hub node (criticality >= 0.70) with blast radius >= 2 (e.g. node-a)
+        # 4. Central hub node (criticality >= 0.70) with blast radius >= 2
         is_high_risk = (
             risk_score >= 0.55
             or action_type.upper() in ["REROUTE_TRAFFIC", "ISOLATE"]
@@ -213,10 +213,16 @@ class RiskAssessmentEngine:
         params = {}
 
         # 1. Primary: If a specific fault family is identified, use fault_family_actions
+        candidates = []
+        expected_effect = ""
+        reason = ""
         if family and family != "nominal" and get_candidate_actions is not None:
             candidates = get_candidate_actions(family)
             if candidates:
-                action_type = candidates[0]["action"]
+                primary_candidate = candidates[0]
+                action_type = primary_candidate["action"]
+                expected_effect = primary_candidate.get("expected_effect", "")
+                reason = primary_candidate.get("reason", "")
                 matched_rule_id = f"RULE_{family.upper()}"
                 params = {"fault_family": family}
                 # Check if rulebook has tuned parameters for this action
@@ -226,8 +232,8 @@ class RiskAssessmentEngine:
                         matched_rule_id = rule.get("id", matched_rule_id)
                         break
             else:
-                action_type = "RESTART"
-                params = {"grace_period_sec": "5"}
+                # Unknown or unmapped fault family: advisory only, no executable action
+                return None
         else:
             # 2. Secondary: If no specific fault family was detected, match generic rulebook rules
             matched = self.match_rule(metrics)
@@ -236,9 +242,19 @@ class RiskAssessmentEngine:
                 action_type = action_info["type"]
                 params = dict(action_info.get("parameters", {}))
                 matched_rule_id = matched["id"]
+                reason = matched.get("description", "")
             else:
                 # No fault detected and no rule matched: do not fabricate a default template action
                 return None
+
+        # Guard invariant: Never RESTART for contention or latency families
+        if action_type == "RESTART" and family in ["database", "db_lock", "db_contention", "slow_query", "network_latency", "latency", "packet_loss", "cache", "cache_down"]:
+            if family in ["database", "db_lock", "db_contention", "slow_query"]:
+                action_type = "INCREASE_POOL"
+            elif family in ["cache", "cache_down"]:
+                action_type = "FLUSH_CACHE"
+            else:
+                action_type = "REROUTE_TRAFFIC"
 
         risk = self.assess_risk(target_node, action_type, blast_radius_size, node_criticality)
 
@@ -249,4 +265,7 @@ class RiskAssessmentEngine:
             "risk": risk,
             "matched_rule_id": matched_rule_id,
             "fault_family": family,
+            "candidates": candidates,
+            "reason": reason,
+            "expected_effect": expected_effect,
         }

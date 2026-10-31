@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"strconv"
 	"sync"
 	"time"
 
@@ -21,7 +19,7 @@ type ComponentHealth struct {
 
 type ReadinessResponse struct {
 	Status     string                     `json:"status"` // READY, NOT_READY
-	Engine     string                     `json:"engine"` // dense_tgnn | sparse_two_stage | heuristic_fallback
+	Engine     string                     `json:"engine"` // statistical_baseline | evidence_only_advisory
 	Timestamp  string                     `json:"timestamp"`
 	Components map[string]ComponentHealth `json:"components"`
 }
@@ -83,9 +81,8 @@ func ReadinessHandler(store storage.Store) http.HandlerFunc {
 				State.mu.RUnlock()
 				comp = ComponentHealth{
 					Status:  "UP",
-					Message: "Control plane state active",
+					Message: fmt.Sprintf("Control plane state active (%d services)", serviceCount),
 				}
-				_ = serviceCount
 			}
 
 			mu.Lock()
@@ -97,26 +94,9 @@ func ReadinessHandler(store storage.Store) http.HandlerFunc {
 		}()
 
 		// 3. Check Python ML gRPC connectivity and loaded engine
-		threshold := 20
-		if val := os.Getenv("AEGIS_SPARSE_THRESHOLD"); val != "" {
-			if t, err := strconv.Atoi(val); err == nil && t > 0 {
-				threshold = t
-			}
-		}
-
-		loadedEngine := "dense_tgnn"
-		var svcCount int
-		if State != nil {
-			State.mu.RLock()
-			svcCount = len(State.Services)
-			State.mu.RUnlock()
-			if svcCount > threshold {
-				loadedEngine = "sparse_two_stage"
-			}
-		}
-
+		loadedEngine := "statistical_baseline"
 		if GlobalGRPCClient == nil {
-			loadedEngine = "heuristic_fallback"
+			loadedEngine = "evidence_only_advisory"
 		}
 
 		wg.Add(1)
@@ -126,14 +106,14 @@ func ReadinessHandler(store storage.Store) http.HandlerFunc {
 			if GlobalGRPCClient == nil {
 				comp = ComponentHealth{
 					Status:  "DEGRADED",
-					Engine:  "heuristic_fallback",
-					Message: "Python ML gRPC client not connected (operating with heuristic_fallback)",
+					Engine:  "evidence_only_advisory",
+					Message: "Python prediction service is not connected; policy-based local advisory remains available",
 				}
 			} else {
 				comp = ComponentHealth{
 					Status:  "UP",
 					Engine:  loadedEngine,
-					Message: fmt.Sprintf("Python ML gRPC connected (engine: %s, threshold: %d, services: %d)", loadedEngine, threshold, svcCount),
+					Message: fmt.Sprintf("Python prediction service connected (engine: %s)", loadedEngine),
 				}
 			}
 

@@ -2,6 +2,7 @@ package actions
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strconv"
 
@@ -19,22 +20,18 @@ func NewScaleAction(adapter orchestrator.OrchestratorAdapter) *ScaleAction {
 func (a *ScaleAction) Name() string { return "scale" }
 
 func (a *ScaleAction) Execute(ctx context.Context, targetNode string, params map[string]string) error {
-	incStr := params["scale_increment"]
-	increment := 2
-	if incStr != "" {
-		if val, err := strconv.Atoi(incStr); err == nil {
-			increment = val
-		}
+	if a.Adapter == nil {
+		return fmt.Errorf("scale action is unavailable: no orchestrator adapter is configured")
 	}
-
-	targetReplicas := 3 + increment
-	log.Printf("[action-scale] Scaling service %s by +%d replicas (target replicas: %d)", targetNode, increment, targetReplicas)
-	if a.Adapter != nil {
-		if err := a.Adapter.ScaleService(ctx, targetNode, targetReplicas); err != nil {
-			log.Printf("[action-scale] Adapter returned error for %s: %v", targetNode, err)
-			return err
-		}
+	replicas, err := strconv.Atoi(params["target_replicas"])
+	if err != nil || replicas < 1 || replicas > 50 {
+		return fmt.Errorf("scale action requires explicit target_replicas in range 1..50")
 	}
-	log.Printf("[action-scale] Service %s scaled to %d replicas successfully.", targetNode, targetReplicas)
+	log.Printf("[action-scale] Scaling service %s to %d replicas", targetNode, replicas)
+	if err := a.Adapter.ScaleService(ctx, targetNode, replicas); err != nil {
+		log.Printf("[action-scale] Adapter returned error for %s: %v", targetNode, err)
+		return err
+	}
+	log.Printf("[action-scale] Adapter accepted scale request for %s to %d replicas.", targetNode, replicas)
 	return nil
 }

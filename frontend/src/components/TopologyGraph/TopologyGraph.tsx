@@ -159,6 +159,7 @@ export const TopologyGraph: React.FC<TopologyGraphProps> = ({
           serviceId: svc.id,
           type: svc.type,
           status: svc.status,
+          dataStatus: svc.dataStatus,
           cpu: svc.cpu,
           latency: svc.latency,
           rps: svc.rps,
@@ -314,6 +315,8 @@ export const TopologyGraph: React.FC<TopologyGraphProps> = ({
               className="!bg-[#151517] !border !border-[#26262B] !rounded-lg"
               nodeColor={(n) => {
                 const s = (n.data as any)?.status;
+                const dataStatus = (n.data as any)?.dataStatus;
+                if (s === 'offline' || s === 'failed' || s === 'unknown' || s === 'stale' || dataStatus === 'stale' || dataStatus === 'unknown') return '#6B7280';
                 if (s === 'critical') return '#AD2831';
                 if (s === 'degraded') return '#D4A017';
                 return '#3F8E4F';

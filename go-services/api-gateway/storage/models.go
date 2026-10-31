@@ -89,7 +89,7 @@ type AuditLogEntry struct {
 	RiskLevel       string    `json:"riskLevel,omitempty"`
 	ApprovalStatus  string    `json:"approvalStatus,omitempty"`
 	Payload         string    `json:"payload,omitempty"`
-	ResultStatus    string    `json:"resultStatus"` // SUCCESS, FAILED, BLOCKED
+	ResultStatus    string    `json:"resultStatus"` // DISPATCHED, VERIFIED, UNVERIFIED, INEFFECTIVE, SUCCESS, FAILED, BLOCKED
 	ErrorMessage    string    `json:"errorMessage,omitempty"`
 	IPAddress       string    `json:"ipAddress,omitempty"`
 }
@@ -108,7 +108,7 @@ type RecoveryExecution struct {
 	ActionID         string                 `json:"actionId"`
 	ActionType       string                 `json:"actionType"`
 	TargetServiceID  string                 `json:"targetServiceId"`
-	Status           string                 `json:"status"` // Pending, Verifying, Verified, Ineffective, RolledBack
+	Status           string                 `json:"status"` // Pending, Dispatching, Verifying, Verified, Unverified, Ineffective, Failed, RolledBack
 	RiskLevel        string                 `json:"riskLevel"`
 	RiskScore        float64                `json:"riskScore"`
 	RequiresApproval bool                   `json:"requiresApproval"`
@@ -175,6 +175,10 @@ type TopologyService struct {
 	Description       string           `json:"description,omitempty"`
 	Tags              []string         `json:"tags,omitempty"`
 	LastTelemetryTime *time.Time       `json:"lastTelemetryTime,omitempty"`
+	Source            string           `json:"source,omitempty"`
+	LastSeen          *time.Time       `json:"lastSeen,omitempty"`
+	DataStatus        string           `json:"dataStatus,omitempty"`
+	ResourceAttributes map[string]string `json:"resourceAttributes,omitempty"`
 	CreatedAt         time.Time        `json:"createdAt"`
 	UpdatedAt         time.Time        `json:"updatedAt"`
 }

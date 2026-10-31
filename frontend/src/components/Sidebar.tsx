@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   FlaskConical,
   Settings,
+  PlugZap,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -19,6 +20,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'services', label: 'Services', icon: Server },
+    { id: 'connect', label: 'Connect your app', icon: PlugZap },
     { id: 'graph', label: 'Dependency Graph', icon: GitFork, isHero: true },
     { id: 'predictions', label: 'Predictions', icon: BrainCircuit },
     { id: 'chaos', label: 'Chaos Engine', icon: Flame },

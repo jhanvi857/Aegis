@@ -2,7 +2,7 @@
 Phase 2 Graph Preprocessing Service
 Ties together TelemetryConsumer, GraphBuilder, and GraphRepresentationBuilder into
 a cohesive streaming service that continuously updates the live System Graph and
-emits ready-to-consume Graph Representations for TGNN models and Dashboard visualization.
+emits ready-to-consume Graph Representations for graph analysis and dashboard visualization.
 """
 
 import threading

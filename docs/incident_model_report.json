@@ -1,0 +1,47 @@
+{
+  "schema_version": "aegis-incident-model-metadata-v1",
+  "model_type": "RandomForest",
+  "features": [
+    "cpu_mean",
+    "cpu_max",
+    "latency_ms_mean",
+    "latency_ms_max",
+    "error_rate_mean",
+    "error_rate_max"
+  ],
+  "min_feature_coverage": 0.5,
+  "training_systems": [
+    "RE1-OB",
+    "RE1-SS",
+    "RE1-TT"
+  ],
+  "labels_mode": "strict",
+  "cv_metrics": {
+    "selected_model": "ServiceDetector",
+    "is_baseline": true,
+    "detector_f1_mean": 0.4752858049022031,
+    "detector_f1_std": 0.28412969555796463,
+    "detector_threshold_required": 0.7594155004601677,
+    "best_trained_model": "Random Forest",
+    "best_trained_f1_mean": 0.4013145156310048,
+    "clear_margin_achieved": false,
+    "decision_reason": "Selected 'ServiceDetector' baseline because best trained model 'Random Forest' (strict-LOSO mean F1 0.401) did NOT beat ServiceDetector (0.475 \u00b1 0.284, required margin > 0.759) by a clear margin (> 1 std).",
+    "selection_rule": "Pick model with best mean strict-LOSO F1; ties broken by RCA top-3, then simpler model. Selection uses CV results only. If best trained model does not beat ServiceDetector by > 1 std, keep ServiceDetector as the live engine."
+  },
+  "date": "2026-10-31T07:54:28.585602+00:00",
+  "window_seconds": 10,
+  "cases_count": 375,
+  "windows_count": 23342,
+  "root_threshold": 0.5,
+  "fault_classes": [
+    "cpu_stress",
+    "disk_pressure",
+    "latency",
+    "memory_leak",
+    "packet_loss"
+  ],
+  "models": {
+    "root_cause": "Random Forest",
+    "fault_family": "Random Forest"
+  }
+}

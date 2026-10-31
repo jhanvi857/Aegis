@@ -8,7 +8,7 @@ export const Chaos: React.FC = () => {
   const [selectedTargetId, setSelectedTargetId] = useState<string>('');
 
   // Default target service
-  const effectiveTargetId = selectedTargetId || (services.find((s) => s.type !== 'gateway')?.id || services[0]?.id || 'node-a');
+  const effectiveTargetId = selectedTargetId || (services.find((s) => s.type !== 'gateway')?.id || services[0]?.id || '');
   const targetService = services.find((s) => s.id === effectiveTargetId);
   const targetLabel = targetService ? `${targetService.name} (${targetService.id})` : effectiveTargetId.toUpperCase();
   const isNodeBusy = activeFaults.some((f) => f.targetServiceId === effectiveTargetId);
@@ -78,7 +78,7 @@ export const Chaos: React.FC = () => {
             </h1>
           </div>
           <p className="text-[12px] text-gray-400 font-normal leading-[18px]">
-            Trigger real-time fault injectors against live microservices to test TGNN graph anomaly prediction and self-healing response
+            Trigger faults against connected services and inspect observed telemetry, topology impact, and policy-approved recovery
           </p>
         </div>
 

@@ -143,7 +143,7 @@ export const ServiceWizardModal: React.FC<ServiceWizardModalProps> = ({
       setMonitoringMode('observe');
       setHasRecovery(false);
       setTestResult(null);
-      setAgentKey(`aegis-push-${Math.random().toString(36).substring(2, 10)}`);
+      setAgentKey(`aegis-push-${crypto.randomUUID().slice(0, 8)}`);
     }
     setStep(1);
     setErrorMsg(null);
@@ -220,7 +220,10 @@ export const ServiceWizardModal: React.FC<ServiceWizardModalProps> = ({
 
     try {
       const tags = tagsStr.split(',').map((t) => t.trim()).filter(Boolean);
-      const telemetrySource = buildTelemetrySource();
+      // Editing an already-discovered service to add a recovery binding should
+      // preserve its existing telemetry configuration. Only replace that
+      // configuration after the new source has been explicitly verified.
+      const telemetrySource = editService && !testResult?.success ? undefined : buildTelemetrySource();
       const recoveryBinding: RecoveryBinding | undefined = hasRecovery
         ? {
             runtime: recoveryRuntime,
@@ -432,7 +435,7 @@ docker run -d \\
                   rows={2}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Handles checkout transactions and authorization calls"
+                  placeholder="Core business service component processing inbound requests"
                   className="w-full bg-[#0B0B0C] border border-[#26262B] rounded-md px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#840032]"
                 />
               </div>
@@ -794,7 +797,7 @@ docker run -d \\
                   {
                     id: 'recommend',
                     label: 'Recommend (Operator Review Required)',
-                    desc: 'Aegis TGNN predicts root-causes and generates topologically-ordered recovery plans for human approval.',
+                    desc: 'Aegis scores observed service signals, explains uncertain RCA candidates, and prepares policy-checked recovery recommendations.',
                     icon: Sparkles,
                     badge: 'Operator & Admin',
                     allowed: true,
@@ -897,7 +900,7 @@ docker run -d \\
                 </div>
               </div>
 
-              {!testResult?.success && monitoringMode !== 'ignore' && (
+              {!testResult?.success && monitoringMode !== 'ignore' && (!editService || Boolean(testResult)) && (
                 <div className="p-3 bg-amber-950/20 border border-amber-900/50 rounded-lg text-amber-300 text-[11px] flex items-center space-x-2">
                   <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
                   <span>

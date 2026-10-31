@@ -582,6 +582,7 @@ type PredictResponse struct {
 	Engine               string                  `protobuf:"bytes,7,opt,name=engine,proto3" json:"engine,omitempty"`
 	ModelVersion         string                  `protobuf:"bytes,8,opt,name=model_version,json=modelVersion,proto3" json:"model_version,omitempty"`
 	CalibratedConfidence float64                 `protobuf:"fixed64,9,opt,name=calibrated_confidence,json=calibratedConfidence,proto3" json:"calibrated_confidence,omitempty"`
+	FallbackReason       string                  `protobuf:"bytes,10,opt,name=fallback_reason,json=fallbackReason,proto3" json:"fallback_reason,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -677,6 +678,13 @@ func (x *PredictResponse) GetCalibratedConfidence() float64 {
 		return x.CalibratedConfidence
 	}
 	return 0
+}
+
+func (x *PredictResponse) GetFallbackReason() string {
+	if x != nil {
+		return x.FallbackReason
+	}
+	return ""
 }
 
 var File_predict_proto protoreflect.FileDescriptor

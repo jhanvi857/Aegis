@@ -8,6 +8,7 @@ export interface TopologyNodeData {
   serviceId: string;
   type: 'gateway' | 'service' | 'database' | 'cache' | 'queue';
   status: HealthStatus;
+  dataStatus?: 'fresh' | 'stale' | 'unknown' | string;
   cpu: number;
   latency: number;
   rps: number;
@@ -18,6 +19,8 @@ export interface TopologyNodeData {
 export const TopologyNode = memo(({ data }: { data: TopologyNodeData }) => {
   const isCritical = data.status === 'critical';
   const isDegraded = data.status === 'degraded';
+  const isOffline = data.status === 'offline' || data.status === 'failed';
+  const isUnknown = data.status === 'unknown' || data.status === 'stale' || data.dataStatus === 'stale' || data.dataStatus === 'unknown';
 
   const typeIconMap = {
     gateway: Activity,
@@ -29,12 +32,14 @@ export const TopologyNode = memo(({ data }: { data: TopologyNodeData }) => {
 
   const Icon = typeIconMap[data.type] || Server;
 
-  const stateLabel = isCritical ? 'Critical' : isDegraded ? 'Warning' : 'Healthy';
+  const stateLabel = isOffline ? 'Offline' : isCritical ? 'Critical' : isDegraded ? 'Warning' : isUnknown ? 'Unknown' : 'Healthy';
 
   return (
     <div
       className={`px-3.5 py-3 bg-[#151517] border rounded-lg min-w-48 shadow-lg transition-all ${
-        isCritical
+        isOffline
+          ? 'border-gray-500 ring-1 ring-gray-500/70 bg-gray-500/10'
+          : isCritical
           ? 'border-[#AD2831] ring-1 ring-[#AD2831]/70 bg-[#AD2831]/10'
           : isDegraded
           ? 'border-[#D4A017] ring-1 ring-[#D4A017]/60 bg-[#D4A017]/10'
@@ -52,7 +57,9 @@ export const TopologyNode = memo(({ data }: { data: TopologyNodeData }) => {
         <div className="flex items-center space-x-2">
           <div
             className={`p-1.5 rounded-md border ${
-              isCritical
+              isOffline || isUnknown
+                ? 'bg-gray-500/15 text-gray-400 border-gray-500/50'
+                : isCritical
                 ? 'bg-[#AD2831]/20 text-[#f87171] border-[#AD2831]/60'
                 : isDegraded
                 ? 'bg-[#D4A017]/15 text-[#e5b533] border-[#D4A017]/60'
@@ -64,7 +71,7 @@ export const TopologyNode = memo(({ data }: { data: TopologyNodeData }) => {
           <div>
             <div className="font-mono text-[12px] font-semibold leading-tight text-white">{data.label}</div>
             <div className={`font-sans text-[11px] font-semibold leading-tight ${
-              isCritical ? 'text-[#f87171]' : isDegraded ? 'text-[#e5b533]' : 'text-[#52b767]'
+              isOffline || isUnknown ? 'text-gray-400' : isCritical ? 'text-[#f87171]' : isDegraded ? 'text-[#e5b533]' : 'text-[#52b767]'
             }`}>
               {stateLabel}
             </div>
@@ -73,7 +80,9 @@ export const TopologyNode = memo(({ data }: { data: TopologyNodeData }) => {
 
         <span
           className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-            isCritical
+            isOffline || isUnknown
+              ? 'bg-gray-400'
+              : isCritical
               ? 'bg-[#AD2831]'
               : isDegraded
               ? 'bg-[#D4A017]'

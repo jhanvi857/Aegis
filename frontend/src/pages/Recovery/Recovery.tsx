@@ -180,35 +180,8 @@ export const Recovery: React.FC = () => {
     return <RotateCcw className="w-3.5 h-3.5 text-[#D4A017]" />;
   };
 
-  const deduceActionType = (recId?: string, title?: string, family?: string): string => {
-    const s = `${recId || ''} ${title || ''} ${family || ''}`.toLowerCase();
-    if (s.includes('pool') || s.includes('database')) return 'increase_pool';
-    if (s.includes('flush') || s.includes('cache')) return 'flush_cache';
-    if (s.includes('reroute') || s.includes('latency')) return 'reroute_traffic';
-    if (s.includes('isolate')) return 'isolate';
-    if (s.includes('scale') || s.includes('cpu') || s.includes('queue')) return 'scale';
-    return 'restart';
-  };
-
-  // Top recommended hero action
-  const heroAction =
-    activeRecommendations.length > 0
-      ? activeRecommendations[0]
-      : {
-          id: prediction.recommendedActionId || 'act-auto',
-          title: prediction.recommendedAction,
-          description: prediction.rootCauseReason,
-          targetServiceId: prediction.rootCauseServiceId,
-          actionType: deduceActionType(
-            prediction.recommendedActionId,
-            prediction.recommendedAction,
-            prediction.faultFamily
-          ),
-          confidence: prediction.confidence,
-          status: 'idle' as const,
-          riskLevel: risk > 70 ? ('HIGH' as const) : risk > 35 ? ('MEDIUM' as const) : ('LOW' as const),
-          requiresApproval: risk > 35,
-        };
+  // Only dispatch actions returned by the backend decision service.
+  const heroAction = activeRecommendations[0] || null;
 
   return (
     <div className="p-6 space-y-6 font-sans">
@@ -242,7 +215,7 @@ export const Recovery: React.FC = () => {
       )}
 
       {/* Recommended Action Hero Banner */}
-      {hasFreshData && (prediction.incident || activeRecommendations.length > 0) ? (
+      {hasFreshData && heroAction && (prediction.incident || activeRecommendations.length > 0) ? (
       <div className="p-4 bg-[#840032]/20 border border-[#840032] rounded-lg space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2 text-[11px] font-semibold text-[#f07b9e] uppercase tracking-[0.07em]">

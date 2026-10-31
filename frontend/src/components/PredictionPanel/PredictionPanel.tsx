@@ -19,6 +19,7 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
 }) => {
   const { services, activeFaults, executeRecoveryAction } = useTelemetryStore();
   const prediction = getMLPrediction(services, activeFaults);
+  const hasFreshData = services.some((service) => service.dataStatus === 'fresh');
 
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -31,14 +32,14 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
   const handleRemediate = async () => {
     if (!prediction.rootCauseServiceId || prediction.rootCauseServiceId === 'None') return;
 
-    // Extract action type from recommendation string or default
-    let actionType = 'restart';
-    const recLower = (prediction.recommendedAction || '').toLowerCase();
-    if (recLower.includes('scale')) actionType = 'scale';
-    else if (recLower.includes('flush') || recLower.includes('cache')) actionType = 'flush_cache';
-    else if (recLower.includes('pool')) actionType = 'increase_pool';
-    else if (recLower.includes('reroute')) actionType = 'reroute_traffic';
-    else if (recLower.includes('restart')) actionType = 'restart';
+    const recommendation = prediction.recommendedActions?.find(
+      (action) => action.targetServiceId === prediction.rootCauseServiceId
+    ) ?? prediction.recommendedActions?.[0];
+    const actionType = recommendation?.actionType;
+    if (!actionType) {
+      setFeedback('No executable recovery recommendation is available for this service.');
+      return;
+    }
 
     setIsExecuting(true);
     setFeedback(null);
@@ -49,11 +50,11 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
         await executeRecoveryAction(
           actionType,
           prediction.rootCauseServiceId,
-          prediction.recommendedActionId || `act-${actionType}-${prediction.rootCauseServiceId}`,
+          recommendation.id || prediction.recommendedActionId,
           true
         );
       }
-      setFeedback('Remediation dispatched! Entering verification window...');
+      setFeedback('Action accepted. Waiting for fresh telemetry verification...');
       setTimeout(() => setFeedback(null), 4000);
     } catch (err: any) {
       setFeedback(`Execution halted: ${err?.message || err}`);
@@ -72,39 +73,31 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
           </div>
           <div>
             <span className="text-xs font-semibold text-white tracking-wide">
-              TGNN PREDICTION & ROOT CAUSE ENGINE
+              SERVICE DETECTION & RCA
             </span>
             <span className="text-[11px] text-gray-400 ml-2 font-mono">
-              Horizon: {prediction.estimatedFailureSec}s
+              Horizon: {prediction.estimatedFailureSec > 0 ? `${prediction.estimatedFailureSec}s` : 'n/a'}
             </span>
           </div>
         </div>
 
         <div className="flex items-center space-x-2">
           {/* Engine Badge */}
-          {prediction.engine === 'sparse_two_stage' ? (
-            <span
-              className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded border uppercase bg-[#00A896]/20 text-[#02c39a] border-[#00A896]/50 flex items-center gap-1"
-              title={`Engine: Sparse 2-Stage Pipeline (${prediction.modelVersion || 'v2.1.0'})`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-[#02c39a]"></span>
-              Sparse 2-Stage
-            </span>
-          ) : prediction.engine === 'heuristic_fallback' ? (
+          {prediction.engine === 'evidence_only_advisory' ? (
             <span
               className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded border uppercase bg-[#AD2831]/20 text-[#f87171] border-[#AD2831]/60 flex items-center gap-1"
-              title="Degraded: Python ML disconnected; operating via Go heuristic fallback"
+              title="Python assessment unavailable; showing local advisory evidence"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-[#f87171] animate-pulse"></span>
-              Degraded (Heuristic)
+              Evidence only
             </span>
           ) : (
             <span
               className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded border uppercase bg-[#3B82F6]/20 text-[#60a5fa] border-[#3B82F6]/50 flex items-center gap-1"
-              title={`Engine: Dense TGNN (${prediction.modelVersion || 'v1.0.0'})`}
+              title={`Engine: ${prediction.engine || 'waiting for assessment'}`}
             >
               <span className="w-1.5 h-1.5 rounded-full bg-[#60a5fa]"></span>
-              Dense TGNN
+              {prediction.engine || 'Waiting for data'}
             </span>
           )}
 
@@ -117,7 +110,7 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
                 : 'bg-[#3F8E4F]/20 text-[#52b767] border-[#3F8E4F]/60'
             }`}
           >
-            {isCriticalProb ? 'CRITICAL RISK' : isDegradedProb ? 'ELEVATED' : 'NOMINAL'}
+            {!hasFreshData ? 'UNKNOWN' : isCriticalProb ? 'HIGH SCORE' : isDegradedProb ? 'ANOMALY' : 'NO ANOMALY EVIDENCE'}
           </span>
         </div>
       </div>
@@ -128,7 +121,7 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
           {/* Failure Prob */}
           <div className="p-3 bg-[#151517] border border-[#26262B] rounded-lg">
             <div className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1">
-              Failure Prob
+              Anomaly Score
             </div>
             <div className="flex items-baseline space-x-1.5">
               <span
@@ -140,7 +133,7 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
                     : 'text-[#3F8E4F]'
                 }`}
               >
-                {prediction.failureProbability}%
+                {hasFreshData ? `${prediction.failureProbability}%` : 'â€”'}
               </span>
             </div>
           </div>
@@ -153,7 +146,7 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
             <div className="text-2xl font-bold font-mono text-[#3F8E4F]">
               {prediction.calibratedConfidence
                 ? `${(prediction.calibratedConfidence <= 1 ? prediction.calibratedConfidence * 100 : prediction.calibratedConfidence).toFixed(1)}%`
-                : `${prediction.confidence}%`}
+                : prediction.confidence > 0 ? `${prediction.confidence}% (uncalibrated)` : 'Not calibrated'}
             </div>
           </div>
 
@@ -163,7 +156,7 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
               Horizon
             </div>
             <div className="text-2xl font-bold font-mono text-[#D4A017]">
-              {prediction.estimatedFailureSec}s
+              {prediction.estimatedFailureSec > 0 ? `${prediction.estimatedFailureSec}s` : 'n/a'}
             </div>
           </div>
         </div>
@@ -172,7 +165,7 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
         <div className="p-3 bg-[#151517] border border-[#26262B] rounded-lg space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">
-              ISOLATED ROOT CAUSE
+              RCA CANDIDATE Â· UNCERTAINTY RETAINED
             </span>
             {rootService && (
               <span
@@ -202,34 +195,65 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
             {prediction.rootCauseReason}
           </p>
 
+          {prediction.rootCauseCandidates?.length ? (
+            <div className="space-y-2 border-t border-[#26262B] pt-2">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Candidate evidence and alternatives</div>
+              {prediction.rootCauseCandidates.slice(0, 4).map((candidate) => (
+                <div key={`${candidate.serviceId}-${candidate.faultFamily}`} className="rounded border border-[#26262B] bg-[#0B0B0C] p-2">
+                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className="font-mono text-gray-200">{candidate.serviceId} Â· {candidate.faultFamily}</span>
+                    <span className="text-gray-500">ranking {Number(candidate.rankingScore).toFixed(2)} Â· uncalibrated</span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-gray-400">{candidate.uncertainty || candidate.explanation}</p>
+                  {candidate.evidence?.length ? (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {candidate.evidence.map((item, index) => (
+                        <span key={`${item.metric}-${index}`} className="rounded bg-[#151517] px-1.5 py-0.5 font-mono text-[10px] text-gray-300">
+                          {item.metric}: {Number(item.value).toPrecision(3)}{item.unit ? ` ${item.unit}` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {(candidate.traceRefs?.length || candidate.logRefs?.length) ? (
+                    <div className="mt-1 text-[10px] text-gray-500">
+                      {candidate.traceRefs?.length ? `${candidate.traceRefs.length} trace reference(s)` : ''}
+                      {candidate.traceRefs?.length && candidate.logRefs?.length ? ' Â· ' : ''}
+                      {candidate.logRefs?.length ? `${candidate.logRefs.length} log reference(s)` : ''}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+
           {/* Root Node Telemetry Evidence */}
           {rootService && (
             <div className="grid grid-cols-4 gap-1.5 pt-2 border-t border-[#26262B] text-[11px]">
               <div className="p-1.5 bg-[#0B0B0C] rounded border border-[#26262B]">
                 <div className="text-gray-400 text-[10px]">CPU</div>
                 <div className={`font-mono font-semibold ${rootService.cpu > 80 ? 'text-[#f87171]' : 'text-gray-200'}`}>
-                  {Number(rootService.cpu || 0).toFixed(0)}%
+                  {rootService.observedSignals?.includes('cpu') ? `${Number(rootService.cpu).toFixed(0)}%` : 'â€”'}
                 </div>
               </div>
 
               <div className="p-1.5 bg-[#0B0B0C] rounded border border-[#26262B]">
                 <div className="text-gray-400 text-[10px]">Memory</div>
                 <div className={`font-mono font-semibold ${rootService.memory > 80 ? 'text-[#f87171]' : 'text-gray-200'}`}>
-                  {Number(rootService.memory || 0).toFixed(0)}%
+                  {rootService.observedSignals?.includes('memory') ? `${Number(rootService.memory).toFixed(0)}%` : 'â€”'}
                 </div>
               </div>
 
               <div className="p-1.5 bg-[#0B0B0C] rounded border border-[#26262B]">
                 <div className="text-gray-400 text-[10px]">Latency</div>
                 <div className={`font-mono font-semibold ${rootService.latency > 150 ? 'text-[#f87171]' : 'text-gray-200'}`}>
-                  {Number(rootService.latency || 0).toFixed(0)}ms
+                  {rootService.observedSignals?.includes('latency') ? `${Number(rootService.latency).toFixed(0)}ms` : 'â€”'}
                 </div>
               </div>
 
               <div className="p-1.5 bg-[#0B0B0C] rounded border border-[#26262B]">
                 <div className="text-gray-400 text-[10px]">Error Rate</div>
                 <div className={`font-mono font-semibold ${rootService.errorRate > 0.05 ? 'text-[#f87171]' : 'text-gray-200'}`}>
-                  {(Number(rootService.errorRate || 0) * 100).toFixed(1)}%
+                  {rootService.observedSignals?.includes('error_rate') ? `${(Number(rootService.errorRate) * 100).toFixed(1)}%` : 'â€”'}
                 </div>
               </div>
             </div>
@@ -264,7 +288,7 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
               DECISION ENGINE REMEDIATION
             </span>
             <span className="text-[10px] font-mono bg-[#840032] text-white px-2 py-0.5 rounded font-semibold">
-              RULEBOOK MITIGATION
+              POLICY CHECK REQUIRED
             </span>
           </div>
 

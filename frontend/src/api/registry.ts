@@ -1,7 +1,7 @@
 import { apiFetch, API_BASE_URL } from './client';
 
 export type MonitoringMode = 'ignore' | 'observe' | 'recommend' | 'auto_remediate';
-export type ServiceStatus = 'unconnected' | 'healthy_data' | 'no_data' | 'stale' | 'healthy' | 'degraded' | 'critical';
+export type ServiceStatus = 'unconnected' | 'healthy_data' | 'no_data' | 'stale' | 'unknown' | 'offline' | 'healthy' | 'degraded' | 'critical';
 export type EdgeSource = 'manual' | 'suggested' | 'discovered';
 export type EdgeState = 'active' | 'suggested' | 'rejected';
 export type EdgeType = 'sync' | 'async' | 'db' | 'cache';
@@ -53,12 +53,24 @@ export interface TopologyServiceItem {
   description?: string;
   tags?: string[];
   lastTelemetryTime?: string;
+  lastSeen?: string;
+  dataStatus?: 'fresh' | 'stale' | 'unknown' | string;
   cpu?: number;
   memory?: number;
   latency?: number;
   rps?: number;
   errorRate?: number;
   queueDepth?: number;
+}
+
+export interface ConnectConfig {
+  otlpHttpEndpoint: string;
+  otlpGrpcEndpoint?: string;
+  ingestTokenConfigured: boolean;
+  apiEndpoint: string;
+  scrapeTargetExample: string;
+  dockerComposeSnippet: string;
+  kubernetesAnnotations: Record<string, string>;
 }
 
 export interface TopologyEdgeItem {
@@ -151,6 +163,9 @@ export interface ImportResponse {
 }
 
 export const registryApi = {
+  getConnectConfig: async (): Promise<ConnectConfig> => {
+    return await apiFetch<ConnectConfig>('/connect');
+  },
   getSystemMode: async (): Promise<SystemModeInfo> => {
     return await apiFetch<SystemModeInfo>('/system/mode');
   },

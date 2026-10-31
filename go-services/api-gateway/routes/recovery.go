@@ -24,12 +24,28 @@ func WaitForRecoveryVerifications() {
 	recoveryWG.Wait()
 }
 
+func hasFreshHealthSignal(serviceID string, after time.Time) bool {
+	State.mu.RLock()
+	defer State.mu.RUnlock()
+	svc := State.Services[serviceID]
+	return svc != nil && (svc.SignalLastSeen["error_rate"].After(after) || svc.SignalLastSeen["latency"].After(after))
+}
+
+func appendRecoveryVerificationAudit(store storage.Store, planID, targetID, status string) {
+	_ = store.AppendAuditLog(context.Background(), &storage.AuditLogEntry{
+		Timestamp: time.Now().UTC(), ActorID: "system", ActorEmail: "aegis-verification@system.internal",
+		ActorRole: "system", Action: "recovery.verify", TargetServiceID: targetID,
+		ApprovalStatus: "RECORDED", Payload: "plan_id: " + planID, ResultStatus: strings.ToUpper(status),
+	})
+}
+
 type ExecuteRecoveryRequest struct {
 	ActionID        string `json:"actionId"`
 	TargetServiceID string `json:"targetServiceId,omitempty"`
 	ActionType      string `json:"actionType,omitempty"`
 	DryRun          bool   `json:"dryRun,omitempty"`
 	IdempotencyKey  string `json:"idempotencyKey,omitempty"`
+	Parameters      map[string]string `json:"parameters,omitempty"`
 }
 
 func GetRecommendationsHandler(w http.ResponseWriter, r *http.Request) {
@@ -110,30 +126,17 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Fallback to first non-healthy node if target still not found
-	if targetID == "" {
-		for _, id := range State.ServiceOrder {
-			if State.Services[id].Status != "healthy" {
-				targetID = id
-				break
-			}
-		}
-	}
-
 	svc, exists := State.Services[targetID]
-	if !exists {
-		if len(State.ServiceOrder) > 0 {
-			targetID = State.ServiceOrder[0]
-			svc = State.Services[targetID]
-			exists = true
-		}
-	}
 	rec, hasRecord := State.ApprovedRecords[req.ActionID]
 	isApproved := hasRecord || (req.ActionID != "" && State.ApprovedPlans[req.ActionID])
 	State.mu.RUnlock()
 
 	if !exists || svc == nil {
-		http.Error(w, `{"error":"No service to remediate"}`, http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": fmt.Sprintf("Service '%s' not found in active topology", targetID),
+		})
 		return
 	}
 
@@ -173,80 +176,76 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if actionType == "" {
-		actionType = "restart"
+		LogAudit(r, "recovery.disallowed", targetID, "REJECTED", "", "action type unresolved", "BLOCKED", "Recovery must reference a known action recommendation")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":  "action type is required and must match a known recovery recommendation",
+			"status": "rejected",
+		})
+		return
 	}
 
-	// Live Registry Enforcement: Only act on services with mode recommend/auto_remediate,
-	// a valid recovery_binding, and the action in allowed_actions; otherwise return "observe-only/no binding"
-	if store := GetAuthStore(); store != nil {
-		regSvc, err := store.GetService(r.Context(), targetID)
-		if err == nil && regSvc != nil {
-			mode := strings.ToLower(regSvc.MonitoringMode)
-			if mode == "observe" || mode == "ignore" {
-				LogAudit(r, "recovery.disallowed", targetID, "REJECTED", "", fmt.Sprintf("action: %s, mode: %s", actionType, regSvc.MonitoringMode), "BLOCKED", "Service is in observe-only or ignore mode")
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusBadRequest)
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{
-					"error":   "observe-only/no binding: service monitoring mode does not permit automated or manual recovery execution",
-					"status":  "rejected",
-					"mode":    regSvc.MonitoringMode,
-					"message": "Service is in observe-only mode. Set monitoring mode to recommend or auto_remediate to permit actions.",
-				})
-				return
-			}
-			if regSvc.RecoveryBinding == nil || strings.TrimSpace(regSvc.RecoveryBinding.Target) == "" {
-				LogAudit(r, "recovery.disallowed", targetID, "REJECTED", "", fmt.Sprintf("action: %s", actionType), "BLOCKED", "Service has no recovery binding")
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusBadRequest)
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{
-					"error":   "observe-only/no binding: service has no recovery binding configured",
-					"status":  "rejected",
-					"message": "Service has no valid recovery binding. Configure a Kubernetes or Docker target with allowed actions.",
-				})
-				return
-			}
-			if len(regSvc.RecoveryBinding.AllowedActions) > 0 {
-				normalizedAction := strings.ToLower(strings.TrimSpace(actionType))
-				if normalizedAction == "reroute_traffic" {
-					normalizedAction = "reroute"
-				}
-				if normalizedAction == "scale_up" {
-					normalizedAction = "scale"
-				}
-				allowed := false
-				for _, act := range regSvc.RecoveryBinding.AllowedActions {
-					normAct := strings.ToLower(strings.TrimSpace(act))
-					if normAct == "reroute_traffic" {
-						normAct = "reroute"
-					}
-					if normAct == "scale_up" {
-						normAct = "scale"
-					}
-					if normAct == normalizedAction || strings.EqualFold(normAct, actionType) {
-						allowed = true
-						break
-					}
-				}
-				if !allowed {
-					LogAudit(r, "recovery.disallowed", targetID, "REJECTED", "", fmt.Sprintf("action: %s", actionType), "BLOCKED", "Action not in allowed_actions")
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusBadRequest)
-					_ = json.NewEncoder(w).Encode(map[string]interface{}{
-						"error":          fmt.Sprintf("observe-only/no binding: action '%s' is not in service allowed_actions [%s]", actionType, strings.Join(regSvc.RecoveryBinding.AllowedActions, ", ")),
-						"status":         "rejected",
-						"allowedActions": regSvc.RecoveryBinding.AllowedActions,
-					})
-					return
-				}
-			}
+	// Fail closed: recovery requires an explicitly configured registry binding
+	// and an allowlist. Discovery never grants execution capability.
+	store := GetAuthStore()
+	if store == nil {
+		http.Error(w, "recovery registry unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	regSvc, regErr := store.GetService(r.Context(), targetID)
+	if regErr != nil || regSvc == nil {
+		LogAudit(r, "recovery.disallowed", targetID, "REJECTED", "", "registry service missing", "BLOCKED", "No owner-managed recovery policy exists for this service")
+		http.Error(w, "no owner-managed recovery policy exists for this service", http.StatusConflict)
+		return
+	}
+	mode := strings.ToLower(strings.TrimSpace(regSvc.MonitoringMode))
+	policyRequiresApproval := mode == "recommend"
+	if mode != "recommend" && mode != "auto_remediate" {
+		LogAudit(r, "recovery.disallowed", targetID, "REJECTED", "", fmt.Sprintf("action: %s, mode: %s", actionType, regSvc.MonitoringMode), "BLOCKED", "Service is not enabled for recovery")
+		http.Error(w, "service monitoring mode does not permit recovery execution", http.StatusForbidden)
+		return
+	}
+	if regSvc.RecoveryBinding == nil || strings.TrimSpace(regSvc.RecoveryBinding.Target) == "" {
+		LogAudit(r, "recovery.disallowed", targetID, "REJECTED", "", fmt.Sprintf("action: %s", actionType), "BLOCKED", "Service has no recovery binding")
+		http.Error(w, "service has no recovery binding", http.StatusConflict)
+		return
+	}
+	if !strings.EqualFold(regSvc.RecoveryBinding.Runtime, "docker") {
+		http.Error(w, "recovery runtime is unsupported by the configured executor", http.StatusNotImplemented)
+		return
+	}
+	if len(regSvc.RecoveryBinding.AllowedActions) == 0 {
+		http.Error(w, "recovery binding must explicitly allow at least one action", http.StatusConflict)
+		return
+	}
+	normalizedAction := strings.ToLower(NormalizeActionType(actionType))
+	allowed := false
+	for _, boundAction := range regSvc.RecoveryBinding.AllowedActions {
+		if strings.ToLower(NormalizeActionType(boundAction)) == normalizedAction {
+			allowed = true
+			break
 		}
 	}
-
+	if !allowed {
+		LogAudit(r, "recovery.disallowed", targetID, "REJECTED", "", fmt.Sprintf("action: %s", actionType), "BLOCKED", "Action not in allowed_actions")
+		http.Error(w, fmt.Sprintf("action %q is not allowed by the service recovery binding", actionType), http.StatusForbidden)
+		return
+	}
+	executionTarget := strings.TrimSpace(regSvc.RecoveryBinding.Target)
 	// Single Source of Truth: evaluate Risk & Approval Policy
 	assessment := AssessPolicy(actionType, targetID)
 	riskLevel := assessment.RiskLevel
 	riskScore := assessment.RiskScore
-	requiresApproval := assessment.RequiresApproval
+	requiresApproval := assessment.RequiresApproval || policyRequiresApproval
+	if !req.DryRun {
+		switch NormalizeActionType(actionType) {
+		case "RESTART", "SCALE_UP":
+		default:
+			http.Error(w, "recovery action has no configured executor integration", http.StatusNotImplemented)
+			return
+		}
+	}
 
 	// 1. Safety Limits Enforcement (Cooldown, Concurrent limit, Blast-radius budget)
 	if !req.DryRun {
@@ -378,7 +377,7 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 		ActionID:         req.ActionID,
 		ActionType:       actionType,
 		TargetServiceID:  targetID,
-		Status:           "Verifying",
+		Status:           "Dispatching",
 		RiskLevel:        riskLevel,
 		RiskScore:        riskScore,
 		RequiresApproval: requiresApproval,
@@ -395,23 +394,11 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 		_ = store.CreateRecoveryExecution(r.Context(), execRecord)
 	}
 
-	hasActiveFault := false
-	for _, f := range State.ActiveFaults {
-		if f.TargetServiceID == targetID && f.RemainingSeconds > 0 && f.Status != "completed" {
-			hasActiveFault = true
-			break
-		}
-	}
-
-	// Apply physical state changes: only reset metrics if no ongoing fault is active
-	if !hasActiveFault {
-		svc.Status = "healthy"
-		svc.CPU = 25.0
-		svc.Latency = 20.0
-		svc.ErrorRate = 0.001
-	}
-	if actionType == "scale" || actionType == "scale_up" {
-		svc.Replicas = svc.Replicas + 2
+	// Dispatch is not proof of recovery. Keep observed health untouched until
+	// fresh post-action telemetry verifies it.
+	statusBeforeDispatch := svc.Status
+	if svc.Status != "healthy" {
+		svc.Status = "remediating"
 	}
 
 	actionTitle := fmt.Sprintf("Remediation: %s on %s", actionType, svc.Name)
@@ -421,33 +408,58 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Dispatch recovery plan to physical Recovery Engine
 	if flag.Lookup("test.v") == nil || os.Getenv("RECOVERY_ENGINE_URL") != "" {
-		go func(pID, rLevel string, rScore float64, aType, tNode string) {
-			recEngineURL := os.Getenv("RECOVERY_ENGINE_URL")
-			if recEngineURL == "" {
-				recEngineURL = "http://localhost:8092"
+		recEngineURL := strings.TrimSpace(os.Getenv("RECOVERY_ENGINE_URL"))
+		if recEngineURL == "" { recEngineURL = "http://localhost:8092" }
+		planPayload, _ := json.Marshal(map[string]interface{}{
+			"plan_id": planID, "risk_level": riskLevel, "risk_score": riskScore,
+			"steps": []map[string]interface{}{{
+				"action_id": fmt.Sprintf("act-%d", time.Now().UnixNano()), "action_type": actionType,
+				"target_node": executionTarget, "execution_order": 1, "parameters": req.Parameters,
+			}},
+		})
+		client := &http.Client{Timeout: 3 * time.Second}
+		resp, dispatchErr := client.Post(fmt.Sprintf("%s/plan/submit", recEngineURL), "application/json", bytes.NewBuffer(planPayload))
+		if dispatchErr == nil {
+			var ack struct { Status string `json:"status"` }
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 { dispatchErr = json.NewDecoder(resp.Body).Decode(&ack) }
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 { dispatchErr = fmt.Errorf("recovery engine returned HTTP %d", resp.StatusCode) }
+			_ = resp.Body.Close()
+			if dispatchErr == nil && ack.Status == "held_for_approval" {
+				if !isApproved {
+					dispatchErr = fmt.Errorf("recovery engine requires approval")
+				} else {
+					approveBody, _ := json.Marshal(map[string]string{"plan_id": planID, "approved_by": approverName})
+					approveResp, err := client.Post(fmt.Sprintf("%s/plan/approve", recEngineURL), "application/json", bytes.NewBuffer(approveBody))
+					if err != nil { dispatchErr = err } else {
+						var approveAck struct { Status string `json:"status"` }
+						if approveResp.StatusCode < 200 || approveResp.StatusCode >= 300 { dispatchErr = fmt.Errorf("recovery engine approval returned HTTP %d", approveResp.StatusCode) } else { dispatchErr = json.NewDecoder(approveResp.Body).Decode(&approveAck) }
+						_ = approveResp.Body.Close()
+						if dispatchErr == nil && approveAck.Status != "approved_and_executed" { dispatchErr = fmt.Errorf("recovery engine approval ended in %q", approveAck.Status) }
+					}
+				}
 			}
-
-			client := &http.Client{Timeout: 3 * time.Second}
-			planPayload, _ := json.Marshal(map[string]interface{}{
-				"plan_id":    pID,
-				"risk_level": rLevel,
-				"risk_score": rScore,
-				"steps": []map[string]interface{}{
-					{
-						"action_id":       fmt.Sprintf("act-%d", time.Now().UnixNano()),
-						"action_type":     aType,
-						"target_node":     tNode,
-						"execution_order": 1,
-						"parameters":      map[string]string{},
-					},
-				},
+		}
+		if dispatchErr != nil {
+			completedAt := time.Now().UTC()
+			if store := GetAuthStore(); store != nil { _ = store.UpdateRecoveryExecution(r.Context(), &storage.RecoveryExecution{ID:planID, Status:"Failed", CompletedAt:&completedAt}) }
+			Safety.CompleteDispatch(planID)
+			State.mu.Lock()
+			if current := State.Services[targetID]; current != nil && current.Status == "remediating" {
+				current.Status = statusBeforeDispatch
+			}
+			State.mu.Unlock()
+			LogAudit(r, "recovery.dispatch", targetID, riskLevel, "", fmt.Sprintf("action: %s, plan_id: %s", actionType, planID), "FAILED", dispatchErr.Error())
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"error":           "recovery engine dispatch failed; no action was executed",
+				"actionId":        req.ActionID,
+				"targetServiceId": targetID,
+				"status":          "failed",
 			})
-
-			resp, err := client.Post(fmt.Sprintf("%s/plan/submit", recEngineURL), "application/json", bytes.NewBuffer(planPayload))
-			if err == nil {
-				_ = resp.Body.Close()
-			}
-		}(planID, riskLevel, riskScore, actionType, targetID)
+			return
+		}
+		if store := GetAuthStore(); store != nil { _ = store.UpdateRecoveryExecution(r.Context(), &storage.RecoveryExecution{ID:planID, Status:"Verifying"}) }
 	}
 
 	// 5. Asynchronous Real Telemetry Verification Window (Replacing fake verify)
@@ -472,6 +484,7 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 		deadline := start.Add(window)
 
 		verified := false
+		postActionTelemetry := false
 		var finalMetrics map[string]interface{}
 
 		checkInterval := 1 * time.Second
@@ -486,6 +499,7 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 			State.mu.RLock()
 			s, exists := State.Services[targetNode]
 			if exists {
+				if s.LastIngestTime.After(start) && len(s.ObservedSignals) > 0 { postActionTelemetry = true }
 				finalMetrics = map[string]interface{}{
 					"cpu":       s.CPU,
 					"memory":    s.Memory,
@@ -494,8 +508,15 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 					"status":    s.Status,
 					"replicas":  s.Replicas,
 				}
-				// Telemetry verification criteria: healthy status, low errors, bounded latency
-				if s.Status == "healthy" && s.ErrorRate <= 0.05 && s.Latency <= 100.0 {
+				// Verify only against fresh telemetry received after dispatch. Signals
+				// that the service does not report are not treated as zero.
+				errorFresh := s.SignalLastSeen["error_rate"].After(start)
+				latencyFresh := s.SignalLastSeen["latency"].After(start)
+				healthEvidence := errorFresh || latencyFresh
+				verificationLimits := getIncidentGateConfig()
+				errorOK := !errorFresh || s.ErrorRate <= verificationLimits.ErrorThreshold
+				latencyOK := !latencyFresh || s.Latency <= verificationLimits.LatencyThreshold
+				if healthEvidence && s.LastIngestTime.After(start) && s.DataStatus == "fresh" && s.Status == "healthy" && errorOK && latencyOK {
 					verified = true
 					State.mu.RUnlock()
 					break
@@ -521,25 +542,21 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 
 		status := "Verified"
 		var escalatedAction string
-		riskAfter := 12.0 // genuine post-recovery baseline
+		riskAfter := rBefore
+		if verified { riskAfter = ComputePredictionOutput().FailureProbability }
 
 		if !verified {
-			status = "Ineffective"
+			status = "Unverified"
+			if postActionTelemetry && hasFreshHealthSignal(targetNode, start) { status = "Ineffective" }
 			riskAfter = rBefore
 
-			// Query secondary action from rulebook
-			family := "cpu_saturation"
-			for fam, esc := range FaultFamilyEscalations {
-				if esc.Primary == NormalizeActionType(actType) {
-					family = fam
-					break
+			if postActionTelemetry {
+				// Secondary actions are recommendations for operator review only.
+				family := "cpu_saturation"
+				for fam, esc := range FaultFamilyEscalations {
+					if esc.Primary == NormalizeActionType(actType) { family = fam; break }
 				}
-			}
-			esc, hasEsc := FaultFamilyEscalations[family]
-			if hasEsc {
-				escalatedAction = esc.Secondary
-			} else {
-				escalatedAction = "RESTART"
+				if esc, ok := FaultFamilyEscalations[family]; ok { escalatedAction = esc.Secondary }
 			}
 
 			// Add human escalation alert
@@ -549,8 +566,8 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 				Timestamp:   time.Now().Format("15:04:05"),
 				ServiceID:   targetNode,
 				ServiceName: tName,
-				Severity:    "critical",
-				Message:     fmt.Sprintf("REMEDIATION INEFFECTIVE: Action '%s' on %s failed verification window. Escalating to: %s", actType, tName, escalatedAction),
+				Severity:    map[bool]string{true:"critical", false:"warning"}[postActionTelemetry],
+				Message:     fmt.Sprintf("REMEDIATION %s: Action '%s' on %s has no successful verification evidence. Operator review required. Suggested follow-up: %s", status, actType, tName, escalatedAction),
 				Resolved:    false,
 			})
 			State.mu.Unlock()
@@ -569,6 +586,7 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if store := GetAuthStore(); store != nil {
 			_ = store.UpdateRecoveryExecution(context.Background(), updateExec)
+			appendRecoveryVerificationAudit(store, pID, targetNode, status)
 		}
 		Safety.CompleteDispatch(pID)
 
@@ -601,11 +619,12 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 		auditType = fmt.Sprintf("Human-Approved by %s", approverName)
 	}
 
-	LogAudit(r, "recovery.execute", targetID, riskLevel, fmt.Sprintf("%v", isApproved), fmt.Sprintf("action: %s, plan_id: %s", actionType, planID), "SUCCESS", "")
+	LogAudit(r, "recovery.execute", targetID, riskLevel, fmt.Sprintf("%v", isApproved), fmt.Sprintf("action: %s, plan_id: %s", actionType, planID), "DISPATCHED", "")
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"success":          true,
+		"success":          false,
+		"accepted":         true,
 		"status":           "Verifying",
 		"actionId":         req.ActionID,
 		"planId":           planID,
@@ -772,14 +791,14 @@ func ApproveRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"targetServiceId is required for authorization binding"}`, http.StatusBadRequest)
 		return
 	}
-	approver := strings.TrimSpace(payload.Approver)
-	if approver == "" {
-		if authUser, err := GetUserFromRequest(r); err == nil && authUser != nil {
-			approver = authUser.Email
-		}
+	caller := GetCaller(r)
+	if caller == nil || strings.TrimSpace(caller.Email) == "" {
+		http.Error(w, `{"error":"Authenticated operator identity is required for approval"}`, http.StatusUnauthorized)
+		return
 	}
-	if approver == "" {
-		http.Error(w, `{"error":"Approver identity (approver) is required for audit trail"}`, http.StatusBadRequest)
+	approver := strings.TrimSpace(caller.Email)
+	if supplied := strings.TrimSpace(payload.Approver); supplied != "" && !strings.EqualFold(supplied, approver) {
+		http.Error(w, `{"error":"approver must match the authenticated operator"}`, http.StatusForbidden)
 		return
 	}
 
@@ -863,9 +882,17 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 		return nil, fmt.Errorf("service %s not found", targetID)
 	}
 
-	if actionType == "" {
-		actionType = "restart"
-	}
+	store := GetAuthStore()
+	if store == nil { return nil, fmt.Errorf("recovery registry unavailable") }
+	registered, err := store.GetService(context.Background(), targetID)
+	if err != nil || registered == nil || registered.RecoveryBinding == nil { return nil, fmt.Errorf("service has no configured recovery binding") }
+	if strings.ToLower(strings.TrimSpace(registered.MonitoringMode)) != "auto_remediate" { return nil, fmt.Errorf("service is not enabled for autonomous recovery") }
+	if !strings.EqualFold(strings.TrimSpace(registered.RecoveryBinding.Runtime), "docker") || strings.TrimSpace(registered.RecoveryBinding.Target) == "" { return nil, fmt.Errorf("configured recovery runtime or target is unsupported") }
+	allowedAction := false
+	for _, allowed := range registered.RecoveryBinding.AllowedActions { if strings.EqualFold(NormalizeActionType(allowed), NormalizeActionType(actionType)) { allowedAction = true; break } }
+	if !allowedAction { return nil, fmt.Errorf("action is not allowed by the service recovery binding") }
+	if NormalizeActionType(actionType) != "RESTART" { return nil, fmt.Errorf("autonomous executor does not support this action without explicit parameters") }
+	executionTarget := strings.TrimSpace(registered.RecoveryBinding.Target)
 
 	// 1. Policy check
 	assessment := AssessPolicy(actionType, targetID)
@@ -921,7 +948,7 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 		ActionID:         actionID,
 		ActionType:       actionType,
 		TargetServiceID:  targetID,
-		Status:           "Verifying",
+		Status:           "Dispatching",
 		RiskLevel:        assessment.RiskLevel,
 		RiskScore:        assessment.RiskScore,
 		RequiresApproval: false,
@@ -937,23 +964,9 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 		_ = store.CreateRecoveryExecution(context.Background(), execRecord)
 	}
 
-	hasActiveFault := false
-	for _, f := range State.ActiveFaults {
-		if f.TargetServiceID == targetID && f.RemainingSeconds > 0 && f.Status != "completed" {
-			hasActiveFault = true
-			break
-		}
-	}
-
-	// Apply physical remediation: only reset metrics if no ongoing fault is active
-	if !hasActiveFault {
-		svc.Status = "healthy"
-		svc.CPU = 25.0
-		svc.Latency = 20.0
-		svc.ErrorRate = 0.001
-	}
-	if actionType == "scale" || actionType == "scale_up" {
-		svc.Replicas = svc.Replicas + 2
+	// An action dispatch does not alter observed service metrics or prove recovery.
+	if svc.Status != "healthy" {
+		svc.Status = "remediating"
 	}
 
 	actionTitle := fmt.Sprintf("Autonomous Remediation: %s on %s", actionType, svc.Name)
@@ -965,40 +978,37 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 		ServiceID:   targetID,
 		ServiceName: svcName,
 		Level:       "INFO",
-		Message:     fmt.Sprintf("[AUTONOMOUS SELF-HEALING] Dispatched %s on %s automatically (Risk: %s, Score: %.2f)", actionType, svcName, assessment.RiskLevel, assessment.RiskScore),
+		Message:     fmt.Sprintf("Autonomous action %s dispatched to configured target for %s (risk: %s, score: %.2f)", actionType, svcName, assessment.RiskLevel, assessment.RiskScore),
 	})
 	State.mu.Unlock()
 
-	// Dispatch recovery plan to physical Recovery Engine
-	if flag.Lookup("test.v") == nil || os.Getenv("RECOVERY_ENGINE_URL") != "" {
-		go func(pID, rLevel string, rScore float64, aType, tNode string) {
-			recEngineURL := os.Getenv("RECOVERY_ENGINE_URL")
-			if recEngineURL == "" {
-				recEngineURL = "http://localhost:8092"
-			}
-
-			client := &http.Client{Timeout: 3 * time.Second}
-			planPayload, _ := json.Marshal(map[string]interface{}{
-				"plan_id":    pID,
-				"risk_level": rLevel,
-				"risk_score": rScore,
-				"steps": []map[string]interface{}{
-					{
-						"action_id":       actionID,
-						"action_type":     aType,
-						"target_node":     tNode,
-						"execution_order": 1,
-						"parameters":      map[string]string{},
-					},
-				},
-			})
-
-			resp, err := client.Post(fmt.Sprintf("%s/plan/submit", recEngineURL), "application/json", bytes.NewBuffer(planPayload))
-			if err == nil {
-				_ = resp.Body.Close()
-			}
-		}(planID, assessment.RiskLevel, assessment.RiskScore, actionType, targetID)
+	// Synchronously confirm that the recovery engine accepted an actual dispatch.
+	recEngineURL := strings.TrimSpace(os.Getenv("RECOVERY_ENGINE_URL"))
+	if recEngineURL == "" { recEngineURL = "http://localhost:8092" }
+	planPayload, _ := json.Marshal(map[string]interface{}{
+		"plan_id": planID, "risk_level": assessment.RiskLevel, "risk_score": assessment.RiskScore,
+		"steps": []map[string]interface{}{{"action_id": actionID, "action_type": actionType, "target_node": executionTarget, "execution_order": 1, "parameters": map[string]string{}}},
+	})
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, dispatchErr := client.Post(fmt.Sprintf("%s/plan/submit", recEngineURL), "application/json", bytes.NewBuffer(planPayload))
+	if dispatchErr == nil {
+		var ack struct { Status string `json:"status"` }
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 { dispatchErr = json.NewDecoder(resp.Body).Decode(&ack) } else { dispatchErr = fmt.Errorf("recovery engine returned HTTP %d", resp.StatusCode) }
+		_ = resp.Body.Close()
+		if dispatchErr == nil && ack.Status != "auto_executed" { dispatchErr = fmt.Errorf("autonomous action was not auto-executed (engine status %q)", ack.Status) }
 	}
+	if dispatchErr != nil {
+		completedAt := time.Now().UTC()
+		_ = store.UpdateRecoveryExecution(context.Background(), &storage.RecoveryExecution{ID: planID, Status: "Failed", CompletedAt: &completedAt})
+		_ = store.AppendAuditLog(context.Background(), &storage.AuditLogEntry{
+			Timestamp: completedAt, ActorID: "system", ActorEmail: "aegis-autonomous-agent@system.internal",
+			ActorRole: "system", Action: "recovery.dispatch", TargetServiceID: targetID,
+			RiskLevel: assessment.RiskLevel, ApprovalStatus: "AUTONOMOUS", Payload: fmt.Sprintf("action: %s, plan_id: %s", actionType, planID), ResultStatus: "FAILED", ErrorMessage: dispatchErr.Error(),
+		})
+		if Safety != nil { Safety.CompleteDispatch(planID) }
+		return nil, fmt.Errorf("recovery dispatch failed: %w", dispatchErr)
+	}
+	_ = store.UpdateRecoveryExecution(context.Background(), &storage.RecoveryExecution{ID: planID, Status: "Verifying"})
 
 	// Verification window goroutine
 	recoveryWG.Add(1)
@@ -1017,6 +1027,7 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 		deadline := start.Add(window)
 
 		verified := false
+		postActionTelemetry := false
 		var finalMetrics map[string]interface{}
 		checkInterval := 1 * time.Second
 		if window <= 200*time.Millisecond {
@@ -1030,6 +1041,7 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 			State.mu.RLock()
 			s, ex := State.Services[targetNode]
 			if ex {
+				if s.LastIngestTime.After(start) && len(s.ObservedSignals) > 0 { postActionTelemetry = true }
 				finalMetrics = map[string]interface{}{
 					"cpu":       s.CPU,
 					"memory":    s.Memory,
@@ -1038,7 +1050,13 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 					"status":    s.Status,
 					"replicas":  s.Replicas,
 				}
-				if s.Status == "healthy" && s.ErrorRate <= 0.05 && s.Latency <= 100.0 {
+			errorFresh := s.SignalLastSeen["error_rate"].After(start)
+			latencyFresh := s.SignalLastSeen["latency"].After(start)
+			healthEvidence := errorFresh || latencyFresh
+			verificationLimits := getIncidentGateConfig()
+			errorOK := !errorFresh || s.ErrorRate <= verificationLimits.ErrorThreshold
+			latencyOK := !latencyFresh || s.Latency <= verificationLimits.LatencyThreshold
+			if healthEvidence && s.LastIngestTime.After(start) && s.DataStatus == "fresh" && s.Status == "healthy" && errorOK && latencyOK {
 					verified = true
 					State.mu.RUnlock()
 					break
@@ -1064,24 +1082,19 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 
 		status := "Verified"
 		var escalatedAction string
-		riskAfter := 12.0
+		riskAfter := rBefore
 		if !verified {
-			status = "Ineffective"
+			status = "Unverified"
+			if postActionTelemetry && hasFreshHealthSignal(targetNode, start) { status = "Ineffective" }
 			riskAfter = rBefore
 
-			// Query secondary action from rulebook
-			family := "cpu_saturation"
-			for fam, esc := range FaultFamilyEscalations {
-				if esc.Primary == NormalizeActionType(actType) {
-					family = fam
-					break
+			if postActionTelemetry {
+				// Recommend a secondary action for operator review; do not execute it automatically.
+				family := "cpu_saturation"
+				for fam, esc := range FaultFamilyEscalations {
+					if esc.Primary == NormalizeActionType(actType) { family = fam; break }
 				}
-			}
-			esc, hasEsc := FaultFamilyEscalations[family]
-			if hasEsc {
-				escalatedAction = esc.Secondary
-			} else {
-				escalatedAction = "RESTART"
+				if esc, ok := FaultFamilyEscalations[family]; ok { escalatedAction = esc.Secondary }
 			}
 
 			// Add human escalation alert
@@ -1091,8 +1104,8 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 				Timestamp:   time.Now().Format("15:04:05"),
 				ServiceID:   targetNode,
 				ServiceName: tName,
-				Severity:    "critical",
-				Message:     fmt.Sprintf("AUTONOMOUS REMEDIATION INEFFECTIVE: Action '%s' on %s failed verification window. Escalating to: %s", actType, tName, escalatedAction),
+				Severity:    map[bool]string{true:"critical", false:"warning"}[postActionTelemetry],
+				Message:     fmt.Sprintf("AUTONOMOUS REMEDIATION %s: Action '%s' on %s has no successful verification evidence. Operator review required. Suggested follow-up: %s", status, actType, tName, escalatedAction),
 				Resolved:    false,
 			})
 			State.mu.Unlock()
@@ -1120,6 +1133,7 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 		}
 		if store := GetAuthStore(); store != nil {
 			_ = store.UpdateRecoveryExecution(context.Background(), updateExec)
+			appendRecoveryVerificationAudit(store, pID, targetNode, status)
 		}
 
 		State.mu.Lock()
@@ -1157,7 +1171,7 @@ func ExecuteAutonomousRecovery(targetID string, actionType string, actionID stri
 			RiskLevel:       assessment.RiskLevel,
 			ApprovalStatus:  "AUTONOMOUS",
 			Payload:         fmt.Sprintf("action: %s, plan_id: %s", actionType, planID),
-			ResultStatus:    "SUCCESS",
+			ResultStatus:    "DISPATCHED",
 		})
 	}
 
@@ -1211,4 +1225,3 @@ func SetAutonomousRecoveryStatusHandler(w http.ResponseWriter, r *http.Request) 
 		"message": fmt.Sprintf("Autonomous self-healing mode set to %v", req.Enabled),
 	})
 }
-

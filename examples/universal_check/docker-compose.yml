@@ -1,0 +1,32 @@
+services:
+  svc-otel:
+    build:
+      context: .
+      dockerfile: Dockerfile.otel
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://aegis-api-gateway:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_SERVICE_NAME: svc-otel
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_METRIC_EXPORT_INTERVAL: "10000"
+    networks: [aegis-net]
+    depends_on: [svc-prom]
+  svc-prom:
+    build:
+      context: .
+      dockerfile: Dockerfile.prom
+    networks: [aegis-net]
+    expose: ["9090"]
+  svc-third:
+    build:
+      context: .
+      dockerfile: Dockerfile.prom
+    environment:
+      SERVICE_NAME: svc-third
+    networks: [aegis-net]
+
+networks:
+  aegis-net:
+    external: true
+    name: aegis_aegis-net

@@ -54,22 +54,17 @@ class TestCondensationAndRepresentation(unittest.TestCase):
         self.assertIn("topological_order", rep)
         self.assertIn("centrality_scores", rep)
         self.assertIn("scc_components", rep)
-        self.assertIn("feature_matrix", rep)
         self.assertTrue(rep["has_cycles"])
 
-        # Check topological order: node-a must come first, node-d must come last
-        order = rep["topological_order"]
-        self.assertEqual(order[0], "node-a")
-        self.assertEqual(order[-1], "node-d")
+        # A cyclic graph has no node-level topological order. The condensed
+        # sequence keeps the cycle grouped instead of inventing an inner order.
+        self.assertEqual(rep["topological_order"], [])
+        self.assertEqual(rep["condensed_order"][0], ["node-a"])
+        self.assertEqual(rep["condensed_order"][-1], ["node-d"])
 
-        # Check node feature matrix
-        feat_matrix = rep["feature_matrix"]
-        self.assertIn("node-b", feat_matrix)
-        vec_b = feat_matrix["node-b"]
-        self.assertEqual(len(vec_b), 8)  # 8 features per node
-        # feature vector index 7 is normalized queue_depth (0.0 <= val <= 1.0)
-        self.assertGreaterEqual(vec_b[7], 0.0)
-        self.assertLessEqual(vec_b[7], 1.0)
+        # The representation preserves observed metrics without synthesizing ML features.
+        node_b = next(n for n in rep["snapshot"]["nodes"] if n["id"] == "node-b")
+        self.assertEqual(node_b["metrics"]["cpu_usage"], 88.0)
 
 
 if __name__ == "__main__":

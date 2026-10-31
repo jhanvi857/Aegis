@@ -373,6 +373,7 @@ func (m *MemoryStore) UpsertService(ctx context.Context, svc *TopologyService) e
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	cp := *svc
+	cp.ResourceAttributes = cloneStringMap(svc.ResourceAttributes)
 	if cp.CreatedAt.IsZero() {
 		cp.CreatedAt = time.Now().UTC()
 	}
@@ -385,9 +386,6 @@ func (m *MemoryStore) UpsertService(ctx context.Context, svc *TopologyService) e
 	}
 	if cp.Tier == "" {
 		cp.Tier = "tier-2"
-	}
-	if cp.Capabilities == "" {
-		cp.Capabilities = "scale,restart"
 	}
 	if cp.MonitoringMode == "" {
 		cp.MonitoringMode = "observe"
@@ -417,6 +415,7 @@ func (m *MemoryStore) GetService(ctx context.Context, id string) (*TopologyServi
 		return nil, ErrNotFound
 	}
 	cp := *s
+	cp.ResourceAttributes = cloneStringMap(s.ResourceAttributes)
 	return &cp, nil
 }
 
@@ -446,9 +445,17 @@ func (m *MemoryStore) ListServices(ctx context.Context, namespace, clusterID str
 			continue
 		}
 		cp := *s
+		cp.ResourceAttributes = cloneStringMap(s.ResourceAttributes)
 		res = append(res, &cp)
 	}
 	return res, nil
+}
+
+func cloneStringMap(input map[string]string) map[string]string {
+	if input == nil { return nil }
+	output := make(map[string]string, len(input))
+	for key, value := range input { output[key] = value }
+	return output
 }
 
 func (m *MemoryStore) edgeKey(sourceID, targetID, namespace, clusterID string) string {
@@ -586,7 +593,6 @@ func (m *MemoryStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, target
 			Namespace:      namespace,
 			ClusterID:      clusterID,
 			Tier:           "tier-2",
-			Capabilities:   "scale,restart",
 			Status:         "unconnected",
 			MonitoringMode: "observe",
 			CreatedAt:      now,
@@ -602,7 +608,6 @@ func (m *MemoryStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, target
 			Namespace:      namespace,
 			ClusterID:      clusterID,
 			Tier:           "tier-2",
-			Capabilities:   "scale,restart",
 			Status:         "unconnected",
 			MonitoringMode: "observe",
 			CreatedAt:      now,

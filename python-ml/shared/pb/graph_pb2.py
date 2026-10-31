@@ -9,17 +9,14 @@ from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import runtime_version as _runtime_version
 from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
-try:
-    _runtime_version.ValidateProtobufRuntimeVersion(
-        _runtime_version.Domain.PUBLIC,
-        7,
-        35,
-        1,
-        '',
-        'graph.proto'
-    )
-except Exception:
-    pass
+_runtime_version.ValidateProtobufRuntimeVersion(
+    _runtime_version.Domain.PUBLIC,
+    7,
+    35,
+    1,
+    '',
+    'graph.proto'
+)
 # @@protoc_insertion_point(imports)
 
 _sym_db = _symbol_database.Default()

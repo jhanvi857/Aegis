@@ -21,7 +21,7 @@ export const recoveryApi = {
       body: JSON.stringify({ actionId, targetServiceId }),
     }),
   executeAction: (actionType: string, targetServiceId?: string, actionTitleOrId?: string, approved?: boolean) =>
-    apiFetch<{ success: boolean; actionId: string; approvalType?: string }>('/recovery/execute', {
+    apiFetch<{ success: boolean; accepted: boolean; actionId: string; planId?: string; status?: string; approvalType?: string }>('/recovery/execute', {
       method: 'POST',
       body: JSON.stringify({ actionType, targetServiceId, actionId: actionTitleOrId, approved }),
     }),

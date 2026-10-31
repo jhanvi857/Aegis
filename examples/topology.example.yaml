@@ -1,0 +1,4 @@
+version: "1.0"
+system_name: "example"
+description: "Optional topology overrides; replace with deployment-specific values."
+nodes: []

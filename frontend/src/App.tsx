@@ -12,6 +12,7 @@ import { Chaos } from './pages/Chaos/Chaos';
 import { Recovery } from './pages/Recovery/Recovery';
 import { Experiments } from './pages/Experiments/Experiments';
 import { Settings } from './pages/Settings/Settings';
+import { Connect } from './pages/Connect/Connect';
 
 import { useAuthStore } from './store/useAuthStore';
 import { AuthPage } from './pages/Auth/AuthPage';
@@ -59,6 +60,7 @@ export function App() {
         <main className="flex-1 overflow-y-auto bg-[#0B0B0C]">
           {activeTab === 'dashboard' && <Dashboard setActiveTab={setActiveTab} />}
           {activeTab === 'services' && <Services />}
+          {activeTab === 'connect' && <Connect />}
           {activeTab === 'graph' && <DependencyGraph />}
           {activeTab === 'predictions' && <Predictions />}
           {activeTab === 'chaos' && <Chaos />}

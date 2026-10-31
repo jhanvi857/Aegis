@@ -21,6 +21,7 @@ type ActionPolicy struct {
 }
 
 // RulebookPolicyStore holds the canonical mapping of actions and fault family escalations
+// RulebookPolicyStore holds the canonical mapping of actions and fault family escalations
 var CanonicalRulebook = map[string]ActionPolicy{
 	"RESTART": {
 		ActionType:       "RESTART",
@@ -38,55 +39,83 @@ var CanonicalRulebook = map[string]ActionPolicy{
 	},
 	"INCREASE_POOL": {
 		ActionType:       "INCREASE_POOL",
-		BaseSeverity:     0.30,
+		BaseSeverity:     0.25,
+		BaseRiskLevel:    "LOW",
+		ApprovalRequired: false,
+		Reversible:       true,
+	},
+	"KILL_BLOCKING_QUERY": {
+		ActionType:       "KILL_BLOCKING_QUERY",
+		BaseSeverity:     0.45,
 		BaseRiskLevel:    "MEDIUM",
 		ApprovalRequired: true,
-		Reversible:       true,
+		Reversible:       false,
 	},
 	"SCALE": {
 		ActionType:       "SCALE_UP",
-		BaseSeverity:     0.35,
-		BaseRiskLevel:    "MEDIUM",
-		ApprovalRequired: true,
+		BaseSeverity:     0.25,
+		BaseRiskLevel:    "LOW",
+		ApprovalRequired: false,
 		Reversible:       true,
 	},
 	"SCALE_UP": {
 		ActionType:       "SCALE_UP",
-		BaseSeverity:     0.35,
+		BaseSeverity:     0.25,
+		BaseRiskLevel:    "LOW",
+		ApprovalRequired: false,
+		Reversible:       true,
+	},
+	"FAILOVER": {
+		ActionType:       "FAILOVER",
+		BaseSeverity:     0.50,
+		BaseRiskLevel:    "MEDIUM",
+		ApprovalRequired: true,
+		Reversible:       false,
+	},
+	"REROUTE_TRAFFIC": {
+		ActionType:       "REROUTE_TRAFFIC",
+		BaseSeverity:     0.45,
 		BaseRiskLevel:    "MEDIUM",
 		ApprovalRequired: true,
 		Reversible:       true,
 	},
-	"REROUTE_TRAFFIC": {
-		ActionType:       "REROUTE_TRAFFIC",
-		BaseSeverity:     0.50,
-		BaseRiskLevel:    "MEDIUM",
+	"CIRCUIT_BREAK": {
+		ActionType:       "CIRCUIT_BREAK",
+		BaseSeverity:     0.75,
+		BaseRiskLevel:    "HIGH",
 		ApprovalRequired: true,
 		Reversible:       true,
 	},
 	"ISOLATE": {
 		ActionType:       "ISOLATE",
-		BaseSeverity:     0.80,
+		BaseSeverity:     0.75,
 		BaseRiskLevel:    "HIGH",
 		ApprovalRequired: true,
 		Reversible:       true,
 	},
 }
 
-// FaultFamilyEscalations maps primary fault families to primary and secondary escalation actions
+// FaultFamilyEscalations maps primary fault families to primary and secondary escalation actions.
+// Invariant: Never RESTART for contention or latency families.
 var FaultFamilyEscalations = map[string]struct {
 	Primary   string
 	Secondary string
 }{
-	"cpu_saturation":    {Primary: "SCALE_UP", Secondary: "RESTART"},
-	"memory_leak":       {Primary: "RESTART", Secondary: "SCALE_UP"},
-	"network_latency":   {Primary: "REROUTE_TRAFFIC", Secondary: "RESTART"},
-	"packet_loss":       {Primary: "REROUTE_TRAFFIC", Secondary: "RESTART"},
-	"database":          {Primary: "INCREASE_POOL", Secondary: "RESTART"},
-	"slow_query":        {Primary: "INCREASE_POOL", Secondary: "RESTART"},
-	"cache":             {Primary: "FLUSH_CACHE", Secondary: "RESTART"},
-	"thread_exhaustion": {Primary: "SCALE_UP", Secondary: "RESTART"},
+	"cpu_saturation":    {Primary: "SCALE_UP", Secondary: "THROTTLE_REQUESTS"},
+	"cpu_stress":        {Primary: "SCALE_UP", Secondary: "THROTTLE_REQUESTS"},
+	"memory_leak":       {Primary: "SCALE_UP", Secondary: "RESTART"},
+	"network_latency":   {Primary: "REROUTE_TRAFFIC", Secondary: "CIRCUIT_BREAK"},
+	"latency":           {Primary: "REROUTE_TRAFFIC", Secondary: "CIRCUIT_BREAK"},
+	"packet_loss":       {Primary: "REROUTE_TRAFFIC", Secondary: "CIRCUIT_BREAK"},
+	"database":          {Primary: "INCREASE_POOL", Secondary: "KILL_BLOCKING_QUERY"},
+	"db_contention":     {Primary: "INCREASE_POOL", Secondary: "KILL_BLOCKING_QUERY"},
+	"db_lock":           {Primary: "INCREASE_POOL", Secondary: "KILL_BLOCKING_QUERY"},
+	"slow_query":        {Primary: "INCREASE_POOL", Secondary: "KILL_BLOCKING_QUERY"},
+	"cache":             {Primary: "FLUSH_CACHE", Secondary: "FAILOVER"},
+	"cache_down":        {Primary: "FLUSH_CACHE", Secondary: "FAILOVER"},
+	"thread_exhaustion": {Primary: "SCALE_UP", Secondary: "INCREASE_POOL"},
 	"crash":             {Primary: "RESTART", Secondary: "SCALE_UP"},
+	"kill_service":      {Primary: "RESTART", Secondary: "SCALE_UP"},
 }
 
 // PolicyAssessment contains the outcome of risk & approval policy evaluation

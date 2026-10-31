@@ -8,6 +8,34 @@ import (
 )
 
 func GetServicesHandler(w http.ResponseWriter, r *http.Request) {
+	// Dynamically sync edge dependencies from database store if edges exist
+	if store := GetAuthStore(); store != nil {
+		if dbEdges, err := store.ListEdges(r.Context(), "", ""); err == nil && len(dbEdges) > 0 {
+			edgeMap := make(map[string][]string)
+			for _, e := range dbEdges {
+				if e.State != "rejected" {
+					edgeMap[e.SourceServiceID] = append(edgeMap[e.SourceServiceID], e.TargetServiceID)
+				}
+			}
+			State.mu.Lock()
+			for id, svc := range State.Services {
+				if deps, ok := edgeMap[id]; ok && len(deps) > 0 {
+					depSet := make(map[string]struct{})
+					for _, d := range svc.Dependencies {
+						depSet[d] = struct{}{}
+					}
+					for _, d := range deps {
+						if _, exists := depSet[d]; !exists {
+							svc.Dependencies = append(svc.Dependencies, d)
+							depSet[d] = struct{}{}
+						}
+					}
+				}
+			}
+			State.mu.Unlock()
+		}
+	}
+
 	State.mu.RLock()
 	defer State.mu.RUnlock()
 

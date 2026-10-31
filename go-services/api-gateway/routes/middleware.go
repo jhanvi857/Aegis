@@ -79,7 +79,7 @@ func AuthMiddleware(store storage.Store) func(http.Handler) http.Handler {
 			}
 
 			// Public endpoints whitelist
-			if path == "/health" || path == "/healthz" || path == "/readyz" || path == "/metrics" || path == "/api/auth/login" || path == "/api/auth/signup" {
+			if path == "/health" || path == "/healthz" || path == "/readyz" || path == "/metrics" || path == "/v1/traces" || path == "/v1/metrics" || path == "/v1/logs" || path == "/api/auth/login" || path == "/api/auth/signup" {
 				next.ServeHTTP(w, r)
 				return
 			}

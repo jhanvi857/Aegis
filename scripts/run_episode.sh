@@ -2,7 +2,7 @@
 set -e
 
 FAULT_TYPE=${1:-"latency"}
-TARGET_NODE=${2:-"node-b"}
+TARGET_NODE=${2:-""}
 DURATION_SEC=${3:-"10"}
 
 echo "=== Running Chaos Episode ==="

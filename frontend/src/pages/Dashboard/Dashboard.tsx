@@ -48,6 +48,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
   const isAutonomous = autonomousStatus?.enabled ?? false;
   const hasFreshData = services.some((s) => s.dataStatus === 'fresh');
   const freshServiceCount = services.filter((s) => s.dataStatus === 'fresh').length;
+  const partialOrUnknownCoverage = freshServiceCount < services.length || services.some((s) => s.dataStatus === 'fresh' && (s.status === 'unknown' || s.status === 'offline'));
+  const isSystemWarning = isDegraded || partialOrUnknownCoverage;
 
   // Aggregate global metric trends from services history
   const historyLen = services[0]?.history?.length || 0;
@@ -201,19 +203,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatusCard
           title="SYSTEM HEALTH"
-          value={!services.length || !hasFreshData ? 'UNKNOWN' : isCritical ? 'CRITICAL' : isDegraded ? 'WARNING' : 'HEALTHY'}
+          value={!services.length || !hasFreshData ? 'UNKNOWN' : isCritical ? 'CRITICAL' : isSystemWarning ? 'WARNING' : 'HEALTHY'}
           icon={Activity}
-          statusColor={!hasFreshData ? 'warning' : isCritical ? 'critical' : isDegraded ? 'warning' : 'healthy'}
-          badgeText={!services.length || !hasFreshData ? 'NO FRESH TELEMETRY' : isCritical ? 'CRITICAL' : isDegraded ? 'WARNING' : 'HEALTHY'}
+          statusColor={!hasFreshData ? 'warning' : isCritical ? 'critical' : isSystemWarning ? 'warning' : 'healthy'}
+          badgeText={!services.length || !hasFreshData ? 'NO FRESH TELEMETRY' : isCritical ? 'CRITICAL' : isSystemWarning ? 'PARTIAL / UNKNOWN' : 'HEALTHY'}
           trend={`${services.length} discovered services`}
         />
 
         <StatusCard
           title="FAILURE RISK"
-          value={!hasFreshData ? 'UNKNOWN' : isIncident ? `${risk}%` : 'NOMINAL'}
+          value={!hasFreshData ? 'UNKNOWN' : isIncident ? `${risk}%` : partialOrUnknownCoverage ? 'LIMITED' : 'NOMINAL'}
           icon={ShieldAlert}
           statusColor={risk > 70 ? 'critical' : risk > 30 ? 'warning' : 'healthy'}
-          badgeText={!hasFreshData ? 'NO FRESH DATA' : isIncident ? (risk > 70 ? 'HIGH SCORE' : 'ANOMALY') : 'NO INCIDENT'}
+          badgeText={!hasFreshData ? 'NO FRESH DATA' : isIncident ? (risk > 70 ? 'HIGH SCORE' : 'ANOMALY') : partialOrUnknownCoverage ? 'LIMITED OBSERVABILITY' : 'NO INCIDENT'}
           trend={isIncident ? (prediction.faultFamily ? `Fault: ${prediction.faultFamily}` : `${activeAlertsCount} Alerts`) : hasFreshData ? 'No current anomaly evidence' : 'Awaiting telemetry'}
         />
 

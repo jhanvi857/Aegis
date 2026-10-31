@@ -1,0 +1,20 @@
+# Exact Prometheus metric-name to canonical signal mapping.
+# Values passed through unchanged except CPU and memory fractions (0..1), which
+# are converted to percent. Configure units to match the canonical detector rule.
+# Counters and status codes are intentionally not converted to rates or ratios.
+metrics:
+  cpu_usage: cpu
+  cpu_utilization: cpu
+  process.cpu.utilization: cpu
+  system.cpu.utilization: cpu
+  container.cpu.utilization: cpu
+  memory_usage_percent: memory
+  memory_utilization: memory
+  process.memory.utilization: memory
+  error_rate: error_rate
+  requests_per_second: rps
+  request_rate: rps
+  latency_ms: latency
+  p95_latency_ms: latency
+  queue_depth: queue_depth
+  db_connection_wait_ms: db_wait

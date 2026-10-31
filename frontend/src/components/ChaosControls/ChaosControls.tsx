@@ -28,7 +28,7 @@ export const ChaosControls: React.FC<ChaosControlsProps> = ({
   const [durationSec, setDurationSec] = useState<number>(30);
   const [isInjecting, setIsInjecting] = useState<boolean>(false);
 
-  const effectiveTarget = selectedTarget || (services.find((s) => s.type !== 'gateway')?.id || services[0]?.id || 'node-a');
+  const effectiveTarget = selectedTarget || (services.find((s) => s.type !== 'gateway')?.id || services[0]?.id || '');
 
   const faultCatalog: { type: FaultType; label: string; description: string }[] = [
     { type: 'cpu_stress', label: 'CPU Saturation', description: 'Saturates CPU cores to 95%+' },
@@ -102,7 +102,7 @@ export const ChaosControls: React.FC<ChaosControlsProps> = ({
           </span>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
             <button
-              onClick={() => handleQuickPreset('cpu_stress', 'node-c', 30)}
+              onClick={() => handleQuickPreset('cpu_stress', effectiveTarget, 30)}
               disabled={isInjecting}
               className="flex items-center space-x-2 p-2 bg-[#151517] hover:bg-[#1C1C20] border border-[#26262B] hover:border-[#AD2831]/60 rounded-lg text-left transition-all group"
             >
@@ -111,12 +111,12 @@ export const ChaosControls: React.FC<ChaosControlsProps> = ({
                 <div className="text-[11px] font-semibold text-white group-hover:text-[#f87171] truncate">
                   CPU Saturation
                 </div>
-                <div className="text-[10px] text-gray-400 font-mono truncate">node-c (30s)</div>
+                <div className="text-[10px] text-gray-400 font-mono truncate">selected service (30s)</div>
               </div>
             </button>
 
             <button
-              onClick={() => handleQuickPreset('latency', 'node-b', 30)}
+              onClick={() => handleQuickPreset('latency', effectiveTarget, 30)}
               disabled={isInjecting}
               className="flex items-center space-x-2 p-2 bg-[#151517] hover:bg-[#1C1C20] border border-[#26262B] hover:border-[#D4A017]/60 rounded-lg text-left transition-all group"
             >
@@ -125,12 +125,12 @@ export const ChaosControls: React.FC<ChaosControlsProps> = ({
                 <div className="text-[11px] font-semibold text-white group-hover:text-[#e5b533] truncate">
                   Latency Spike
                 </div>
-                <div className="text-[10px] text-gray-400 font-mono truncate">node-b (30s)</div>
+                <div className="text-[10px] text-gray-400 font-mono truncate">selected service (30s)</div>
               </div>
             </button>
 
             <button
-              onClick={() => handleQuickPreset('kill_service', 'node-a', 30)}
+              onClick={() => handleQuickPreset('kill_service', effectiveTarget, 30)}
               disabled={isInjecting}
               className="flex items-center space-x-2 p-2 bg-[#151517] hover:bg-[#1C1C20] border border-[#26262B] hover:border-red-500/60 rounded-lg text-left transition-all group"
             >
@@ -139,12 +139,12 @@ export const ChaosControls: React.FC<ChaosControlsProps> = ({
                 <div className="text-[11px] font-semibold text-white group-hover:text-red-400 truncate">
                   SIGKILL Crash
                 </div>
-                <div className="text-[10px] text-gray-400 font-mono truncate">node-a (30s)</div>
+                <div className="text-[10px] text-gray-400 font-mono truncate">selected service (30s)</div>
               </div>
             </button>
 
             <button
-              onClick={() => handleQuickPreset('memory_leak', 'node-d', 30)}
+              onClick={() => handleQuickPreset('memory_leak', effectiveTarget, 30)}
               disabled={isInjecting}
               className="flex items-center space-x-2 p-2 bg-[#151517] hover:bg-[#1C1C20] border border-[#26262B] hover:border-[#840032]/80 rounded-lg text-left transition-all group"
             >
@@ -153,7 +153,7 @@ export const ChaosControls: React.FC<ChaosControlsProps> = ({
                 <div className="text-[11px] font-semibold text-white group-hover:text-[#f07b9e] truncate">
                   Memory Leak
                 </div>
-                <div className="text-[10px] text-gray-400 font-mono truncate">node-d (30s)</div>
+                <div className="text-[10px] text-gray-400 font-mono truncate">selected service (30s)</div>
               </div>
             </button>
           </div>

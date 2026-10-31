@@ -369,7 +369,9 @@ export const Services: React.FC = () => {
                   <th className="px-4 py-3">Workload Name & ID</th>
                   <th className="px-3 py-3">Namespace</th>
                   <th className="px-3 py-3">Tier</th>
-                  <th className="px-3 py-3">Telemetry Engine</th>
+                  <th className="px-3 py-3">Source</th>
+                  <th className="px-3 py-3">Last Seen</th>
+                  <th className="px-3 py-3">Freshness</th>
                   <th className="px-3 py-3">Monitoring Mode</th>
                   <th className="px-3 py-3">Health & Status</th>
                   <th className="px-3 py-3">Recovery Binding</th>
@@ -378,7 +380,6 @@ export const Services: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-[#26262B] divide-opacity-60">
                 {paginatedServices.map((svc) => {
-                  const isUnconnected = !svc.telemetrySource || svc.status === 'unconnected';
                   const isAuto = svc.monitoringMode === 'auto_remediate';
                   const isRec = svc.monitoringMode === 'recommend';
                   const isIgn = svc.monitoringMode === 'ignore';
@@ -422,8 +423,20 @@ export const Services: React.FC = () => {
                             )}
                           </div>
                         ) : (
-                          <span className="text-amber-400 font-medium italic">None</span>
+                          <span className="text-gray-400 font-medium">discovered</span>
                         )}
+                      </td>
+
+                      <td className="px-3 py-3 text-[11px] text-gray-400">
+                        {svc.lastSeen || svc.lastTelemetryTime ? new Date(svc.lastSeen || svc.lastTelemetryTime || '').toLocaleString() : '—'}
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className={`text-[10px] font-semibold ${
+                          svc.dataStatus === 'fresh' ? 'text-emerald-300' :
+                          svc.dataStatus === 'stale' ? 'text-amber-300' : 'text-gray-400'
+                        }`}>
+                          {svc.dataStatus || 'unknown'}
+                        </span>
                       </td>
 
                       {/* Monitoring Mode Controls */}
@@ -454,10 +467,14 @@ export const Services: React.FC = () => {
 
                       {/* Status */}
                       <td className="px-3 py-3">
-                        {isUnconnected ? (
+                        {svc.status === 'unknown' || svc.status === 'no_data' || svc.status === 'unconnected' ? (
                           <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 border border-amber-500/40 text-amber-300">
                             <AlertTriangle className="w-3 h-3" />
-                            <span>Unconnected</span>
+                            <span>{svc.status === 'unknown' ? 'Unknown' : 'No data'}</span>
+                          </span>
+                        ) : svc.status === 'offline' ? (
+                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-500/10 border border-gray-500/40 text-gray-300">
+                            <span>Offline</span>
                           </span>
                         ) : (
                           <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 border border-emerald-500/40 text-emerald-300">

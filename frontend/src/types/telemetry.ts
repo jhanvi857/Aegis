@@ -1,4 +1,4 @@
-export type HealthStatus = 'healthy' | 'degraded' | 'critical';
+export type HealthStatus = 'healthy' | 'degraded' | 'critical' | 'remediating' | 'unknown' | 'offline' | 'failed' | 'stale';
 
 export interface ServiceMetric {
   timestamp: string;
@@ -8,6 +8,7 @@ export interface ServiceMetric {
   rps: number;        // Requests per second
   errorRate: number;  // Percentage 0-100
   queueDepth: number; // Pending queue count
+  observedSignals?: string[];
 }
 
 export interface Microservice {
@@ -27,6 +28,10 @@ export interface Microservice {
   uptime: string;
   dependencies: string[]; // Service IDs this service calls
   history: ServiceMetric[];
+  observedSignals?: string[];
+  signalLastSeen?: Record<string, string>;
+  resourceAttributes?: Record<string, string>;
+  dataStatus?: 'fresh' | 'stale' | 'unknown' | string;
 }
 
 export interface LiveAlert {
@@ -44,8 +49,11 @@ export interface LogEntry {
   timestamp: string;
   serviceId: string;
   serviceName: string;
-  level: 'INFO' | 'WARN' | 'ERROR';
+  level: string;
   message: string;
+  traceId?: string;
+  spanId?: string;
+  resourceAttributes?: Record<string, string>;
 }
 
 export type FaultType =
@@ -81,21 +89,39 @@ export interface AffectedNodeInfo {
 }
 
 export interface PredictionOutput {
-  failureProbability: number; // 0 - 100
-  confidence: number;          // 0 - 100
+  failureProbability: number; // legacy API field; baseline anomaly score, not probability
+  confidence: number;          // uncalibrated unless explicitly labeled otherwise
   estimatedFailureSec: number;
   rootCauseServiceId: string;
   rootCauseServiceName: string;
   rootCauseReason: string;
+  rootCauseCandidates?: RootCauseCandidate[];
   faultFamily?: string;
   blastRadius: string[];      // Array of affected service IDs in order of cascade
   affectedNodes?: AffectedNodeInfo[];
   recommendedAction: string;
   recommendedActionId: string;
   recommendedActions?: RecoveryAction[];
-  engine?: 'dense_tgnn' | 'sparse_two_stage' | 'heuristic_fallback' | string;
+  engine?: 'baseline' | 'evidence_only_advisory' | string;
+  fallbackReason?: string;
   modelVersion?: string;
   calibratedConfidence?: number;
+  incident?: boolean;
+  state?: 'nominal' | 'watch' | 'incident' | string;
+  evidence?: Record<string, number>;
+  incidentGatePassed?: boolean;
+}
+
+export interface RootCauseCandidate {
+  serviceId: string;
+  faultFamily: string;
+  rankingScore: number;
+  uncertainty: string;
+  explanation: string;
+  anomalyOnset?: string;
+  evidence?: Array<{ metric: string; value: number; threshold: number; unit?: string }>;
+  traceRefs?: string[];
+  logRefs?: string[];
 }
 
 export interface RecoveryAction {
@@ -108,6 +134,10 @@ export interface RecoveryAction {
   status: 'idle' | 'executing' | 'completed' | 'failed' | 'pending_approval';
   riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
   requiresApproval?: boolean;
+  faultFamily?: string;
+  evidence?: Record<string, number>;
+  expectedEffect?: string;
+  whyThisTarget?: string;
   parameters?: Record<string, string>;
   executedAt?: string;
 }

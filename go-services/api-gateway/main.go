@@ -53,6 +53,10 @@ func main() {
 
 	// Initialize dynamic state from topology configuration
 	routes.InitState()
+	// Start the production Prometheus poller from the process entry point as well.
+	// InitPrometheusWorker is guarded by sync.Once, so InitState may still call it
+	// in non-test contexts without starting a duplicate worker.
+	routes.InitPrometheusWorker()
 
 	// Initialize Python ML gRPC client
 	routes.InitGRPCClient(cfg.PythonGRPCAddr)
@@ -72,6 +76,11 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
+	otlpRouter := http.NewServeMux()
+	otlpRouter.Handle("/v1/traces", routes.OTLPAuthMiddleware(http.HandlerFunc(routes.IngestOTLPTracesHandler)))
+	otlpRouter.Handle("/v1/metrics", routes.OTLPAuthMiddleware(http.HandlerFunc(routes.IngestOTLPMetricsHandler)))
+	otlpRouter.Handle("/v1/logs", routes.OTLPAuthMiddleware(http.HandlerFunc(routes.IngestOTLPLogsHandler)))
+	otlpSrv := &http.Server{Addr: ":" + cfg.OTLPHTTPPort, Handler: otlpRouter, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 
 	go func() {
 		if cfg.TLSEnabled {
@@ -88,6 +97,15 @@ func main() {
 			}
 		}
 	}()
+	if cfg.OTLPHTTPPort != "" && cfg.OTLPHTTPPort != cfg.ServerPort {
+		go func() {
+			telemetry.Logger.Info("server", fmt.Sprintf("OTLP HTTP listening on http://localhost:%s", cfg.OTLPHTTPPort))
+			if err := otlpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				telemetry.Logger.Error("server", "Fatal OTLP HTTP server error", err)
+				os.Exit(1)
+			}
+		}()
+	}
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -103,4 +121,5 @@ func main() {
 	} else {
 		telemetry.Logger.Info("system", "Server shut down cleanly")
 	}
+	_ = otlpSrv.Shutdown(ctx)
 }

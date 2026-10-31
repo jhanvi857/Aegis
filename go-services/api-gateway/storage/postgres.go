@@ -198,6 +198,7 @@ func (p *PostgresStore) autoMigrate(ctx context.Context) error {
 	ALTER TABLE topology_services ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
 	ALTER TABLE topology_services ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]';
 	ALTER TABLE topology_services ADD COLUMN IF NOT EXISTS last_telemetry_time TIMESTAMP WITH TIME ZONE NULL;
+	ALTER TABLE topology_services ADD COLUMN IF NOT EXISTS resource_attributes JSONB NOT NULL DEFAULT '{}';
 	CREATE INDEX IF NOT EXISTS idx_topology_services_mode ON topology_services(monitoring_mode);
 
 	ALTER TABLE topology_edges ADD COLUMN IF NOT EXISTS source VARCHAR(32) NOT NULL DEFAULT 'manual';
@@ -655,9 +656,9 @@ func (p *PostgresStore) UpsertService(ctx context.Context, svc *TopologyService)
 		INSERT INTO topology_services (
 			id, name, type, namespace, cluster_id, tier, capabilities, owner, version,
 			replicas, max_replicas, status, cpu, memory, latency, rps, error_rate, queue_depth,
-			monitoring_mode, telemetry_source, recovery_binding, description, tags, last_telemetry_time,
+			monitoring_mode, telemetry_source, recovery_binding, description, tags, last_telemetry_time, resource_attributes,
 			created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
 		ON CONFLICT (id) DO UPDATE SET
 			name = EXCLUDED.name,
 			type = EXCLUDED.type,
@@ -682,6 +683,7 @@ func (p *PostgresStore) UpsertService(ctx context.Context, svc *TopologyService)
 			description = EXCLUDED.description,
 			tags = EXCLUDED.tags,
 			last_telemetry_time = EXCLUDED.last_telemetry_time,
+			resource_attributes = EXCLUDED.resource_attributes,
 			updated_at = EXCLUDED.updated_at
 	`
 	now := time.Now().UTC()
@@ -697,9 +699,6 @@ func (p *PostgresStore) UpsertService(ctx context.Context, svc *TopologyService)
 	}
 	if svc.Tier == "" {
 		svc.Tier = "tier-2"
-	}
-	if svc.Capabilities == "" {
-		svc.Capabilities = "scale,restart"
 	}
 	if svc.MonitoringMode == "" {
 		svc.MonitoringMode = "observe"
@@ -726,12 +725,13 @@ func (p *PostgresStore) UpsertService(ctx context.Context, svc *TopologyService)
 	}
 
 	tagsJSON, _ := json.Marshal(svc.Tags)
+	resourceAttributesJSON, _ := json.Marshal(svc.ResourceAttributes)
 
 	_, err := p.db.ExecContext(ctx, query,
 		svc.ID, svc.Name, svc.Type, svc.Namespace, svc.ClusterID, svc.Tier, svc.Capabilities,
 		svc.Owner, svc.Version, svc.Replicas, svc.MaxReplicas, svc.Status, svc.CPU, svc.Memory,
 		svc.Latency, svc.RPS, svc.ErrorRate, svc.QueueDepth,
-		svc.MonitoringMode, telemetryJSON, recoveryJSON, svc.Description, tagsJSON, svc.LastTelemetryTime,
+		svc.MonitoringMode, telemetryJSON, recoveryJSON, svc.Description, tagsJSON, svc.LastTelemetryTime, resourceAttributesJSON,
 		svc.CreatedAt, svc.UpdatedAt,
 	)
 	return err
@@ -742,18 +742,18 @@ func (p *PostgresStore) GetService(ctx context.Context, id string) (*TopologySer
 		SELECT id, name, type, namespace, cluster_id, tier, capabilities, owner, version,
 		       replicas, max_replicas, status, cpu, memory, latency, rps, error_rate, queue_depth,
 		       COALESCE(monitoring_mode, 'observe'), telemetry_source, recovery_binding,
-		       COALESCE(description, ''), tags, last_telemetry_time,
+		       COALESCE(description, ''), tags, last_telemetry_time, resource_attributes,
 		       created_at, updated_at
 		FROM topology_services WHERE id = $1
 	`
 	var s TopologyService
-	var telemJSON, recovJSON, tagsJSON []byte
+	var telemJSON, recovJSON, tagsJSON, attrsJSON []byte
 	err := p.db.QueryRowContext(ctx, query, id).Scan(
 		&s.ID, &s.Name, &s.Type, &s.Namespace, &s.ClusterID, &s.Tier, &s.Capabilities,
 		&s.Owner, &s.Version, &s.Replicas, &s.MaxReplicas, &s.Status, &s.CPU, &s.Memory,
 		&s.Latency, &s.RPS, &s.ErrorRate, &s.QueueDepth,
 		&s.MonitoringMode, &telemJSON, &recovJSON,
-		&s.Description, &tagsJSON, &s.LastTelemetryTime,
+		&s.Description, &tagsJSON, &s.LastTelemetryTime, &attrsJSON,
 		&s.CreatedAt, &s.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -777,6 +777,7 @@ func (p *PostgresStore) GetService(ctx context.Context, id string) (*TopologySer
 	if len(tagsJSON) > 0 {
 		_ = json.Unmarshal(tagsJSON, &s.Tags)
 	}
+	if len(attrsJSON) > 0 { _ = json.Unmarshal(attrsJSON, &s.ResourceAttributes) }
 	return &s, nil
 }
 
@@ -792,7 +793,7 @@ func (p *PostgresStore) ListServices(ctx context.Context, namespace, clusterID s
 		SELECT id, name, type, namespace, cluster_id, tier, capabilities, owner, version,
 		       replicas, max_replicas, status, cpu, memory, latency, rps, error_rate, queue_depth,
 		       COALESCE(monitoring_mode, 'observe'), telemetry_source, recovery_binding,
-		       COALESCE(description, ''), tags, last_telemetry_time,
+	       COALESCE(description, ''), tags, last_telemetry_time, resource_attributes,
 		       created_at, updated_at
 		FROM topology_services
 		WHERE ($1 = '' OR namespace = $1)
@@ -808,13 +809,13 @@ func (p *PostgresStore) ListServices(ctx context.Context, namespace, clusterID s
 	list := make([]*TopologyService, 0)
 	for rows.Next() {
 		var s TopologyService
-		var telemJSON, recovJSON, tagsJSON []byte
+		var telemJSON, recovJSON, tagsJSON, attrsJSON []byte
 		err := rows.Scan(
 			&s.ID, &s.Name, &s.Type, &s.Namespace, &s.ClusterID, &s.Tier, &s.Capabilities,
 			&s.Owner, &s.Version, &s.Replicas, &s.MaxReplicas, &s.Status, &s.CPU, &s.Memory,
 			&s.Latency, &s.RPS, &s.ErrorRate, &s.QueueDepth,
 			&s.MonitoringMode, &telemJSON, &recovJSON,
-			&s.Description, &tagsJSON, &s.LastTelemetryTime,
+			&s.Description, &tagsJSON, &s.LastTelemetryTime, &attrsJSON,
 			&s.CreatedAt, &s.UpdatedAt,
 		)
 		if err != nil {
@@ -835,6 +836,7 @@ func (p *PostgresStore) ListServices(ctx context.Context, namespace, clusterID s
 		if len(tagsJSON) > 0 {
 			_ = json.Unmarshal(tagsJSON, &s.Tags)
 		}
+		if len(attrsJSON) > 0 { _ = json.Unmarshal(attrsJSON, &s.ResourceAttributes) }
 		list = append(list, &s)
 	}
 	return list, rows.Err()

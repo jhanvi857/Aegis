@@ -1,8 +1,22 @@
-# Decision Engine Rulebook (Phase 4)
-# Maps observed anomalous metrics or fault conditions to domain-agnostic recovery actions.
-# Evaluated by DecisionEngine / RiskAssessmentEngine to build dependency-ordered RecoveryPlans.
+# Aegis Decision Engine Rulebook (Phase 4)
+# Industry-Agnostic Fault Family -> Ranked Action Policies
+# Config-driven mapping evaluated by RiskAssessmentEngine & RecoveryPlanBuilder
 
 rules:
+  - id: "RULE_CRASH_TERMINATION"
+    description: "Service process terminated abruptly or health probe failing with extreme error rate. Rolling restart to restore process."
+    condition:
+      metric: "error_rate"
+      operator: ">="
+      threshold: 0.80
+      duration_sec: 5
+    action:
+      type: "RESTART"
+      risk: "HIGH"
+      approval_required: true
+      parameters:
+        grace_period_sec: "5"
+
   - id: "RULE_OOM_LEAK"
     description: "Memory consumption approaching container limit. Restart container to release leaked heap."
     condition:
@@ -12,8 +26,8 @@ rules:
       duration_sec: 15
     action:
       type: "RESTART"
-      risk: "LOW"
-      approval_required: false
+      risk: "HIGH"
+      approval_required: true
       parameters:
         grace_period_sec: "5"
 
@@ -23,31 +37,31 @@ rules:
       metric: "cpu_usage_percent"
       operator: ">="
       threshold: 85.0
-      duration_sec: 20
+      duration_sec: 10
     action:
       type: "SCALE_UP"
-      risk: "MEDIUM"
-      approval_required: true
+      risk: "LOW"
+      approval_required: false
       parameters:
         scale_increment: "2"
 
   - id: "RULE_HIGH_LATENCY_DEADLOCK"
-    description: "Severe P99 latency spike or connection deadlock. Temporarily reroute upstream traffic."
+    description: "Severe P95/P99 latency spike or connection deadlock. Temporarily reroute upstream traffic."
     condition:
       metric: "latency_p99_ms"
       operator: ">="
-      threshold: 1000.0
-      duration_sec: 15
+      threshold: 300.0
+      duration_sec: 10
     action:
       type: "REROUTE_TRAFFIC"
-      risk: "HIGH"
+      risk: "MEDIUM"
       approval_required: true
       parameters:
         drain_timeout_sec: "10"
         reroute_ratio: "1.0"
 
   - id: "RULE_CACHE_DEGRADATION"
-    description: "Cache hit rate collapse or high stale eviction. Flush corrupted cache store."
+    description: "Cache hit rate collapse or high stale eviction. Flush corrupted cache store or failover."
     condition:
       metric: "cache_miss_rate"
       operator: ">="
@@ -61,7 +75,7 @@ rules:
         async_flush: "true"
 
   - id: "RULE_DB_POOL_EXHAUSTION"
-    description: "Connection pool exhaustion causing query timeouts. Increase connection pool size."
+    description: "Connection pool exhaustion or row locks causing query timeouts. Expand connection pool."
     condition:
       metric: "db_connection_wait_ms"
       operator: ">="
@@ -69,13 +83,41 @@ rules:
       duration_sec: 10
     action:
       type: "INCREASE_POOL"
-      risk: "MEDIUM"
-      approval_required: true
+      risk: "LOW"
+      approval_required: false
       parameters:
         pool_increment: "10"
 
+  - id: "RULE_PACKET_LOSS"
+    description: "Network packet drops degrading link reliability. Reroute traffic around interface."
+    condition:
+      metric: "packet_loss_rate"
+      operator: ">="
+      threshold: 0.15
+      duration_sec: 10
+    action:
+      type: "REROUTE_TRAFFIC"
+      risk: "MEDIUM"
+      approval_required: true
+      parameters:
+        drain_timeout_sec: "10"
+
+  - id: "RULE_QUEUE_LAG"
+    description: "Message queue consumer backlog building up. Scale consumers."
+    condition:
+      metric: "queue_depth"
+      operator: ">="
+      threshold: 10
+      duration_sec: 10
+    action:
+      type: "SCALE_UP"
+      risk: "LOW"
+      approval_required: false
+      parameters:
+        scale_increment: "2"
+
   - id: "RULE_RUNAWAY_ERROR_CASCADE"
-    description: "Catastrophic error rate across downstream path. Isolate node to prevent cluster wide crash."
+    description: "Runaway error rate cascade across downstream dependencies. Isolate caller / circuit break."
     condition:
       metric: "error_rate"
       operator: ">="
@@ -88,35 +130,210 @@ rules:
       parameters:
         circuit_break: "open"
 
+# Ranked 2-3 candidate actions per fault family.
+# Invariant: Never RESTART for contention or latency families!
+# Unknown family -> empty list (advisory only, no executable action).
 fault_family_actions:
   database:
-    primary: "INCREASE_POOL"
-    secondary: ["RESTART"]
-  cache:
-    primary: "FLUSH_CACHE"
-    secondary: ["RESTART"]
-  queue:
-    primary: "SCALE_UP"
-    secondary: ["RESTART"]
-  memory_leak:
-    primary: "RESTART"
-    secondary: ["SCALE_UP"]
-  cpu_saturation:
-    primary: "SCALE_UP"
-    secondary: ["RESTART"]
-  network_latency:
-    primary: "REROUTE_TRAFFIC"
-    secondary: ["RESTART"]
-  crash:
-    primary: "RESTART"
-    secondary: ["SCALE_UP"]
-  packet_loss:
-    primary: "REROUTE_TRAFFIC"
-    secondary: ["RESTART"]
-  thread_exhaustion:
-    primary: "INCREASE_POOL"
-    secondary: ["SCALE_UP", "RESTART"]
-  slow_query:
-    primary: "INCREASE_POOL"
-    secondary: ["RESTART"]
+    - action: "INCREASE_POOL"
+      risk: "LOW"
+      approval_required: false
+      reason: "Expand connection pool to relieve lock contention"
+      expected_effect: "Reduce db_connection_wait_ms below threshold"
+    - action: "KILL_BLOCKING_QUERY"
+      risk: "MEDIUM"
+      approval_required: true
+      reason: "Terminate blocking query holding row locks"
+      expected_effect: "Release locks and restore transactional throughput"
 
+  db_lock:
+    - action: "INCREASE_POOL"
+      risk: "LOW"
+      approval_required: false
+      reason: "Expand connection pool to relieve lock contention"
+      expected_effect: "Reduce db_connection_wait_ms below threshold"
+    - action: "KILL_BLOCKING_QUERY"
+      risk: "MEDIUM"
+      approval_required: true
+      reason: "Terminate blocking query holding row locks"
+      expected_effect: "Release locks and restore transactional throughput"
+
+  db_contention:
+    - action: "INCREASE_POOL"
+      risk: "LOW"
+      approval_required: false
+      reason: "Expand connection pool to relieve lock contention"
+      expected_effect: "Reduce db_connection_wait_ms below threshold"
+    - action: "KILL_BLOCKING_QUERY"
+      risk: "MEDIUM"
+      approval_required: true
+      reason: "Terminate blocking query holding row locks"
+      expected_effect: "Release locks and restore transactional throughput"
+
+  slow_query:
+    - action: "INCREASE_POOL"
+      risk: "LOW"
+      approval_required: false
+      reason: "Expand pool to absorb query latency"
+      expected_effect: "Prevent connection starvation"
+    - action: "KILL_BLOCKING_QUERY"
+      risk: "MEDIUM"
+      approval_required: true
+      reason: "Cancel long-running slow query execution"
+      expected_effect: "Free compute resources"
+
+  cpu_stress:
+    - action: "SCALE_UP"
+      risk: "LOW"
+      approval_required: false
+      reason: "Scale replicas to distribute CPU load"
+      expected_effect: "Reduce per-instance CPU usage below 80%"
+    - action: "RESTART"
+      risk: "MEDIUM"
+      approval_required: true
+      reason: "Restart container to terminate runaway CPU loop"
+      expected_effect: "Reinitialize compute process"
+
+  cpu_saturation:
+    - action: "SCALE_UP"
+      risk: "LOW"
+      approval_required: false
+      reason: "Scale replicas to distribute CPU load"
+      expected_effect: "Reduce per-instance CPU usage below 80%"
+    - action: "RESTART"
+      risk: "MEDIUM"
+      approval_required: true
+      reason: "Restart container to terminate runaway CPU loop"
+      expected_effect: "Reinitialize compute process"
+
+  cache:
+    - action: "FLUSH_CACHE"
+      risk: "LOW"
+      approval_required: false
+      reason: "Purge corrupted or stale cache keys"
+      expected_effect: "Rebuild cache from backing store"
+    - action: "FAILOVER"
+      risk: "MEDIUM"
+      approval_required: true
+      reason: "Failover to replica cache cluster"
+      expected_effect: "Restore cache availability and reduce miss rate"
+
+  cache_down:
+    - action: "FLUSH_CACHE"
+      risk: "LOW"
+      approval_required: false
+      reason: "Purge corrupted or stale cache keys"
+      expected_effect: "Rebuild cache from backing store"
+    - action: "FAILOVER"
+      risk: "MEDIUM"
+      approval_required: true
+      reason: "Failover to replica cache cluster"
+      expected_effect: "Restore cache availability and reduce miss rate"
+
+  network_latency:
+    - action: "REROUTE_TRAFFIC"
+      risk: "MEDIUM"
+      approval_required: true
+      reason: "Divert traffic away from high-latency transit path"
+      expected_effect: "Restore end-to-end SLA"
+    - action: "CIRCUIT_BREAK"
+      risk: "HIGH"
+      approval_required: true
+      reason: "Trip circuit breaker to isolate degraded link"
+      expected_effect: "Prevent cascade failure to callers"
+
+  latency:
+    - action: "REROUTE_TRAFFIC"
+      risk: "MEDIUM"
+      approval_required: true
+      reason: "Divert traffic away from high-latency transit path"
+      expected_effect: "Restore end-to-end SLA"
+    - action: "CIRCUIT_BREAK"
+      risk: "HIGH"
+      approval_required: true
+      reason: "Trip circuit breaker to isolate degraded link"
+      expected_effect: "Prevent cascade failure to callers"
+
+  packet_loss:
+    - action: "REROUTE_TRAFFIC"
+      risk: "MEDIUM"
+      approval_required: true
+      reason: "Divert ingress traffic away from packet loss interface"
+      expected_effect: "Eliminate packet retransmissions"
+    - action: "CIRCUIT_BREAK"
+      risk: "HIGH"
+      approval_required: true
+      reason: "Isolate packet-dropping network interface"
+      expected_effect: "Force traffic through healthy path"
+
+  crash:
+    - action: "RESTART"
+      risk: "HIGH"
+      approval_required: true
+      reason: "Restart crashed service process"
+      expected_effect: "Restore service availability"
+    - action: "SCALE_UP"
+      risk: "MEDIUM"
+      approval_required: true
+      reason: "Add replicas to ensure capacity during recovery"
+      expected_effect: "Provide redundancy"
+
+  kill_service:
+    - action: "RESTART"
+      risk: "HIGH"
+      approval_required: true
+      reason: "Restart crashed service process"
+      expected_effect: "Restore service availability"
+    - action: "SCALE_UP"
+      risk: "MEDIUM"
+      approval_required: true
+      reason: "Add replicas to ensure capacity during recovery"
+      expected_effect: "Provide redundancy"
+
+  memory_leak:
+    - action: "RESTART"
+      risk: "HIGH"
+      approval_required: true
+      reason: "Restart to reclaim leaked heap memory"
+      expected_effect: "Reset memory usage to baseline"
+    - action: "SCALE_UP"
+      risk: "MEDIUM"
+      approval_required: true
+      reason: "Add replicas to distribute memory pressure"
+      expected_effect: "Reduce per-instance memory load"
+
+  queue:
+    - action: "SCALE_UP"
+      risk: "LOW"
+      approval_required: false
+      reason: "Scale consumer replicas to drain backlog"
+      expected_effect: "Reduce queue_depth to normal levels"
+    - action: "DRAIN_QUEUE"
+      risk: "MEDIUM"
+      approval_required: true
+      reason: "Route messages to dead letter queue or secondary consumers"
+      expected_effect: "Clear processing bottleneck"
+
+  mq_lag:
+    - action: "SCALE_UP"
+      risk: "LOW"
+      approval_required: false
+      reason: "Scale consumer replicas to drain backlog"
+      expected_effect: "Reduce queue_depth to normal levels"
+    - action: "DRAIN_QUEUE"
+      risk: "MEDIUM"
+      approval_required: true
+      reason: "Route messages to dead letter queue or secondary consumers"
+      expected_effect: "Clear processing bottleneck"
+
+  thread_exhaustion:
+    - action: "SCALE_UP"
+      risk: "LOW"
+      approval_required: false
+      reason: "Scale replicas to distribute worker load"
+      expected_effect: "Reduce active threads per instance"
+    - action: "CIRCUIT_BREAK"
+      risk: "HIGH"
+      approval_required: true
+      reason: "Shed incoming requests to relieve thread pool"
+      expected_effect: "Prevent complete container unresponsiveness"

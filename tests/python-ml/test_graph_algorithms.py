@@ -104,14 +104,11 @@ class TestGraphAlgorithms(unittest.TestCase):
         self.assertEqual(order[1], "node-a")
         self.assertTrue(order.index("node-c") < order.index("node-d"))
 
-        # Cyclic graph MUST NOT crash! Raw topo sort would raise nx.NetworkXUnfeasible
+        # Cycles are exposed as SCC groups; there is no valid node-level order.
         condensed_order = topological_sort_condensed(self.cyclic_graph)
         self.assertEqual(len(condensed_order), 3)  # [service-x], [service-y, service-z], [service-w]
-
-        flattened_cyclic = topological_sort_flattened(self.cyclic_graph)
-        self.assertEqual(len(flattened_cyclic), 4)
-        self.assertEqual(flattened_cyclic[0], "service-x")
-        self.assertEqual(flattened_cyclic[-1], "service-w")
+        with self.assertRaisesRegex(ValueError, "undefined for a cyclic graph"):
+            topological_sort_flattened(self.cyclic_graph)
 
     def test_algorithmic_equivalence_vs_networkx(self):
         """
