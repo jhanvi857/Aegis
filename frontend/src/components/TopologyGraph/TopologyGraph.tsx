@@ -11,6 +11,7 @@ import '@xyflow/react/dist/style.css';
 
 import { useTelemetryStore, getMLPrediction } from '../../store/useTelemetryStore';
 import { registryApi, type TopologyInfo } from '../../api/registry';
+import { apiFetch } from '../../api/client';
 import { TopologyNode } from '../TopologyNode';
 import { GitFork, Layers, ShieldAlert } from 'lucide-react';
 
@@ -54,9 +55,8 @@ export const TopologyGraph: React.FC<TopologyGraphProps> = ({
     setSelectedTopo(filename);
     setSwitchingTopo(true);
     try {
-      await fetch('/api/topology/select', {
+      await apiFetch('/topology/select', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename }),
       });
       await tickTelemetry();
@@ -73,6 +73,23 @@ export const TopologyGraph: React.FC<TopologyGraphProps> = ({
   const nodePositions = useMemo(() => {
     const positions: Record<string, { x: number; y: number }> = {};
     if (services.length === 0) return positions;
+
+    // If no edges exist between any services, lay them out in a clean multi-row grid
+    const totalEdges = services.reduce((acc, s) => acc + (s.dependencies ? s.dependencies.length : 0), 0);
+    if (totalEdges === 0) {
+      const COLS = Math.min(4, Math.max(2, Math.ceil(Math.sqrt(services.length))));
+      const X_SPACING = 240;
+      const Y_SPACING = 150;
+      services.forEach((s, idx) => {
+        const row = Math.floor(idx / COLS);
+        const col = idx % COLS;
+        positions[s.id] = {
+          x: 100 + col * X_SPACING,
+          y: 40 + row * Y_SPACING,
+        };
+      });
+      return positions;
+    }
 
     const inDegree: Record<string, number> = {};
     services.forEach((s) => {
@@ -324,6 +341,14 @@ export const TopologyGraph: React.FC<TopologyGraphProps> = ({
             />
           )}
         </ReactFlow>
+
+        {/* Informative notice when services exist but no directed edges have been discovered yet */}
+        {services.length > 0 && edges.length === 0 && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 bg-[#151517]/95 border border-[#26262B] text-gray-300 text-xs px-3 py-1.5 rounded-md shadow-md flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            <span>0 directed edges recorded. Ingest OTLP traces (<code>/v1/traces</code>) or connect dependencies in the <strong>Graph</strong> tab.</span>
+          </div>
+        )}
 
         {/* Floating Root Cause Badge Banner if active fault */}
         {rootCauseId && (
