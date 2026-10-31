@@ -13,7 +13,8 @@ import { useTelemetryStore, getMLPrediction } from '../../store/useTelemetryStor
 import { registryApi, type TopologyInfo } from '../../api/registry';
 import { apiFetch } from '../../api/client';
 import { TopologyNode } from '../TopologyNode';
-import { GitFork, Layers, ShieldAlert } from 'lucide-react';
+import { ImportExportModal } from '../GraphBuilder/ImportExportModal';
+import { GitFork, Layers, ShieldAlert, Upload } from 'lucide-react';
 
 interface TopologyGraphProps {
   height?: string;
@@ -36,6 +37,7 @@ export const TopologyGraph: React.FC<TopologyGraphProps> = ({
   const [topologies, setTopologies] = useState<TopologyInfo[]>([]);
   const [selectedTopo, setSelectedTopo] = useState<string>('');
   const [switchingTopo, setSwitchingTopo] = useState<boolean>(false);
+  const [importModalOpen, setImportModalOpen] = useState<boolean>(false);
 
   const prediction = getMLPrediction(services, activeFaults);
   const rootCauseId = prediction.rootCauseServiceId;
@@ -291,23 +293,35 @@ export const TopologyGraph: React.FC<TopologyGraphProps> = ({
           </div>
 
           {showTopologySelector && (
-            <div className="flex items-center space-x-1.5 pl-3 border-l border-[#26262B]">
-              <Layers className="w-3.5 h-3.5 text-gray-400" />
-              <select
-                value={selectedTopo}
-                onChange={(e) => handleSelectTopology(e.target.value)}
-                disabled={switchingTopo}
-                className="bg-[#0B0B0C] text-gray-200 border border-[#26262B] rounded px-2 py-0.5 text-[11px] focus:outline-none focus:border-[#840032]"
+            <div className="flex items-center space-x-2 pl-3 border-l border-[#26262B]">
+              <div className="flex items-center space-x-1.5">
+                <Layers className="w-3.5 h-3.5 text-gray-400" />
+                <select
+                  value={selectedTopo}
+                  onChange={(e) => handleSelectTopology(e.target.value)}
+                  disabled={switchingTopo}
+                  className="bg-[#0B0B0C] text-gray-200 border border-[#26262B] rounded px-2 py-0.5 text-[11px] focus:outline-none focus:border-[#840032]"
+                >
+                  {topologies.length === 0 && (
+                    <option value="">No preset topologies</option>
+                  )}
+                  {topologies.map((topology) => (
+                    <option key={topology.filename} value={topology.filename}>
+                      {topology.name || topology.filename} ({topology.nodeCount} nodes)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setImportModalOpen(true)}
+                className="flex items-center space-x-1 px-2.5 py-0.5 rounded text-[11px] bg-[#1e1e24] hover:bg-[#282830] text-emerald-400 border border-emerald-900/50 transition-colors cursor-pointer font-medium"
+                title="Insert or upload YAML/JSON to define service dependencies"
               >
-                {topologies.length === 0 && (
-                  <option value="">No preset topologies</option>
-                )}
-                {topologies.map((topology) => (
-                  <option key={topology.filename} value={topology.filename}>
-                    {topology.name || topology.filename} ({topology.nodeCount} nodes)
-                  </option>
-                ))}
-              </select>
+                <Upload className="w-3 h-3" />
+                <span>Import YAML/JSON</span>
+              </button>
             </div>
           )}
         </div>
@@ -344,9 +358,17 @@ export const TopologyGraph: React.FC<TopologyGraphProps> = ({
 
         {/* Informative notice when services exist but no directed edges have been discovered yet */}
         {services.length > 0 && edges.length === 0 && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 bg-[#151517]/95 border border-[#26262B] text-gray-300 text-xs px-3 py-1.5 rounded-md shadow-md flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-400" />
-            <span>0 directed edges recorded. Ingest OTLP traces (<code>/v1/traces</code>) or connect dependencies in the <strong>Graph</strong> tab.</span>
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 bg-[#151517]/95 border border-[#26262B] text-gray-300 text-xs px-3.5 py-2 rounded-md shadow-lg flex items-center gap-3 backdrop-blur-md">
+            <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+            <span>0 directed edges recorded.</span>
+            <button
+              type="button"
+              onClick={() => setImportModalOpen(true)}
+              className="text-xs font-semibold text-emerald-400 hover:text-emerald-300 underline flex items-center gap-1 cursor-pointer"
+            >
+              <Upload className="w-3 h-3" />
+              <span>Insert YAML / JSON Topology</span>
+            </button>
           </div>
         )}
 
@@ -361,6 +383,15 @@ export const TopologyGraph: React.FC<TopologyGraphProps> = ({
           </div>
         )}
       </div>
+
+      {/* Direct Import Modal for YAML/JSON Topology */}
+      <ImportExportModal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onRefreshTopology={async () => {
+          await tickTelemetry();
+        }}
+      />
     </div>
   );
 };

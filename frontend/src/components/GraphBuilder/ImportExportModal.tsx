@@ -95,6 +95,74 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      if (text) {
+        setImportText(text);
+        setImportError(null);
+        setDryRunDiff(null);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleLoadSampleMesh = () => {
+    setImportText(`version: "1.0"
+system_name: "shopkart-mesh"
+description: "10-node microservice mesh with directed dependencies"
+nodes:
+  - id: "edge-gateway"
+    name: "Edge API Gateway"
+    type: "gateway"
+    dependencies: ["checkout", "cart", "catalog", "search", "reviews"]
+  - id: "checkout"
+    name: "Checkout Orchestrator"
+    type: "service"
+    dependencies: ["cart", "catalog", "payments", "notifications", "inventory"]
+  - id: "payments"
+    name: "Payments Service"
+    type: "service"
+    dependencies: ["external-bank-mock"]
+  - id: "reviews"
+    name: "Customer Reviews"
+    type: "service"
+    dependencies: ["catalog"]
+  - id: "search"
+    name: "Catalog Search"
+    type: "service"
+    dependencies: ["catalog"]
+  - id: "cart"
+    name: "Shopping Cart"
+    type: "service"
+    dependencies: []
+  - id: "catalog"
+    name: "Product Catalog"
+    type: "service"
+    dependencies: []
+  - id: "inventory"
+    name: "Inventory Management"
+    type: "service"
+    dependencies: []
+  - id: "notifications"
+    name: "Notification Dispatcher"
+    type: "service"
+    dependencies: []
+  - id: "external-bank-mock"
+    name: "External Bank Mock"
+    type: "service"
+    dependencies: []
+`);
+    setImportError(null);
+    setDryRunDiff(null);
+  };
+
   const parseImportPayload = () => {
     const trimmed = importText.trim();
     if (!trimmed) throw new Error('Import content is empty');
@@ -210,12 +278,38 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-gray-300 font-semibold mb-1">Topology Payload (JSON / YAML / CSV):</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-gray-300 font-semibold">Topology Payload (JSON / YAML / CSV):</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileUpload}
+                      accept=".yaml,.yml,.json,.csv"
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-2.5 py-1 text-[11px] rounded bg-[#26262B] hover:bg-[#34343B] text-gray-200 border border-[#3A3A42] flex items-center gap-1 transition-colors"
+                    >
+                      <Upload className="w-3 h-3 text-emerald-400" />
+                      <span>Upload File (.yaml / .json)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleLoadSampleMesh}
+                      className="px-2.5 py-1 text-[11px] rounded bg-[#1e1e24] hover:bg-[#282830] text-emerald-400 border border-emerald-900/60 transition-colors"
+                    >
+                      <span>Load 10-Node Mesh Template</span>
+                    </button>
+                  </div>
+                </div>
                 <textarea
-                  rows={8}
+                  rows={9}
                   value={importText}
                   onChange={(e) => setImportText(e.target.value)}
-                  placeholder={`{\n  "systemName": "ecommerce-mesh",\n  "services": [\n    { "id": "auth-service", "name": "Authentication", "tier": "tier-1", "monitoringMode": "observe" }\n  ],\n  "edges": [\n    { "sourceServiceId": "gateway", "targetServiceId": "auth-service", "edgeType": "sync" }\n  ]\n}`}
+                  placeholder={`version: "1.0"\nnodes:\n  - id: "edge-gateway"\n    dependencies: ["checkout", "cart"]\n  - id: "checkout"\n    dependencies: ["payments"]\n  - id: "payments"\n    dependencies: ["external-bank-mock"]`}
                   className="w-full bg-[#0B0B0C] border border-[#26262B] rounded-lg p-3 font-mono text-[11px] text-gray-200 focus:outline-none focus:border-[#840032]"
                 />
               </div>
@@ -244,16 +338,15 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                 >
                   {dryRunLoading ? 'Analyzing diff...' : 'Run Dry-Run Preview'}
                 </button>
-                {dryRunDiff && (
-                  <button
-                    type="button"
-                    disabled={importing}
-                    onClick={handleApplyImport}
-                    className="px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-40 transition-colors shadow"
-                  >
-                    {importing ? 'Applying to Live Graph...' : 'Apply Changes to Topology'}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  disabled={importing || !importText.trim()}
+                  onClick={handleApplyImport}
+                  className="px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-40 transition-colors shadow flex items-center gap-1.5"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>{importing ? 'Applying to Live Graph...' : 'Apply Changes to Topology'}</span>
+                </button>
               </div>
 
               {/* Dry-Run Diff Preview */}
