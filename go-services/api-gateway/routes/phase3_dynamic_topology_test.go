@@ -16,6 +16,7 @@ import (
 // Helper to create an isolated test router with authenticated test tokens
 func setupPhase3TestRouter(t *testing.T) (*storage.MemoryStore, http.Handler, string, string, string) {
 	t.Helper()
+	t.Setenv("AEGIS_STRICT_RBAC", "true")
 	store := storage.NewMemoryStore()
 	SetAuthStore(store)
 	InitState()

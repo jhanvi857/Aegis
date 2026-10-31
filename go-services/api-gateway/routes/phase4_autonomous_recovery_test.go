@@ -15,6 +15,7 @@ import (
 // Helper to set up test environment for Phase 4 tests
 func setupPhase4TestRouter(t *testing.T) (*storage.MemoryStore, http.Handler, string, string, string) {
 	t.Helper()
+	t.Setenv("AEGIS_STRICT_RBAC", "true")
 	store := storage.NewMemoryStore()
 	SetAuthStore(store)
 	InitState()

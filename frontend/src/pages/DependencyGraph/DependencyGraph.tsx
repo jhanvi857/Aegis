@@ -29,7 +29,6 @@ import { ValidationDrawer } from '../../components/GraphBuilder/ValidationDrawer
 import { ImportExportModal } from '../../components/GraphBuilder/ImportExportModal';
 import { ServiceWizardModal } from '../../components/ServiceWizard/ServiceWizardModal';
 import { useTelemetryStore } from '../../store/useTelemetryStore';
-import { useAuthStore } from '../../store/useAuthStore';
 import {
   Layout,
   Undo2,
@@ -140,8 +139,7 @@ function computeAutoLayout(
 }
 
 const DependencyGraphContent: React.FC = () => {
-  const { user } = useAuthStore();
-  const isOperator = user?.role === 'operator' || user?.role === 'admin';
+  const isOperator = true;
 
   const { tickTelemetry } = useTelemetryStore();
   const reactFlowInstance = useReactFlow();

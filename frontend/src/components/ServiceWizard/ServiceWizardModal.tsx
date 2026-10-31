@@ -22,7 +22,6 @@ import {
   type MonitoringMode,
   type TestConnectionResponse,
 } from '../../api/registry';
-import { useAuthStore } from '../../store/useAuthStore';
 
 interface ServiceWizardModalProps {
   isOpen: boolean;
@@ -37,8 +36,6 @@ export const ServiceWizardModal: React.FC<ServiceWizardModalProps> = ({
   onSaved,
   editService,
 }) => {
-  const { user } = useAuthStore();
-  const isAdmin = user?.role === 'admin';
 
   const [step, setStep] = useState<number>(1);
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -807,11 +804,9 @@ docker run -d \\
                     label: 'Auto-Remediate (Autonomous Self-Healing)',
                     desc: 'Aegis autonomously executes approved recovery plans within blast-radius boundaries without manual intervention.',
                     icon: Zap,
-                    badge: 'Admin Only',
-                    allowed: isAdmin && hasRecovery && allowedActions.length > 0,
-                    restrictedReason: !isAdmin
-                      ? 'Requires Administrator role'
-                      : !hasRecovery || allowedActions.length === 0
+                    badge: 'Autonomous',
+                    allowed: hasRecovery && allowedActions.length > 0,
+                    restrictedReason: !hasRecovery || allowedActions.length === 0
                       ? 'Requires a configured recovery binding with allowed actions'
                       : undefined,
                   },

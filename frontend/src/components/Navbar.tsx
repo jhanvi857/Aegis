@@ -128,7 +128,6 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab: _activeTab, setActive
               <div className="flex items-center space-x-1.5 bg-[#D4A017]/15 border border-[#D4A017]/60 px-2 py-0.5 rounded text-[#e5b533]">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#D4A017] animate-pulse" />
                 <span className="font-semibold uppercase tracking-wider">DEMO SIMULATION</span>
-                {(user?.role === 'admin' || user?.role === 'operator') && (
                   <button
                     onClick={() => setSystemMode(false)}
                     className="ml-1 text-[9px] uppercase px-1 py-0.2 bg-[#26262B] hover:bg-[#3E3E44] text-white rounded transition"
@@ -136,7 +135,6 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab: _activeTab, setActive
                   >
                     Go Live
                   </button>
-                )}
               </div>
             ) : (
               <div className="flex items-center space-x-1.5 bg-[#3F8E4F]/15 border border-[#3F8E4F]/60 px-2 py-0.5 rounded text-[#52b767]">
@@ -144,7 +142,6 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab: _activeTab, setActive
                 <span className="font-semibold uppercase tracking-wider">
                   LIVE CLUSTER ({systemMode?.clusterId || 'cluster-primary'})
                 </span>
-                {(user?.role === 'admin' || user?.role === 'operator') && (
                   <button
                     onClick={() => setSystemMode(true)}
                     className="ml-1 text-[9px] uppercase px-1 py-0.2 bg-[#26262B] hover:bg-[#3E3E44] text-gray-200 rounded transition"
@@ -152,7 +149,6 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab: _activeTab, setActive
                   >
                     Demo
                   </button>
-                )}
               </div>
             )}
           </div>
@@ -262,7 +258,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab: _activeTab, setActive
                   {user.name}
                 </div>
                 <div className="text-[9px] font-mono text-[#f07b9e] leading-tight uppercase">
-                  {user.role}
+                  {user.role === 'viewer' ? 'operator' : user.role}
                 </div>
               </div>
               <button

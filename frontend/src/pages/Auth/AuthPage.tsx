@@ -156,17 +156,7 @@ export const AuthPage: React.FC = () => {
             </div>
           </div>
 
-          {isSignUp && (
-            <div className="p-3 bg-[#141416] border border-[#26262B] rounded-lg text-left">
-              <div className="flex items-center space-x-2 text-[11px] font-semibold text-gray-300 uppercase tracking-wider mb-1">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>Server-Enforced RBAC</span>
-              </div>
-              <p className="text-[11px] text-gray-400 leading-relaxed">
-                Initial account is provisioned with <strong className="text-white">Admin</strong> privileges. Subsequent operator accounts default to <strong className="text-white">Viewer</strong> role until elevated by an Administrator.
-              </p>
-            </div>
-          )}
+
 
           <button
             type="submit"

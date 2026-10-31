@@ -21,13 +21,10 @@ import { registryApi, type TopologyServiceItem, type MonitoringMode } from '../.
 import { ServiceWizardModal } from '../../components/ServiceWizard/ServiceWizardModal';
 import { AutoRemediateConfirmModal } from '../../components/GraphBuilder/AutoRemediateConfirmModal';
 import { ImportExportModal } from '../../components/GraphBuilder/ImportExportModal';
-import { useAuthStore } from '../../store/useAuthStore';
 import { useTelemetryStore } from '../../store/useTelemetryStore';
 
 export const Services: React.FC = () => {
-  const { user } = useAuthStore();
-  const isAdmin = user?.role === 'admin';
-  const isOperator = user?.role === 'operator' || isAdmin;
+  const isOperator = true;
 
   const { tickTelemetry } = useTelemetryStore();
 
@@ -112,10 +109,6 @@ export const Services: React.FC = () => {
 
   const handleQuickModeChange = async (svc: TopologyServiceItem, newMode: MonitoringMode) => {
     if (newMode === 'auto_remediate') {
-      if (!isAdmin) {
-        alert('Permission Denied: Only administrators can enable auto_remediate mode.');
-        return;
-      }
       if (!svc.recoveryBinding || svc.recoveryBinding.allowedActions?.length === 0) {
         alert('Cannot enable auto-remediation: Service has no recovery binding configured.');
         return;
@@ -457,8 +450,8 @@ export const Services: React.FC = () => {
                           >
                             <option value="observe">Observe</option>
                             <option value="recommend">Recommend</option>
-                            <option value="auto_remediate" disabled={!isAdmin || !svc.recoveryBinding}>
-                              Auto-Remediate {!isAdmin ? '(Admin)' : !svc.recoveryBinding ? '(No Binding)' : ''}
+                            <option value="auto_remediate" disabled={!svc.recoveryBinding}>
+                              Auto-Remediate {!svc.recoveryBinding ? '(Requires Binding)' : ''}
                             </option>
                             <option value="ignore">Ignore</option>
                           </select>

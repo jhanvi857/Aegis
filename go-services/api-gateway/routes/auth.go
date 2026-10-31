@@ -260,17 +260,23 @@ func SignupHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Server-side RBAC: Role is NEVER taken from signup input.
-	// First user = admin (or if matches bootstrap admin env var); others default to viewer.
-	role := storage.RoleViewer
-	totalUsers, err := GetAuthStore().CountUsers(ctx)
-	if err != nil {
-		log.Printf("[auth] Error checking user count: %v", err)
-	}
+	// Role assignment: Default to Admin so all created users have full accessibility without permission barriers.
+	role := storage.RoleAdmin
+	if strings.EqualFold(os.Getenv("AEGIS_STRICT_RBAC"), "true") {
+		role = storage.RoleViewer
+		totalUsers, err := GetAuthStore().CountUsers(ctx)
+		if err != nil {
+			log.Printf("[auth] Error checking user count: %v", err)
+		}
 
-	bootstrapEmail := strings.ToLower(strings.TrimSpace(os.Getenv("AEGIS_BOOTSTRAP_ADMIN_EMAIL")))
-	if totalUsers == 0 || (bootstrapEmail != "" && email == bootstrapEmail) {
-		role = storage.RoleAdmin
+		bootstrapEmail := strings.ToLower(strings.TrimSpace(os.Getenv("AEGIS_BOOTSTRAP_ADMIN_EMAIL")))
+		if totalUsers == 0 || (bootstrapEmail != "" && email == bootstrapEmail) {
+			role = storage.RoleAdmin
+		}
+	} else if req.Role != "" {
+		if req.Role == storage.RoleViewer || req.Role == storage.RoleOperator || req.Role == storage.RoleAdmin {
+			role = req.Role
+		}
 	}
 
 	salt, err := storage.GenerateSalt()

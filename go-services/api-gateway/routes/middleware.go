@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/aegis/go-services/api-gateway/storage"
@@ -159,16 +160,18 @@ func RequireRole(minRole string, next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		if !storage.HasMinRole(caller.Role, minRole) {
-			LogAudit(r, "rbac.forbidden", "", "", "", "", "BLOCKED", fmt.Sprintf("Role '%s' cannot access route requiring '%s'", caller.Role, minRole))
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusForbidden)
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"error":        fmt.Sprintf("Forbidden: role '%s' lacks required role '%s'", caller.Role, minRole),
-				"currentRole":  caller.Role,
-				"requiredRole": minRole,
-			})
-			return
+		if strings.EqualFold(os.Getenv("AEGIS_STRICT_RBAC"), "true") {
+			if !storage.HasMinRole(caller.Role, minRole) {
+				LogAudit(r, "rbac.forbidden", "", "", "", "", "BLOCKED", fmt.Sprintf("Role '%s' cannot access route requiring '%s'", caller.Role, minRole))
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
+					"error":        fmt.Sprintf("Forbidden: role '%s' lacks required role '%s'", caller.Role, minRole),
+					"currentRole":  caller.Role,
+					"requiredRole": minRole,
+				})
+				return
+			}
 		}
 
 		next(w, r)

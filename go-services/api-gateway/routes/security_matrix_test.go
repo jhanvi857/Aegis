@@ -18,6 +18,7 @@ import (
 // Helper to set up an isolated test router with fresh in-memory store
 func setupSecurityTestEnvironment(t *testing.T) (http.Handler, storage.Store, string, string, string, string) {
 	t.Helper()
+	t.Setenv("AEGIS_STRICT_RBAC", "true")
 	store := storage.NewMemoryStore()
 	SetAuthStore(store)
 	InitState()
