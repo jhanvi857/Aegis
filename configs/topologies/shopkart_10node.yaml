@@ -1,0 +1,137 @@
+version: "1.0"
+system_name: "shopkart-mesh"
+description: "10-node ShopKart e-commerce microservices mesh with directed RPC dependencies"
+
+nodes:
+  - id: "edge-gateway"
+    name: "Edge API Gateway"
+    type: "gateway"
+    host: "edge-gateway"
+    port: 8080
+    health_endpoint: "/readyz"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "checkout"
+      - "cart"
+      - "catalog"
+      - "search"
+      - "reviews"
+    metadata:
+      role: "ingress"
+      tier: "tier-1-ingress"
+
+  - id: "checkout"
+    name: "Checkout Orchestrator"
+    type: "service"
+    host: "checkout"
+    port: 8081
+    health_endpoint: "/readyz"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "cart"
+      - "catalog"
+      - "payments"
+      - "notifications"
+      - "inventory"
+    metadata:
+      role: "checkout"
+      tier: "tier-2-business"
+
+  - id: "payments"
+    name: "Payments Service"
+    type: "service"
+    host: "payments"
+    port: 8082
+    health_endpoint: "/readyz"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "external-bank-mock"
+    metadata:
+      role: "payments"
+      tier: "tier-2-business"
+
+  - id: "cart"
+    name: "Shopping Cart"
+    type: "service"
+    host: "cart"
+    port: 8083
+    health_endpoint: "/readyz"
+    metrics_endpoint: "/metrics"
+    dependencies: []
+    metadata:
+      role: "cart"
+      tier: "tier-3-data"
+
+  - id: "catalog"
+    name: "Product Catalog"
+    type: "service"
+    host: "catalog"
+    port: 8084
+    health_endpoint: "/readyz"
+    metrics_endpoint: "/metrics"
+    dependencies: []
+    metadata:
+      role: "catalog"
+      tier: "tier-3-data"
+
+  - id: "inventory"
+    name: "Inventory Management"
+    type: "service"
+    host: "inventory"
+    port: 8085
+    health_endpoint: "/readyz"
+    metrics_endpoint: "/metrics"
+    dependencies: []
+    metadata:
+      role: "inventory"
+      tier: "tier-3-data"
+
+  - id: "notifications"
+    name: "Notification Dispatcher"
+    type: "service"
+    host: "notifications"
+    port: 8086
+    health_endpoint: "/readyz"
+    metrics_endpoint: "/metrics"
+    dependencies: []
+    metadata:
+      role: "notifications"
+      tier: "tier-3-support"
+
+  - id: "reviews"
+    name: "Customer Reviews"
+    type: "service"
+    host: "reviews"
+    port: 8087
+    health_endpoint: "/readyz"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "catalog"
+    metadata:
+      role: "reviews"
+      tier: "tier-3-content"
+
+  - id: "search"
+    name: "Catalog Search"
+    type: "service"
+    host: "search"
+    port: 8088
+    health_endpoint: "/readyz"
+    metrics_endpoint: "/metrics"
+    dependencies:
+      - "catalog"
+    metadata:
+      role: "search"
+      tier: "tier-2-query"
+
+  - id: "external-bank-mock"
+    name: "External Bank Gateway Mock"
+    type: "service"
+    host: "external-bank-mock"
+    port: 8089
+    health_endpoint: "/readyz"
+    metrics_endpoint: "/metrics"
+    dependencies: []
+    metadata:
+      role: "external"
+      tier: "tier-4-external"

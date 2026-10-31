@@ -64,15 +64,35 @@ type TopologyInfo struct {
 }
 
 func getTopologiesDir() string {
+	if envDir := os.Getenv("AEGIS_TOPOLOGIES_DIR"); envDir != "" {
+		if fi, err := os.Stat(envDir); err == nil && fi.IsDir() {
+			return envDir
+		}
+	}
 	candidates := []string{
 		"configs/topologies",
 		"../configs/topologies",
 		"../../configs/topologies",
+		"../../../configs/topologies",
 		"/etc/aegis/topologies",
 	}
 	for _, c := range candidates {
 		if fi, err := os.Stat(c); err == nil && fi.IsDir() {
 			return c
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		dir := cwd
+		for i := 0; i < 5; i++ {
+			target := filepath.Join(dir, "configs", "topologies")
+			if fi, err := os.Stat(target); err == nil && fi.IsDir() {
+				return target
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
 		}
 	}
 	return "configs/topologies"
@@ -122,11 +142,28 @@ func TopologySelectHandler(w http.ResponseWriter, r *http.Request) {
 	targetFile := req.Filename
 	var topoPath string
 	if targetFile == "topology.yaml" || targetFile == "default" {
-		candidates := []string{"configs/topology.yaml", "../configs/topology.yaml", "../../configs/topology.yaml"}
+		candidates := []string{"configs/topology.yaml", "../configs/topology.yaml", "../../configs/topology.yaml", "../../../configs/topology.yaml"}
 		for _, c := range candidates {
 			if _, err := os.Stat(c); err == nil {
 				topoPath = c
 				break
+			}
+		}
+		if topoPath == "" {
+			if cwd, err := os.Getwd(); err == nil {
+				dir := cwd
+				for i := 0; i < 5; i++ {
+					target := filepath.Join(dir, "configs", "topology.yaml")
+					if fi, err := os.Stat(target); err == nil && !fi.IsDir() {
+						topoPath = target
+						break
+					}
+					parent := filepath.Dir(dir)
+					if parent == dir {
+						break
+					}
+					dir = parent
+				}
 			}
 		}
 	} else {
