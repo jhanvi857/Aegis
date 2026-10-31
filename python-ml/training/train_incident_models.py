@@ -186,6 +186,7 @@ def main() -> None:
         "root_threshold": 0.5,
         "fault_classes": list(fault_encoder.classes_),
         "models": {"root_cause": "Random Forest", "fault_family": "Random Forest"},
+        "deployment_note": "Random Forest is a deployment choice, not a statistically significant winner (3 folds, large std); trained on RE1-OB/SS/TT only; generalization unverified.",
     }
     args.output_report.parent.mkdir(parents=True, exist_ok=True)
     args.output_report.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")

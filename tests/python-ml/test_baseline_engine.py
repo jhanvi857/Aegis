@@ -72,6 +72,26 @@ class TestBaselineEngine(unittest.TestCase):
         self.assertTrue(len(result["failure_predictions"]) > 0)
         self.assertTrue(len(result["root_causes"]) > 0)
 
+    def test_configured_engine_baseline_fallback(self):
+        with patch.dict(os.environ, {"AEGIS_ENGINE": "baseline"}):
+            result = self.engine.predict({
+                "node_ids": ["worker"],
+                "snapshot": {
+                    "nodes": [{
+                        "id": "worker",
+                        "status": "degraded",
+                        "metrics": {
+                            "cpu_usage": 95.0,
+                            "p95_latency_ms": 1200.0,
+                            "error_rate": 0.15,
+                        },
+                    }],
+                    "edges": [],
+                },
+            })
+            self.assertEqual(result["engine"], "baseline")
+            self.assertIn("AEGIS_ENGINE=baseline", result["fallback_reason"])
+
     def test_fallback_when_artifact_missing(self):
         with patch.dict(os.environ, {"AEGIS_MODEL_PATH": "non_existent_model.joblib"}):
             engine = PredictionEngine()

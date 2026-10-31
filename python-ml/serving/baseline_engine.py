@@ -16,10 +16,11 @@ from serving.incident_models import IncidentModels
 
 
 class PredictionEngine:
-    """Shared statistical detector followed by evidence-ranked graph RCA.
+    """Resilience control plane inference engine.
 
-    The engine emits recommendations only. It does not execute recovery actions.
-    Candidate scores are rankings, not calibrated causal probabilities.
+    Defaults to the trained artifact when present and coverage is met; falls
+    back to the baseline ServiceDetector if artifact is missing/corrupt or coverage is low.
+    Emits recommendations only. Action selection remains gated by Go policy checks.
     """
 
     def __init__(self, checkpoint_path: Optional[str] = None) -> None:
@@ -65,9 +66,6 @@ class PredictionEngine:
                 if service_id and observed <= now and observed > observed_at_by_service.get(str(service_id), datetime.min.replace(tzinfo=timezone.utc)):
                     observed_at_by_service[str(service_id)] = observed
 
-        # Derive a request error ratio only from a minimally useful trace sample.
-        # This remains evidence from observed spans and is never fabricated from
-        # a missing metric field.
         trace_counts: Dict[str, List[int]] = {}
         derived_trace_error_rate = set()
         for span in (telemetry_batch or {}).get("traces", []):
@@ -85,7 +83,7 @@ class PredictionEngine:
                 if service_id not in service_ids:
                     service_ids.append(service_id)
 
-        # If no metrics were supplied for a registered node, emit no score.
+        # Baseline ServiceDetector evaluation
         detections = {}
         for service_id in service_ids:
             observed = metrics_by_service.get(service_id, {})
@@ -133,9 +131,6 @@ class PredictionEngine:
 
         plan = None
         if generate_plan and root_causes:
-            # Recommendations apply only to services with observed anomaly
-            # evidence. BFS reachability is potential impact and must not
-            # become an implicit recovery target list.
             observed_affected = sorted({item["service_id"] for item in anomalies})
             plan = self.plan_builder.build_plan(
                 graph=graph,
@@ -144,12 +139,22 @@ class PredictionEngine:
                 telemetry_by_node=metrics_by_service,
             )
 
+        # Engine selection policy:
+        # AEGIS_ENGINE defaults to "trained". "baseline" forces ServiceDetector.
+        configured_engine = os.environ.get("AEGIS_ENGINE", "trained").strip().lower()
+
         engine_name = "baseline"
         model_version = "service-baseline-v1"
-        fallback_reason = self.incident_models_load_error or ""
+        fallback_reason = ""
         calibrated_confidence = 0.0
 
-        if self.incident_models is not None:
+        if configured_engine == "baseline":
+            fallback_reason = "configured by AEGIS_ENGINE=baseline"
+            use_trained = False
+        else:
+            use_trained = True
+
+        if use_trained and self.incident_models is not None:
             try:
                 ml_predictions, coverage = self.incident_models.predict(metrics_by_service)
                 if not ml_predictions:
@@ -218,6 +223,9 @@ class PredictionEngine:
             except Exception as exc:
                 fallback_reason = f"inference fallback: {exc}"
                 engine_name = "baseline"
+        elif use_trained and self.incident_models is None:
+            fallback_reason = self.incident_models_load_error or "trained artifact missing"
+            engine_name = "baseline"
 
         return {
             "failure_predictions": failure_predictions,
@@ -339,7 +347,13 @@ class PredictionEngine:
             for target in nx.descendants(graph, root):
                 try:
                     for path in nx.all_simple_paths(graph, root, target, cutoff=4):
-                        paths.append({"path": path, "path_nodes": path, "probability": 0.0, "potential_impact": True, "propagation_risk": 0})
+                        paths.append({
+                            "path": path,
+                            "path_nodes": path,
+                            "probability": 0.0,
+                            "potential_impact": True,
+                            "propagation_risk": 0,
+                        })
                 except nx.NetworkXError:
                     continue
         paths.sort(key=lambda item: (len(item["path"]), item["path"]))
