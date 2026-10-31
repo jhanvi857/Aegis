@@ -1026,8 +1026,10 @@ func (p *PostgresStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, targ
 	// Auto-provision services in topology_services if not already present
 	now := time.Now().UTC()
 	provQuery := `
-		INSERT INTO topology_services (id, name, type, namespace, cluster_id, tier, capabilities, status, monitoring_mode, created_at, updated_at)
-		VALUES ($1, $1, 'service', $2, $3, 'tier-2', 'scale,restart', 'unconnected', 'observe', $4, $4)
+		INSERT INTO topology_services (id, name, type, namespace, cluster_id, tier, capabilities, status, monitoring_mode, recovery_binding, created_at, updated_at)
+		VALUES ($1, $1, 'service', $2, $3, 'tier-2', 'scale,restart', 'unconnected', 'recommend',
+			jsonb_build_object('runtime', 'docker', 'target', $1, 'allowedActions', jsonb_build_array('restart', 'scale_up', 'scale', 'reroute_traffic', 'flush_cache', 'isolate')),
+			$4, $4)
 		ON CONFLICT (id) DO NOTHING
 	`
 	_, _ = p.db.ExecContext(ctx, provQuery, sourceID, namespace, clusterID, now)

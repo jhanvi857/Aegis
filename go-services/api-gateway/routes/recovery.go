@@ -240,7 +240,7 @@ func ExecuteRecoveryHandler(w http.ResponseWriter, r *http.Request) {
 	requiresApproval := assessment.RequiresApproval || policyRequiresApproval
 	if !req.DryRun {
 		switch NormalizeActionType(actionType) {
-		case "RESTART", "SCALE_UP":
+		case "RESTART", "SCALE_UP", "REROUTE_TRAFFIC", "FLUSH_CACHE", "ISOLATE":
 		default:
 			http.Error(w, "recovery action has no configured executor integration", http.StatusNotImplemented)
 			return

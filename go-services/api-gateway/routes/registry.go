@@ -877,18 +877,20 @@ type TopologyImportPayload struct {
 	Owner       string                    `json:"owner,omitempty"`
 	Services    []storage.TopologyService `json:"services,omitempty"`
 	Nodes []struct {
-		ID           string   `json:"id" yaml:"id"`
-		Name         string   `json:"name" yaml:"name"`
-		Type         string   `json:"type" yaml:"type"`
-		Host         string   `json:"host" yaml:"host"`
-		Port         int      `json:"port" yaml:"port"`
-		Tier         string   `json:"tier" yaml:"tier"`
-		Dependencies []string `json:"dependencies" yaml:"dependencies"`
-		Metadata     struct {
+		ID              string                   `json:"id" yaml:"id"`
+		Name            string                   `json:"name" yaml:"name"`
+		Type            string                   `json:"type" yaml:"type"`
+		Host            string                   `json:"host" yaml:"host"`
+		Port            int                      `json:"port" yaml:"port"`
+		Tier            string                   `json:"tier" yaml:"tier"`
+		Dependencies    []string                 `json:"dependencies" yaml:"dependencies"`
+		Metadata        struct {
 			Role string `json:"role" yaml:"role"`
 			Tier string `json:"tier" yaml:"tier"`
 		} `json:"metadata" yaml:"metadata"`
-		storage.TopologyService `yaml:",inline"`
+		MonitoringMode  string                   `json:"monitoringMode" yaml:"monitoringMode"`
+		RecoveryBinding *storage.RecoveryBinding `json:"recoveryBinding" yaml:"recoveryBinding"`
+		TelemetrySource *storage.TelemetrySource `json:"telemetrySource" yaml:"telemetrySource"`
 	} `json:"nodes,omitempty" yaml:"nodes,omitempty"`
 	Edges []storage.TopologyEdge `json:"edges,omitempty"`
 }
@@ -979,25 +981,21 @@ func ImportTopologyHandler(w http.ResponseWriter, r *http.Request) {
 	if len(payload.Services) == 0 && len(payload.Nodes) > 0 {
 		payload.Services = make([]storage.TopologyService, 0, len(payload.Nodes))
 		for _, n := range payload.Nodes {
-			svc := n.TopologyService
-			if svc.ID == "" {
-				svc.ID = strings.TrimSpace(n.ID)
-			}
-			if svc.Name == "" {
-				svc.Name = strings.TrimSpace(n.Name)
+			svc := storage.TopologyService{
+				ID:              strings.TrimSpace(n.ID),
+				Name:            strings.TrimSpace(n.Name),
+				Type:            strings.TrimSpace(n.Type),
+				MonitoringMode:  strings.TrimSpace(n.MonitoringMode),
+				RecoveryBinding: n.RecoveryBinding,
+				TelemetrySource: n.TelemetrySource,
 			}
 			if svc.Name == "" {
 				svc.Name = svc.ID
 			}
-			if svc.Type == "" {
-				svc.Type = strings.TrimSpace(n.Type)
-			}
-			if svc.Tier == "" {
-				if n.Tier != "" {
-					svc.Tier = strings.TrimSpace(n.Tier)
-				} else if n.Metadata.Tier != "" {
-					svc.Tier = strings.TrimSpace(n.Metadata.Tier)
-				}
+			if n.Tier != "" {
+				svc.Tier = strings.TrimSpace(n.Tier)
+			} else if n.Metadata.Tier != "" {
+				svc.Tier = strings.TrimSpace(n.Metadata.Tier)
 			}
 			if svc.MonitoringMode == "" {
 				svc.MonitoringMode = "observe"

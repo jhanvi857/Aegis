@@ -161,7 +161,7 @@ func ValidatePasswordComplexity(pass string) error {
 			hasLower = true
 		case unicode.IsDigit(ch):
 			hasDigit = true
-		case unicode.IsPunct(ch) || unicode.IsSymbol(ch):
+		case unicode.IsPunct(ch) || unicode.IsSymbol(ch) || strings.ContainsRune("!@#$%^&*()-_=+[]{}|;:,.<>?/~`", ch):
 			hasSpecial = true
 		}
 	}
