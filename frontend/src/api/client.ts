@@ -1,4 +1,22 @@
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+function normalizeApiBaseUrl(value: string | undefined): string {
+  const configured = (value || 'http://localhost:8000/api').trim().replace(/\/+$/, '');
+  if (!value) {
+    return configured;
+  }
+
+  try {
+    const url = new URL(configured);
+    if (url.pathname === '') {
+      url.pathname = '/api';
+      return url.toString().replace(/\/+$/, '');
+    }
+  } catch {
+    // Keep malformed values visible to fetch rather than silently replacing them.
+  }
+  return configured;
+}
+
+export const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
 
 export class ApiError extends Error {
   status: number;
