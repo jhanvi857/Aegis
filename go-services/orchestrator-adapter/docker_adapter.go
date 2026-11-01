@@ -24,12 +24,23 @@ func NewDockerAdapter() *DockerAdapter {
 	return &DockerAdapter{}
 }
 
-// resolveContainerName finds the real running Docker container corresponding to a service ID
+func dockerTargetName(target string) string {
+	target = strings.TrimSpace(target)
+	if slash := strings.LastIndex(target, "/"); slash >= 0 {
+		return target[slash+1:]
+	}
+	return target
+}
+
+// resolveContainerName finds the Docker container corresponding to a service ID.
 func (d *DockerAdapter) resolveContainerName(ctx context.Context, target string) string {
 	target = strings.TrimSpace(target)
 	if target == "" {
 		return ""
 	}
+	// Registry bindings commonly use namespace/service notation. Docker
+	// container names use the service portion, so try that before discovery.
+	targetName := dockerTargetName(target)
 
 	// 1. Direct inspect check
 	cmd := exec.CommandContext(ctx, "docker", "inspect", "--format", "{{.Name}}", target)
@@ -39,9 +50,19 @@ func (d *DockerAdapter) resolveContainerName(ctx context.Context, target string)
 			return clean
 		}
 	}
+	if targetName != target {
+		cmd = exec.CommandContext(ctx, "docker", "inspect", "--format", "{{.Name}}", targetName)
+		if out, err := cmd.Output(); err == nil {
+			clean := strings.Trim(strings.TrimSpace(string(out)), "/")
+			if clean != "" {
+				return clean
+			}
+		}
+	}
 
-	// 2. Discover via docker ps names
-	psCmd := exec.CommandContext(ctx, "docker", "ps", "--format", "{{.Names}}")
+	// 2. Discover via all Docker containers, including stopped containers.
+	// A restart action can legitimately recover a container that exited.
+	psCmd := exec.CommandContext(ctx, "docker", "ps", "-a", "--format", "{{.Names}}")
 	out, err := psCmd.Output()
 	if err == nil {
 		lines := strings.Split(string(out), "\n")
@@ -52,20 +73,21 @@ func (d *DockerAdapter) resolveContainerName(ctx context.Context, target string)
 				continue
 			}
 			lowerC := strings.ToLower(cName)
-			lowerT := strings.ToLower(target)
-			if strings.EqualFold(cName, target) || strings.HasSuffix(lowerC, "-"+lowerT) || strings.HasPrefix(lowerC, lowerT+"-") {
+			lowerT := strings.ToLower(targetName)
+			if strings.EqualFold(cName, target) || strings.EqualFold(cName, targetName) ||
+				strings.HasSuffix(lowerC, "-"+lowerT) || strings.HasPrefix(lowerC, lowerT+"-") {
 				return cName
 			}
 		}
 		for _, line := range lines {
 			cName := strings.TrimSpace(line)
-			if cName != "" && strings.Contains(strings.ToLower(cName), strings.ToLower(target)) {
+			if cName != "" && strings.Contains(strings.ToLower(cName), strings.ToLower(targetName)) {
 				return cName
 			}
 		}
 	}
 
-	return target
+	return targetName
 }
 
 func (d *DockerAdapter) RestartContainer(ctx context.Context, containerName string) error {

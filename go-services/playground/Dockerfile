@@ -18,7 +18,13 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 # Final minimal runtime image
 FROM alpine:3.21
 
-RUN apk --no-cache add ca-certificates && addgroup -S aegis && adduser -S -G aegis aegis
+ARG INSTALL_DOCKER_CLI=false
+ARG INSTALL_WGET=false
+RUN packages="ca-certificates"; \
+    if [ "$INSTALL_DOCKER_CLI" = "true" ]; then packages="$packages docker-cli"; fi; \
+    if [ "$INSTALL_WGET" = "true" ]; then packages="$packages wget"; fi; \
+    apk --no-cache add $packages && \
+    addgroup -S aegis && adduser -S -G aegis aegis
 
 WORKDIR /app
 COPY --from=builder /app/bin/service /app/service
