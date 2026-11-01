@@ -35,7 +35,7 @@ try:
                 snapshot_nodes = []
                 snapshot_edges = []
 
-                if request.graph and request.graph.snapshot:
+                if request.HasField("graph") and request.graph.snapshot:
                     for n in request.graph.snapshot.nodes:
                         node_ids.append(n.id)
                         snapshot_nodes.append({
@@ -73,8 +73,9 @@ try:
 
                 # 3. Telemetry batch
                 telem_batch = {"metrics": [], "logs": [], "traces": []}
-                if request.recent_telemetry:
-                    for m in request.recent_telemetry.metrics:
+                recent_telem = request.telemetry if request.HasField("telemetry") else None
+                if recent_telem:
+                    for m in recent_telem.metrics:
                         telem_batch["metrics"].append({
                             "service_id": m.service_id,
                             "metric_name": m.metric_name,
@@ -82,7 +83,7 @@ try:
                             "timestamp_unix_nano": m.timestamp_unix_nano,
                             "unit": m.unit,
                         })
-                    for entry in request.recent_telemetry.logs:
+                    for entry in recent_telem.logs:
                         telem_batch["logs"].append({
                             "service_id": entry.service_id,
                             "level": entry.level,
@@ -91,7 +92,7 @@ try:
                             "timestamp_unix_nano": entry.timestamp_unix_nano,
                             "attributes": dict(entry.attributes),
                         })
-                    for span in request.recent_telemetry.traces:
+                    for span in recent_telem.traces:
                         telem_batch["traces"].append({
                             "trace_id": span.trace_id,
                             "span_id": span.span_id,
@@ -127,6 +128,32 @@ try:
                 for rc in result.get("root_causes", []):
                     if rc.get("fault_family") == "nominal" or not rc.get("node_id"):
                         continue
+                    pb_trace_refs = []
+                    for tr in rc.get("trace_refs", []):
+                        if isinstance(tr, str):
+                            pb_trace_refs.append(predict_pb2.TraceRef(trace_id=tr))
+                        elif isinstance(tr, dict):
+                            pb_trace_refs.append(predict_pb2.TraceRef(
+                                trace_id=str(tr.get("trace_id", "")),
+                                span_id=str(tr.get("span_id", "")),
+                                service_id=str(tr.get("service_id", "")),
+                                timestamp_unix_nano=int(tr.get("timestamp_unix_nano", 0)),
+                                latency_ms=float(tr.get("latency_ms", 0.0)),
+                                status_code=int(tr.get("status_code", 0)),
+                            ))
+                    pb_log_refs = []
+                    for lr in rc.get("log_refs", []):
+                        if isinstance(lr, str):
+                            pb_log_refs.append(predict_pb2.LogRef(log_id=lr))
+                        elif isinstance(lr, dict):
+                            pb_log_refs.append(predict_pb2.LogRef(
+                                log_id=str(lr.get("log_id", "")),
+                                service_id=str(lr.get("service_id", "")),
+                                timestamp_unix_nano=int(lr.get("timestamp_unix_nano", 0)),
+                                severity=str(lr.get("severity", "")),
+                                message=str(lr.get("message", "")),
+                            ))
+
                     rc_pb = predict_pb2.RootCause(
                         node_id=str(rc.get("node_id", "")),
                         probability=float(rc.get("probability", 0.0)),
@@ -135,34 +162,29 @@ try:
                         fault_family=str(rc.get("fault_family", "nominal")),
                         uncertainty=str(rc.get("uncertainty", "RCA confidence is uncalibrated.")),
                         ranking_score=float(rc.get("ranking_score", 0.0)),
-                        trace_refs=list(rc.get("trace_refs", [])),
-                        log_refs=list(rc.get("log_refs", [])),
+                        trace_refs=pb_trace_refs,
+                        log_refs=pb_log_refs,
                     )
-                    onset = rc.get("anomaly_onset")
-                    if onset:
-                        try:
-                            onset_dt = datetime.fromisoformat(str(onset).replace("Z", "+00:00"))
-                            if onset_dt.tzinfo is None:
-                                onset_dt = onset_dt.replace(tzinfo=timezone.utc)
-                            rc_pb.anomaly_onset_unix_nano = int(onset_dt.timestamp() * 1e9)
-                        except (ValueError, OverflowError, OSError):
-                            pass
                     for ev in rc.get("evidence", []):
                         rc_pb.evidence.append(
-                            predict_pb2.Evidence(
+                            predict_pb2.MetricEvidence(
                                 metric=str(ev.get("metric", "")),
-                                observed_value=float(ev.get("value", 0.0)),
-                                threshold_value=float(ev.get("threshold", 0.0)),
+                                value=float(ev.get("value", 0.0)),
+                                threshold=float(ev.get("threshold", 0.0)),
                                 unit=str(ev.get("unit", "")),
+                                source=str(ev.get("source", "")),
+                                sample_count=int(ev.get("sample_count", 1)),
                             )
                         )
                     resp.root_causes.append(rc_pb)
 
                 for pp in result.get("propagation_paths", []):
+                    path_list = pp.get("path") or pp.get("path_nodes") or []
+                    prob = float(pp.get("probability") or pp.get("propagation_risk") or 0.0)
                     resp.propagation_paths.append(
                         predict_pb2.PropagationPath(
-                            path_nodes=list(pp.get("path_nodes", [])),
-                            propagation_risk=float(pp.get("propagation_risk", 0.0)),
+                            path=[str(n) for n in path_list],
+                            probability=prob,
                         )
                     )
 
@@ -174,31 +196,20 @@ try:
                     if src and tgt:
                         edge_latencies[(src, tgt)] = float(e.get("latency_ms", 0.0))
 
-                # 5b. Compute affected_nodes with hop distance and dynamic cumulative ETA
+                # 5b. Compute affected_nodes
                 visited_nodes = {}
-                node_etas = {}
                 for pp in result.get("propagation_paths", []):
-                    nodes_list = pp.get("path_nodes", [])
-                    cum_latency = 0.0
+                    nodes_list = pp.get("path_nodes") or pp.get("path") or []
                     for hop, nid in enumerate(nodes_list):
-                        if hop > 0:
-                            prev_nid = nodes_list[hop - 1]
-                            edge_lat = edge_latencies.get((prev_nid, nid), 0.0)
-                            cum_latency += edge_lat
-
-                        eta = 0 if hop == 0 else max(1, int(round(cum_latency / 50.0)))
-
                         if nid not in visited_nodes or hop < visited_nodes[nid]:
                             visited_nodes[nid] = hop
-                            node_etas[nid] = eta
 
                 for nid, hop in visited_nodes.items():
                     resp.affected_nodes.append(
                         predict_pb2.AffectedNode(
                             node_id=nid,
-                            hop_distance=hop,
-                            eta_seconds=node_etas.get(nid, hop * 5),
-                            risk_score=0.0,
+                            status="at_risk" if hop > 0 else "impacted",
+                            reason=f"hop distance {hop}",
                         )
                     )
 
@@ -221,7 +232,7 @@ try:
                                 description=f"Autonomous remediation: execute {act_type} on {target}",
                                 risk_level=str(rec_risk_level),
                                 requires_approval=bool(req_approval),
-                                confidence=0.0,
+                                blast_radius_services=[str(s) for s in act.get("blast_radius", [])],
                                 parameters={str(k): str(v) for k, v in act.get("parameters", {}).items()},
                             )
                         )
@@ -230,6 +241,7 @@ try:
                 resp.engine = str(result.get("engine", "statistical_baseline"))
                 resp.model_version = str(result.get("model_version", "service-baseline-v1"))
                 resp.calibrated_confidence = float(result.get("calibrated_confidence", 0.0))
+                resp.fallback_reason = str(result.get("fallback_reason", ""))
                 return resp
             except Exception as e:
                 logger.error(f"[grpc-server] Error handling Predict: {e}", exc_info=True)
@@ -254,14 +266,16 @@ try:
 
                 all_prop = []
                 for p in request.propagation_paths:
-                    all_prop.extend(p.path_nodes)
+                    p_nodes = list(p.path)
+                    all_prop.extend(p_nodes)
 
                 g = nx.DiGraph()
                 for rc in root_causes:
                     g.add_node(rc["node_id"])
                 for p in request.propagation_paths:
-                    for i in range(len(p.path_nodes) - 1):
-                        g.add_edge(p.path_nodes[i], p.path_nodes[i + 1])
+                    p_nodes = list(p.path)
+                    for i in range(len(p_nodes) - 1):
+                        g.add_edge(p_nodes[i], p_nodes[i + 1])
 
                 plan_data = self.engine.plan_builder.build_plan(
                     graph=g,

@@ -27,6 +27,13 @@ type Store interface {
 	GetAPIKeyByHash(ctx context.Context, hash string) (*APIKey, error)
 	ListAPIKeys(ctx context.Context) ([]*APIKey, error)
 	RevokeAPIKey(ctx context.Context, id string) error
+	CreateApplication(ctx context.Context, app *Application) error
+	UpdateApplication(ctx context.Context, app *Application) error
+	GetApplication(ctx context.Context, id string) (*Application, error)
+	ListApplications(ctx context.Context, createdBy string) ([]*Application, error)
+	CreateQueuedAction(ctx context.Context, action *QueuedAction) error
+	ListQueuedActions(ctx context.Context, appID string, states []string) ([]*QueuedAction, error)
+	UpdateQueuedAction(ctx context.Context, action *QueuedAction) error
 
 	// Audit Log operations (Append-only)
 	AppendAuditLog(ctx context.Context, entry *AuditLogEntry) error

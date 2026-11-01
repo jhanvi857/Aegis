@@ -82,7 +82,7 @@ services:
       args:
         SERVICE_DIR: playground/gateway
     container_name: aegis-gateway
-    profiles: ["full"]
+    profiles: ["playground"]
     networks:
       - aegis-net
     ports:
@@ -106,7 +106,7 @@ services:
       args:
         SERVICE_DIR: playground/node-a
     container_name: aegis-node-a
-    profiles: ["full"]
+    profiles: ["playground"]
     networks:
       - aegis-net
     ports:
@@ -125,7 +125,7 @@ services:
       args:
         SERVICE_DIR: playground/node-b
     container_name: aegis-node-b
-    profiles: ["full"]
+    profiles: ["playground"]
     networks:
       - aegis-net
     ports:
@@ -144,7 +144,7 @@ services:
       args:
         SERVICE_DIR: playground/node-c
     container_name: aegis-node-c
-    profiles: ["full"]
+    profiles: ["playground"]
     networks:
       - aegis-net
     ports:
@@ -163,7 +163,7 @@ services:
       args:
         SERVICE_DIR: playground/node-d
     container_name: aegis-node-d
-    profiles: ["full"]
+    profiles: ["playground"]
     networks:
       - aegis-net
     ports:
@@ -186,7 +186,7 @@ services:
       args:
         SERVICE_DIR: chaos-engine
     container_name: aegis-chaos-engine
-    profiles: ["full"]
+    profiles: ["core", "full"]
     networks:
       - aegis-net
     ports:
@@ -196,12 +196,6 @@ services:
       TOPOLOGY_PATH: /etc/aegis/topology.yaml
     volumes:
       - ./configs/topology.yaml:/etc/aegis/topology.yaml:ro
-    depends_on:
-      - gateway
-      - node-a
-      - node-b
-      - node-c
-      - node-d
 
   telemetry-agent:
     build:
@@ -220,11 +214,6 @@ services:
       KAFKA_BROKERS: "kafka:29092"
     depends_on:
       - kafka
-      - gateway
-      - node-a
-      - node-b
-      - node-c
-      - node-d
 
   recovery-engine:
     build:
@@ -233,7 +222,7 @@ services:
       args:
         SERVICE_DIR: recovery-engine
     container_name: aegis-recovery-engine
-    profiles: ["full"]
+    profiles: ["core", "full"]
     networks:
       - aegis-net
     ports:
@@ -258,8 +247,13 @@ services:
       PORT: "50051"
       OMP_NUM_THREADS: ${OMP_NUM_THREADS:-2}
       AEGIS_DETECTION_CONFIG: /etc/aegis/detection_rules.yaml
+      AEGIS_ENGINE: "trained"
+      AEGIS_ML_MODEL_PATH: /app/models/incident_models.joblib
     volumes:
       - ${AEGIS_DETECTION_CONFIG_FILE:-./configs/detection_rules.example.yaml}:/etc/aegis/detection_rules.yaml:ro
+      - ./python-ml/artifacts:/app/models:ro
+      - ./python-ml/artifacts:/app/python-ml/artifacts:ro
+      - ./configs:/app/configs:ro
     mem_limit: 2g
     cpus: 2
 

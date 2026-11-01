@@ -31,6 +31,8 @@ type MemoryStore struct {
 	edgesByKey    map[string]*TopologyEdge
 	edgesByID     map[string]*TopologyEdge
 	versionList   []*TopologyVersion
+	appsByID      map[string]*Application
+	actionsByID   map[string]*QueuedAction
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -48,6 +50,8 @@ func NewMemoryStore() *MemoryStore {
 		edgesByKey:    make(map[string]*TopologyEdge),
 		edgesByID:     make(map[string]*TopologyEdge),
 		versionList:   make([]*TopologyVersion, 0),
+		appsByID:      make(map[string]*Application),
+		actionsByID:   make(map[string]*QueuedAction),
 	}
 }
 
@@ -249,6 +253,7 @@ func (m *MemoryStore) RevokeAPIKey(ctx context.Context, id string) error {
 	if !exists {
 		return ErrNotFound
 	}
+
 	now := time.Now().UTC()
 	k.RevokedAt = &now
 	return nil
@@ -263,6 +268,7 @@ func (m *MemoryStore) AppendAuditLog(ctx context.Context, entry *AuditLogEntry) 
 	if cp.Timestamp.IsZero() {
 		cp.Timestamp = time.Now().UTC()
 	}
+
 	m.auditLogs = append(m.auditLogs, &cp)
 	return nil
 }
@@ -280,6 +286,106 @@ func (m *MemoryStore) ListAuditLogs(ctx context.Context, limit int) ([]*AuditLog
 		res = append(res, &cp)
 	}
 	return res, nil
+}
+
+func cloneApplication(app *Application) *Application {
+	cp := *app
+	cp.Services = append([]ApplicationService(nil), app.Services...)
+	return &cp
+}
+
+func (m *MemoryStore) CreateApplication(ctx context.Context, app *Application) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.appsByID[app.ID]; ok {
+		return ErrConflict
+	}
+	cp := cloneApplication(app)
+	if cp.CreatedAt.IsZero() {
+		cp.CreatedAt = time.Now().UTC()
+	}
+	m.appsByID[cp.ID] = cp
+	return nil
+}
+
+func (m *MemoryStore) GetApplication(ctx context.Context, id string) (*Application, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	app, ok := m.appsByID[id]
+	if !ok {
+		return nil, ErrNotFound
+	}
+
+	return cloneApplication(app), nil
+}
+
+func (m *MemoryStore) UpdateApplication(ctx context.Context, app *Application) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.appsByID[app.ID]; !ok {
+		return ErrNotFound
+	}
+	m.appsByID[app.ID] = cloneApplication(app)
+	return nil
+}
+
+func (m *MemoryStore) ListApplications(ctx context.Context, createdBy string) ([]*Application, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]*Application, 0)
+	for _, app := range m.appsByID {
+		if createdBy == "" || app.CreatedBy == createdBy {
+			out = append(out, cloneApplication(app))
+		}
+	}
+	return out, nil
+}
+
+func (m *MemoryStore) CreateQueuedAction(ctx context.Context, action *QueuedAction) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.actionsByID[action.ID]; ok {
+		return ErrConflict
+	}
+	cp := *action
+	if cp.CreatedAt.IsZero() {
+		cp.CreatedAt = time.Now().UTC()
+	}
+	m.actionsByID[cp.ID] = &cp
+	return nil
+}
+
+func (m *MemoryStore) ListQueuedActions(ctx context.Context, appID string, states []string) ([]*QueuedAction, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	allowed := map[string]bool{}
+	for _, state := range states {
+		allowed[state] = true
+	}
+	out := make([]*QueuedAction, 0)
+	for _, action := range m.actionsByID {
+		if action.AppID == appID && (len(allowed) == 0 || allowed[action.State]) && action.ExpiresAt.After(time.Now()) {
+			cp := *action
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
+
+func (m *MemoryStore) UpdateQueuedAction(ctx context.Context, action *QueuedAction) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	existing, ok := m.actionsByID[action.ID]
+	if !ok {
+		return ErrNotFound
+	}
+	if action.State != "" {
+		existing.State = action.State
+	}
+	existing.ApprovedBy = action.ApprovedBy
+	existing.ApprovedAt = action.ApprovedAt
+	existing.ResultLogs = action.ResultLogs
+	return nil
 }
 
 func (m *MemoryStore) CreateRecoveryExecution(ctx context.Context, exec *RecoveryExecution) error {
@@ -452,9 +558,13 @@ func (m *MemoryStore) ListServices(ctx context.Context, namespace, clusterID str
 }
 
 func cloneStringMap(input map[string]string) map[string]string {
-	if input == nil { return nil }
+	if input == nil {
+		return nil
+	}
 	output := make(map[string]string, len(input))
-	for key, value := range input { output[key] = value }
+	for key, value := range input {
+		output[key] = value
+	}
 	return output
 }
 

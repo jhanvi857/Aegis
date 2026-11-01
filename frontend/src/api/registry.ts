@@ -29,8 +29,11 @@ export interface TelemetrySource {
 }
 
 export interface RecoveryBinding {
-  runtime: 'kubernetes' | 'docker' | string;
-  target: string;
+  executor?: 'webhook' | 'docker' | string;
+  runtime?: 'kubernetes' | 'docker' | string;
+  target?: string;
+  baseUrl?: string;
+  authToken?: string;
   allowedActions: string[];
 }
 
@@ -220,6 +223,12 @@ export const registryApi = {
       body: JSON.stringify(sourceOverride ? { telemetrySource: sourceOverride } : {}),
     });
   },
+
+  testRecoveryConnection: async (id: string, binding: RecoveryBinding): Promise<{ success: boolean; status?: number; error?: string }> =>
+    await apiFetch<{ success: boolean; status?: number; error?: string }>(`/registry/services/${encodeURIComponent(id)}/test-recovery-connection`, {
+      method: 'POST',
+      body: JSON.stringify(binding),
+    }),
 
   listEdges: async (namespace?: string, clusterId?: string): Promise<TopologyEdgeItem[]> => {
     const params = new URLSearchParams();

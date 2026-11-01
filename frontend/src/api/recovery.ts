@@ -15,6 +15,8 @@ export const recoveryApi = {
         reason: 'Authorized via Authority Boundary Gate in Aegis UI',
       }),
     }),
+  approveApplicationAction: (appId: string, actionId: string) =>
+    apiFetch<Record<string, unknown>>(`/apps/${appId}/actions/${actionId}/approve`, { method: 'POST' }),
   rejectAction: (actionId: string, targetServiceId?: string) =>
     apiFetch<{ rejected: boolean; actionId: string; status: string }>('/recovery/reject', {
       method: 'POST',
@@ -52,4 +54,3 @@ export const recoveryApi = {
       body: JSON.stringify({ enabled }),
     }),
 };
-

@@ -84,6 +84,7 @@ func (p *PostgresStore) autoMigrate(ctx context.Context) error {
 		revoked_at TIMESTAMP WITH TIME ZONE NULL,
 		created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 	);
+	ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS app_id VARCHAR(128);
 	CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix);
 
 	CREATE TABLE IF NOT EXISTS audit_logs (
@@ -160,6 +161,34 @@ func (p *PostgresStore) autoMigrate(ctx context.Context) error {
 	CREATE INDEX IF NOT EXISTS idx_topology_services_cluster ON topology_services(cluster_id);
 	CREATE INDEX IF NOT EXISTS idx_topology_services_tier ON topology_services(tier);
 	CREATE INDEX IF NOT EXISTS idx_topology_services_status ON topology_services(status);
+
+	CREATE TABLE IF NOT EXISTS applications (
+		id VARCHAR(128) PRIMARY KEY,
+		name VARCHAR(255) NOT NULL,
+		services JSONB NOT NULL,
+		created_by VARCHAR(128) NOT NULL,
+		created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+	);
+	CREATE TABLE IF NOT EXISTS queued_actions (
+		id VARCHAR(128) PRIMARY KEY,
+		app_id VARCHAR(128) NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+		service_id VARCHAR(128) NOT NULL,
+		action VARCHAR(64) NOT NULL,
+		risk_level VARCHAR(32) NOT NULL,
+		evidence JSONB,
+		expected_effect TEXT,
+		state VARCHAR(32) NOT NULL,
+		expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+		approved_by VARCHAR(255),
+		approved_at TIMESTAMP WITH TIME ZONE,
+		signed_token TEXT NOT NULL,
+		parameters JSONB,
+		eta_seconds BIGINT NOT NULL DEFAULT 30,
+		created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+		result_logs TEXT
+	);
+	ALTER TABLE queued_actions ADD COLUMN IF NOT EXISTS eta_seconds BIGINT NOT NULL DEFAULT 30;
+	CREATE INDEX IF NOT EXISTS idx_queued_actions_poll ON queued_actions(app_id, state, expires_at);
 
 	CREATE TABLE IF NOT EXISTS topology_edges (
 		id VARCHAR(128) PRIMARY KEY,
@@ -404,20 +433,20 @@ func (p *PostgresStore) CreateAPIKey(ctx context.Context, key *APIKey) error {
 		key.CreatedAt = time.Now().UTC()
 	}
 	_, err := p.db.ExecContext(ctx, `
-		INSERT INTO api_keys (id, name, key_prefix, key_hash, scopes, role, created_by, expires_at, revoked_at, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`, key.ID, key.Name, key.KeyPrefix, key.KeyHash, key.Scopes, key.Role, key.CreatedBy, key.ExpiresAt, key.RevokedAt, key.CreatedAt)
+		INSERT INTO api_keys (id, name, key_prefix, key_hash, scopes, role, created_by, expires_at, revoked_at, created_at, app_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	`, key.ID, key.Name, key.KeyPrefix, key.KeyHash, key.Scopes, key.Role, key.CreatedBy, key.ExpiresAt, key.RevokedAt, key.CreatedAt, key.AppID)
 	return err
 }
 
 func (p *PostgresStore) GetAPIKeyByHash(ctx context.Context, hash string) (*APIKey, error) {
 	row := p.db.QueryRowContext(ctx, `
-		SELECT id, name, key_prefix, key_hash, scopes, role, created_by, expires_at, revoked_at, created_at
+		SELECT id, name, key_prefix, key_hash, scopes, role, created_by, expires_at, revoked_at, created_at, COALESCE(app_id, '')
 		FROM api_keys WHERE key_hash = $1
 	`, hash)
 
 	var k APIKey
-	err := row.Scan(&k.ID, &k.Name, &k.KeyPrefix, &k.KeyHash, &k.Scopes, &k.Role, &k.CreatedBy, &k.ExpiresAt, &k.RevokedAt, &k.CreatedAt)
+	err := row.Scan(&k.ID, &k.Name, &k.KeyPrefix, &k.KeyHash, &k.Scopes, &k.Role, &k.CreatedBy, &k.ExpiresAt, &k.RevokedAt, &k.CreatedAt, &k.AppID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -441,6 +470,7 @@ func (p *PostgresStore) ListAPIKeys(ctx context.Context) ([]*APIKey, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	defer rows.Close()
 
 	keys := make([]*APIKey, 0)
@@ -777,7 +807,9 @@ func (p *PostgresStore) GetService(ctx context.Context, id string) (*TopologySer
 	if len(tagsJSON) > 0 {
 		_ = json.Unmarshal(tagsJSON, &s.Tags)
 	}
-	if len(attrsJSON) > 0 { _ = json.Unmarshal(attrsJSON, &s.ResourceAttributes) }
+	if len(attrsJSON) > 0 {
+		_ = json.Unmarshal(attrsJSON, &s.ResourceAttributes)
+	}
 	return &s, nil
 }
 
@@ -836,7 +868,9 @@ func (p *PostgresStore) ListServices(ctx context.Context, namespace, clusterID s
 		if len(tagsJSON) > 0 {
 			_ = json.Unmarshal(tagsJSON, &s.Tags)
 		}
-		if len(attrsJSON) > 0 { _ = json.Unmarshal(attrsJSON, &s.ResourceAttributes) }
+		if len(attrsJSON) > 0 {
+			_ = json.Unmarshal(attrsJSON, &s.ResourceAttributes)
+		}
 		list = append(list, &s)
 	}
 	return list, rows.Err()
@@ -1028,7 +1062,7 @@ func (p *PostgresStore) AutoDiscoverSpanEdge(ctx context.Context, sourceID, targ
 	provQuery := `
 		INSERT INTO topology_services (id, name, type, namespace, cluster_id, tier, capabilities, status, monitoring_mode, recovery_binding, created_at, updated_at)
 		VALUES ($1, $1, 'service', $2, $3, 'tier-2', 'scale,restart', 'unconnected', 'recommend',
-			jsonb_build_object('runtime', 'docker', 'target', $1, 'allowedActions', jsonb_build_array('restart', 'scale_up', 'scale', 'reroute_traffic', 'flush_cache', 'isolate')),
+			jsonb_build_object('runtime', 'docker', 'target', $1, 'allowedActions', jsonb_build_array('restart', 'scale_up', 'scale', 'reroute_traffic', 'flush_cache', 'increase_pool', 'isolate')),
 			$4, $4)
 		ON CONFLICT (id) DO NOTHING
 	`
@@ -1205,4 +1239,128 @@ func (p *PostgresStore) ListTopologyVersions(ctx context.Context, limit int) ([]
 
 func (p *PostgresStore) Close() error {
 	return p.db.Close()
+}
+
+func (p *PostgresStore) CreateApplication(ctx context.Context, app *Application) error {
+	if app.CreatedAt.IsZero() {
+		app.CreatedAt = time.Now().UTC()
+	}
+	services, err := json.Marshal(app.Services)
+	if err != nil {
+		return err
+	}
+	_, err = p.db.ExecContext(ctx, `INSERT INTO applications (id,name,services,created_by,created_at) VALUES ($1,$2,$3,$4,$5)`, app.ID, app.Name, services, app.CreatedBy, app.CreatedAt)
+	return err
+}
+
+func (p *PostgresStore) GetApplication(ctx context.Context, id string) (*Application, error) {
+	var app Application
+	var services []byte
+	err := p.db.QueryRowContext(ctx, `SELECT id,name,services,created_by,created_at FROM applications WHERE id=$1`, id).Scan(&app.ID, &app.Name, &services, &app.CreatedBy, &app.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(services, &app.Services); err != nil {
+		return nil, err
+	}
+	return &app, nil
+}
+
+func (p *PostgresStore) UpdateApplication(ctx context.Context, app *Application) error {
+	services, err := json.Marshal(app.Services)
+	if err != nil {
+		return err
+	}
+	res, err := p.db.ExecContext(ctx, `UPDATE applications SET name=$1, services=$2 WHERE id=$3`, app.Name, services, app.ID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (p *PostgresStore) ListApplications(ctx context.Context, createdBy string) ([]*Application, error) {
+	query := `SELECT id,name,services,created_by,created_at FROM applications`
+	args := []interface{}{}
+	if createdBy != "" {
+		query += ` WHERE created_by=$1`
+		args = append(args, createdBy)
+	}
+	query += ` ORDER BY created_at DESC`
+	rows, err := p.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]*Application, 0)
+	for rows.Next() {
+		var app Application
+		var services []byte
+		if err := rows.Scan(&app.ID, &app.Name, &services, &app.CreatedBy, &app.CreatedAt); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(services, &app.Services); err != nil {
+			return nil, err
+		}
+		out = append(out, &app)
+	}
+	return out, rows.Err()
+}
+
+func (p *PostgresStore) CreateQueuedAction(ctx context.Context, action *QueuedAction) error {
+	evidence, _ := json.Marshal(action.Evidence)
+	params, _ := json.Marshal(action.Parameters)
+	_, err := p.db.ExecContext(ctx, `INSERT INTO queued_actions (id,app_id,service_id,action,risk_level,evidence,expected_effect,state,expires_at,approved_by,approved_at,signed_token,parameters,eta_seconds,created_at,result_logs) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+		action.ID, action.AppID, action.ServiceID, action.Action, action.RiskLevel, evidence, action.ExpectedEffect, action.State, action.ExpiresAt, action.ApprovedBy, action.ApprovedAt, action.SignedToken, params, action.ETASeconds, action.CreatedAt, action.ResultLogs)
+	return err
+}
+
+func (p *PostgresStore) ListQueuedActions(ctx context.Context, appID string, states []string) ([]*QueuedAction, error) {
+	rows, err := p.db.QueryContext(ctx, `SELECT id,app_id,service_id,action,risk_level,evidence,expected_effect,state,expires_at,approved_by,approved_at,signed_token,parameters,eta_seconds,created_at,result_logs FROM queued_actions WHERE app_id=$1 AND expires_at>NOW() AND state IN ('APPROVED','DISPATCHED','PROPOSED') ORDER BY created_at`, appID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]*QueuedAction, 0)
+	for rows.Next() {
+		var action QueuedAction
+		var evidence, params []byte
+		if err := rows.Scan(&action.ID, &action.AppID, &action.ServiceID, &action.Action, &action.RiskLevel, &evidence, &action.ExpectedEffect, &action.State, &action.ExpiresAt, &action.ApprovedBy, &action.ApprovedAt, &action.SignedToken, &params, &action.ETASeconds, &action.CreatedAt, &action.ResultLogs); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal(evidence, &action.Evidence)
+		_ = json.Unmarshal(params, &action.Parameters)
+		if len(states) == 0 || containsState(states, action.State) {
+			out = append(out, &action)
+		}
+	}
+	return out, rows.Err()
+}
+
+func containsState(states []string, state string) bool {
+	for _, candidate := range states {
+		if candidate == state {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *PostgresStore) UpdateQueuedAction(ctx context.Context, action *QueuedAction) error {
+	res, err := p.db.ExecContext(ctx, `UPDATE queued_actions SET state=$1,approved_by=$2,approved_at=$3,result_logs=$4 WHERE id=$5`, action.State, action.ApprovedBy, action.ApprovedAt, action.ResultLogs, action.ID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

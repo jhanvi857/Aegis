@@ -64,9 +64,9 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
   };
 
   return (
-    <div className={`bg-[#0F0F11] border border-[#26262B] rounded-xl overflow-hidden flex flex-col font-sans ${className}`}>
+    <div className={`bg-[#0F0F11] border border-surface-border rounded-xl overflow-hidden flex flex-col font-sans ${className}`}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-[#151517] border-b border-[#26262B]">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-surface border-b border-[#26262B]">
         <div className="flex items-center space-x-2.5">
           <div className="p-1.5 bg-[#840032]/20 border border-[#840032] rounded-md text-[#e2588a]">
             <BrainCircuit className="w-4 h-4" />

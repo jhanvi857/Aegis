@@ -4,11 +4,12 @@ import {
   Server,
   GitFork,
   BrainCircuit,
-  Flame,
   ShieldCheck,
   FlaskConical,
   Settings,
   PlugZap,
+  UserPlus,
+  KeyRound,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -21,12 +22,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'services', label: 'Services', icon: Server },
     { id: 'connect', label: 'Connect your app', icon: PlugZap },
+    { id: 'onboarding', label: 'Onboarding', icon: UserPlus },
     { id: 'graph', label: 'Dependency Graph', icon: GitFork, isHero: true },
     { id: 'predictions', label: 'Predictions', icon: BrainCircuit },
-    { id: 'chaos', label: 'Chaos Engine', icon: Flame },
+    // { id: 'chaos', label: 'Chaos Engine', icon: Flame },
     { id: 'recovery', label: 'Recovery', icon: ShieldCheck },
     { id: 'experiments', label: 'Experiments', icon: FlaskConical },
     { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'permissions', label: 'Permissions', icon: KeyRound },
   ];
 
   return (
@@ -44,17 +47,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-[13px] leading-[20px] transition-all ${
-                  isActive
+                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-[13px] leading-[20px] transition-all ${isActive
                     ? 'bg-[#840032]/25 text-white font-semibold border border-[#840032] shadow-sm'
                     : 'text-gray-400 hover:text-gray-100 hover:bg-[#1E1E22] font-medium'
-                }`}
+                  }`}
               >
                 <div className="flex items-center space-x-2.5">
                   <Icon
-                    className={`w-4 h-4 ${
-                      isActive ? 'text-[#e2588a]' : 'text-gray-400'
-                    }`}
+                    className={`w-4 h-4 ${isActive ? 'text-[#e2588a]' : 'text-gray-400'
+                      }`}
                   />
                   <span>{item.label}</span>
                 </div>
@@ -80,17 +81,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-[13px] leading-[20px] transition-all ${
-                  isActive
+                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-[13px] leading-[20px] transition-all ${isActive
                     ? 'bg-[#840032]/25 text-white font-semibold border border-[#840032] shadow-sm'
                     : 'text-gray-400 hover:text-gray-100 hover:bg-[#1E1E22] font-medium'
-                }`}
+                  }`}
               >
                 <div className="flex items-center space-x-2.5">
                   <Icon
-                    className={`w-4 h-4 ${
-                      isActive ? 'text-[#e2588a]' : 'text-gray-400'
-                    }`}
+                    className={`w-4 h-4 ${isActive ? 'text-[#e2588a]' : 'text-gray-400'
+                      }`}
                   />
                   <span>{item.label}</span>
                 </div>

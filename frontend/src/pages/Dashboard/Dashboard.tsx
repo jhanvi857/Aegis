@@ -7,6 +7,7 @@ import { TopologyGraph } from '../../components/TopologyGraph';
 import { ChaosControls } from '../../components/ChaosControls';
 import { PredictionPanel } from '../../components/PredictionPanel';
 import { RecoveryLog } from '../../components/RecoveryLog';
+import { ServiceDetailModal } from '../Services/ServiceDetailModal';
 import {
   Activity,
   ShieldAlert,
@@ -35,6 +36,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
   } = useTelemetryStore();
 
   const [demoBannerMessage, setDemoBannerMessage] = useState<string | null>(null);
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
 
   const prediction = getMLPrediction(services, activeFaults);
   const isIncident = prediction.incident === true || prediction.state === 'incident';
@@ -52,20 +54,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
   const isSystemWarning = isDegraded || partialOrUnknownCoverage;
 
   // Aggregate global metric trends from services history
-  const historyLen = services[0]?.history?.length || 0;
+  const maxHistoryService = services.reduce(
+    (max, s) => ((s.history?.length || 0) > (max?.history?.length || 0) ? s : max),
+    services[0]
+  );
+  const historyLen = maxHistoryService?.history?.length || 0;
   const globalHistory = Array.from({ length: historyLen }).map((_, idx) => {
-    const timestamp = services[0]?.history[idx]?.timestamp || '';
+    const timestamp = maxHistoryService?.history[idx]?.timestamp || '';
     const averageObserved = (signal: string, key: 'cpu' | 'latency' | 'memory') => {
       const values = services.flatMap((s) => {
         const point = s.history?.[idx];
-        const fresh = s.dataStatus === 'fresh' && (s.observedSignals?.includes(signal) ?? false);
-        return fresh && point && typeof point[key] === 'number' ? [point[key]] : [];
+        if (!point || typeof point[key] !== 'number') return [];
+        const signalAllowed = !s.observedSignals || s.observedSignals.length === 0 || s.observedSignals.includes(signal);
+        const isUsable = s.dataStatus !== 'stale' && signalAllowed;
+        return isUsable ? [point[key]] : [];
       });
       return values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : undefined;
     };
     const observedRps = services.flatMap((s) => {
       const point = s.history?.[idx];
-      return s.dataStatus === 'fresh' && s.observedSignals?.includes('rps') && point ? [point.rps] : [];
+      if (!point || typeof point.rps !== 'number') return [];
+      const signalAllowed = !s.observedSignals || s.observedSignals.length === 0 || s.observedSignals.includes('rps');
+      const isUsable = s.dataStatus !== 'stale' && signalAllowed;
+      return isUsable ? [point.rps] : [];
     });
 
     return {
@@ -223,9 +234,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
           title="PREDICTION HORIZON"
           value={isIncident && prediction.estimatedFailureSec > 0 ? `${prediction.estimatedFailureSec}s` : 'n/a'}
           icon={Clock}
-          statusColor="intervention"
-          badgeText="Baseline"
-          trend={isIncident && prediction.confidence > 0 ? `Confidence: ${prediction.confidence}%` : 'Model: Nominal'}
+          statusColor={isIncident ? 'critical' : 'intervention'}
+          badgeText={!hasFreshData ? 'NO DATA' : isIncident ? (prediction.engine && prediction.engine.startsWith('trained') ? 'ML PREDICTED' : 'EARLY WARNING') : 'NOMINAL'}
+          trend={isIncident ? (prediction.engine ? `Engine: ${prediction.engine}` : (prediction.confidence > 0 ? `Confidence: ${prediction.confidence}%` : 'Incident Active')) : 'Model: Nominal'}
         />
 
         <StatusCard
@@ -291,7 +302,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
             showMiniMap={true}
             showControls={true}
             showTopologySelector={true}
-            onNodeSelect={(nodeId) => console.log('Selected node:', nodeId)}
+            onNodeSelect={(nodeId) => setSelectedServiceId(nodeId)}
             className="h-full shadow-lg"
           />
         </div>
@@ -354,6 +365,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
         </div>
         <LogStreamer logs={logs} maxHeight="max-h-64" />
       </div>
+
+      {selectedServiceId && (
+        <ServiceDetailModal
+          serviceId={selectedServiceId}
+          onClose={() => setSelectedServiceId(null)}
+        />
+      )}
     </div>
   );
 };

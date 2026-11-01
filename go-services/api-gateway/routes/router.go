@@ -143,6 +143,9 @@ func SetupRouter(store storage.Store) *mux.Router {
 	r.HandleFunc("/api/registry/versions", RequireRole(storage.RoleViewer, ListTopologyVersionsHandler)).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/system/mode", RequireRole(storage.RoleViewer, GetSystemModeHandler)).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/connect", RequireRole(storage.RoleViewer, ConnectConfigHandler)).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/apps", RequireRole(storage.RoleViewer, ListApplicationsHandler)).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/apps/{id}", RequireRole(storage.RoleViewer, GetApplicationHandler)).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/apps/{id}/services/{service}/permissions", RequireRole(storage.RoleOperator, UpdateApplicationPermissionsHandler)).Methods("PUT", "OPTIONS")
 
 	// ─── Authenticated: Operator Role (Approve, Execute Low/Med, Topology Select) ───
 	r.HandleFunc("/api/topology/select", RequireRole(storage.RoleOperator, TopologySelectHandler)).Methods("POST", "OPTIONS")
@@ -159,11 +162,20 @@ func SetupRouter(store storage.Store) *mux.Router {
 	r.HandleFunc("/api/registry/services/{id}", RequireRole(storage.RoleOperator, UpdateRegistryServiceHandler)).Methods("PUT", "OPTIONS")
 	r.HandleFunc("/api/registry/services/{id}", RequireRole(storage.RoleOperator, DeleteRegistryServiceHandler)).Methods("DELETE", "OPTIONS")
 	r.HandleFunc("/api/registry/services/{id}/test-connection", RequireRole(storage.RoleOperator, TestConnectionHandler)).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/registry/services/{id}/test-recovery-connection", RequireRole(storage.RoleOperator, TestRecoveryConnectionHandler)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/registry/edges", RequireRole(storage.RoleOperator, CreateRegistryEdgeHandler)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/registry/edges/{source}/{target}", RequireRole(storage.RoleOperator, DeleteRegistryEdgeHandler)).Methods("DELETE", "OPTIONS")
 	r.HandleFunc("/api/registry/suggestions/{id}/accept", RequireRole(storage.RoleOperator, AcceptRegistrySuggestionHandler)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/registry/suggestions/{id}/reject", RequireRole(storage.RoleOperator, RejectRegistrySuggestionHandler)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/registry/import", RequireRole(storage.RoleOperator, ImportTopologyHandler)).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/apps", RequireRole(storage.RoleOperator, CreateApplicationHandler)).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/apps/{id}/actions", RequireRole(storage.RoleOperator, ProposeApplicationActionHandler)).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/apps/{id}/actions/{action}/approve", RequireRole(storage.RoleOperator, ApproveApplicationActionHandler)).Methods("POST", "OPTIONS")
+
+	// Customer-agent pull model. These handlers require an app-scoped API key.
+	r.HandleFunc("/agent/poll", AgentPollHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/agent/result", AgentResultHandler).Methods("POST", "OPTIONS")
+	r.HandleFunc("/ingest", IngestApplicationTelemetryHandler).Methods("POST", "OPTIONS")
 
 	// Real Telemetry Ingestion (OpenTelemetry Spans & Prometheus Metrics)
 	r.HandleFunc("/api/telemetry/spans", RequireRole(storage.RoleOperator, IngestSpansHandler)).Methods("POST", "OPTIONS")
