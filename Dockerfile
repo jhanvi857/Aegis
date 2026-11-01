@@ -1,4 +1,4 @@
-FROM golang:1.24-bookworm AS go-build
+FROM golang:1.26-bookworm AS go-build
 WORKDIR /src
 COPY go-services/go.mod go-services/go.sum ./go-services/
 COPY go-services ./go-services
