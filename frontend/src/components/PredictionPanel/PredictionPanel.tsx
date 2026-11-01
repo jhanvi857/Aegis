@@ -24,10 +24,13 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
-  const isCriticalProb = prediction.failureProbability > 70;
-  const isDegradedProb = prediction.failureProbability > 30 && prediction.failureProbability <= 70;
+  const hasConfirmedIncident = prediction.incident === true && prediction.state === 'incident';
+  const isCriticalProb = hasConfirmedIncident && prediction.failureProbability > 70;
+  const isDegradedProb = hasConfirmedIncident && prediction.failureProbability > 30 && prediction.failureProbability <= 70;
 
-  const rootService = services.find((s) => s.id === prediction.rootCauseServiceId);
+  const rootService = hasConfirmedIncident
+    ? services.find((s) => s.id === prediction.rootCauseServiceId)
+    : undefined;
 
   const handleRemediate = async () => {
     if (!prediction.rootCauseServiceId || prediction.rootCauseServiceId === 'None') return;
@@ -110,7 +113,7 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
                 : 'bg-[#3F8E4F]/20 text-[#52b767] border-[#3F8E4F]/60'
             }`}
           >
-            {!hasFreshData ? 'UNKNOWN' : isCriticalProb ? 'HIGH SCORE' : isDegradedProb ? 'ANOMALY' : 'NO ANOMALY EVIDENCE'}
+            {!hasFreshData ? 'WAITING FOR TELEMETRY' : isCriticalProb ? 'CONFIRMED INCIDENT' : 'NO INCIDENT'}
           </span>
         </div>
       </div>
@@ -133,7 +136,7 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
                     : 'text-[#3F8E4F]'
                 }`}
               >
-                {hasFreshData ? `${prediction.failureProbability}%` : 'â€”'}
+                {hasConfirmedIncident ? `${prediction.failureProbability}%` : '—'}
               </span>
             </div>
           </div>
@@ -162,7 +165,7 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
         </div>
 
         {/* Root Cause Entity Details */}
-        <div className="p-3 bg-[#151517] border border-[#26262B] rounded-lg space-y-2">
+        {hasConfirmedIncident && <div className="p-3 bg-[#151517] border border-[#26262B] rounded-lg space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">
               RCA CANDIDATE Â· UNCERTAINTY RETAINED
@@ -258,10 +261,10 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
               </div>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Cascade Propagation Breadcrumbs */}
-        {prediction.blastRadius && prediction.blastRadius.length > 0 && (
+        {hasConfirmedIncident && prediction.blastRadius && prediction.blastRadius.length > 0 && (
           <div className="p-3 bg-[#151517] border border-[#26262B] rounded-lg space-y-2">
             <span className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">
               PROPAGATION CASCADE PATH ({prediction.blastRadius.length} AFFECTED NODES)
@@ -282,7 +285,7 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
         )}
 
         {/* Decision Engine Recommended Remediation */}
-        <div className="p-3 bg-[#840032]/10 border border-[#840032]/50 rounded-lg space-y-2">
+        {hasConfirmedIncident && <div className="p-3 bg-[#840032]/10 border border-[#840032]/50 rounded-lg space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-semibold tracking-wider text-[#f07b9e] uppercase">
               DECISION ENGINE REMEDIATION
@@ -302,7 +305,7 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
             </div>
           )}
 
-          {prediction.rootCauseServiceId && prediction.rootCauseServiceId !== 'None' && (
+          {hasConfirmedIncident && prediction.rootCauseServiceId && prediction.rootCauseServiceId !== 'None' && (
             <div className="pt-2">
               <button
                 onClick={handleRemediate}
@@ -314,7 +317,7 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
               </button>
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );

@@ -40,8 +40,12 @@ export const TopologyGraph: React.FC<TopologyGraphProps> = ({
   const [importModalOpen, setImportModalOpen] = useState<boolean>(false);
 
   const prediction = getMLPrediction(services, activeFaults);
-  const rootCauseId = prediction.rootCauseServiceId;
-  const blastRadiusSet = useMemo(() => new Set(prediction.blastRadius || []), [prediction.blastRadius]);
+  const hasConfirmedIncident = prediction.incident === true && prediction.state === 'incident';
+  const rootCauseId = hasConfirmedIncident ? prediction.rootCauseServiceId : '';
+  const blastRadiusSet = useMemo(
+    () => new Set(hasConfirmedIncident ? (prediction.blastRadius || []) : []),
+    [hasConfirmedIncident, prediction.blastRadius]
+  );
 
   React.useEffect(() => {
     registryApi.listTopologies()

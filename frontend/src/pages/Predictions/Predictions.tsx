@@ -7,8 +7,9 @@ export const Predictions: React.FC = () => {
   const { services, activeFaults, executeRecoveryAction } = useTelemetryStore();
   const prediction = getMLPrediction(services, activeFaults);
 
-  const isCriticalProb = prediction.failureProbability > 70;
-  const isDegradedProb = prediction.failureProbability > 30 && prediction.failureProbability <= 70;
+  const hasConfirmedIncident = prediction.incident === true && prediction.state === 'incident';
+  const isCriticalProb = hasConfirmedIncident && prediction.failureProbability > 70;
+  const isDegradedProb = hasConfirmedIncident && prediction.failureProbability > 30 && prediction.failureProbability <= 70;
 
   return (
     <div className="p-6 space-y-6 font-sans">
@@ -46,10 +47,10 @@ export const Predictions: React.FC = () => {
                   : 'text-[#3F8E4F]'
               }`}
             >
-              {prediction.failureProbability}%
+              {hasConfirmedIncident ? `${prediction.failureProbability}%` : '—'}
             </span>
             <span className="text-[10px] font-semibold tracking-[0.04em] uppercase text-gray-400">
-              {isCriticalProb ? 'CRITICAL' : isDegradedProb ? 'WARNING' : 'HEALTHY'}
+              {isCriticalProb ? 'CONFIRMED INCIDENT' : 'NO INCIDENT'}
             </span>
           </div>
         </div>
@@ -82,7 +83,7 @@ export const Predictions: React.FC = () => {
           </div>
           <div className="flex items-baseline space-x-2">
             <span className="text-[28px] font-semibold tracking-[-0.03em] leading-[32px] font-mono text-[#D4A017]">
-              {prediction.estimatedFailureSec}s
+              {hasConfirmedIncident && prediction.estimatedFailureSec > 0 ? `${prediction.estimatedFailureSec}s` : '—'}
             </span>
             <span className="text-[10px] font-semibold tracking-[0.04em] uppercase text-gray-400">HORIZON</span>
           </div>
@@ -99,7 +100,7 @@ export const Predictions: React.FC = () => {
           </div>
           <div className="flex items-baseline space-x-2">
             <span className="font-mono text-[16px] font-semibold leading-[24px] text-[#AD2831] truncate">
-              {prediction.rootCauseServiceName}
+              {hasConfirmedIncident ? prediction.rootCauseServiceName : 'No confirmed root cause'}
             </span>
           </div>
         </div>
@@ -116,7 +117,7 @@ export const Predictions: React.FC = () => {
             </h3>
           </div>
 
-          {prediction.blastRadius.length === 0 ? (
+          {!hasConfirmedIncident || prediction.blastRadius.length === 0 ? (
             <div className="p-6 bg-[#0B0B0C] rounded-lg border border-[#26262B] text-center text-gray-500 text-xs">
               No cascading blast radius detected. All downstream nodes nominal.
             </div>
@@ -179,6 +180,7 @@ export const Predictions: React.FC = () => {
 
           {(() => {
             const isNominal =
+              !hasConfirmedIncident ||
               !prediction.rootCauseServiceId ||
               prediction.rootCauseServiceId === 'None' ||
               prediction.rootCauseServiceId === '' ||

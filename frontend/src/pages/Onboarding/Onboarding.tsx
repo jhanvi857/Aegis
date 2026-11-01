@@ -9,12 +9,14 @@ export const Onboarding: React.FC = () => {
   const [topologyYaml, setTopologyYaml] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [message, setMessage] = useState('');
+  const [yamlFileName, setYamlFileName] = useState('');
   const update = (index: number, patch: Partial<AppService>) =>
     setServices((current) => current.map((service, i) => (i === index ? { ...service, ...patch } : service)));
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     try {
-      const result = await appsApi.create({ name, services, topology_yaml: topologyYaml || undefined });
+      const manualServices = topologyYaml.trim() ? [] : services;
+      const result = await appsApi.create({ name, services: manualServices, topology_yaml: topologyYaml || undefined });
       setApiKey(result.api_key);
       setMessage(result.warning);
     } catch (error) {
@@ -25,8 +27,8 @@ export const Onboarding: React.FC = () => {
     <div className="p-6 max-w-5xl space-y-5">
       <div><h1 className="text-2xl font-semibold text-white">Application onboarding</h1><p className="text-sm text-gray-400">Register distributed services. Default permission is recommend-only.</p></div>
       <form onSubmit={submit} className="space-y-4">
-        <input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Application name" className="w-full rounded bg-[#151517] border border-[#26262B] p-2 text-white" />
-        {services.map((service, index) => (
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Application name (or system_name from YAML)" className="w-full rounded bg-[#151517] border border-[#26262B] p-2 text-white" />
+        {!topologyYaml.trim() && services.map((service, index) => (
           <div key={index} className="grid grid-cols-2 gap-2 rounded border border-[#26262B] p-3">
             <input required value={service.id} onChange={(e) => update(index, { id: e.target.value })} placeholder="service id" className="rounded bg-[#0B0B0C] p-2 text-white" />
             <input required value={service.name} onChange={(e) => update(index, { name: e.target.value })} placeholder="service name" className="rounded bg-[#0B0B0C] p-2 text-white" />
@@ -36,8 +38,20 @@ export const Onboarding: React.FC = () => {
             <input value={service.provider || ''} onChange={(e) => update(index, { provider: e.target.value })} placeholder="provider / region" className="rounded bg-[#0B0B0C] p-2 text-white" />
           </div>
         ))}
-        <button type="button" onClick={() => setServices([...services, emptyService()])} className="text-sm text-pink-300">+ Add service</button>
-        <textarea value={topologyYaml} onChange={(e) => setTopologyYaml(e.target.value)} placeholder="Optional existing topology.yaml" className="w-full h-28 rounded bg-[#151517] border border-[#26262B] p-2 text-white font-mono text-xs" />
+        {!topologyYaml.trim() && <button type="button" onClick={() => setServices([...services, emptyService()])} className="text-sm text-pink-300">+ Add service</button>}
+        <label className="block rounded border border-dashed border-[#840032] p-3 text-sm text-pink-200 cursor-pointer">
+          Load topology YAML — services, URLs, dependencies, health paths, environment, region and permissions will be filled automatically
+          <input type="file" accept=".yaml,.yml" className="hidden" onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            setYamlFileName(file.name);
+            const reader = new FileReader();
+            reader.onload = () => setTopologyYaml(String(reader.result || ''));
+            reader.readAsText(file);
+          }} />
+        </label>
+        {yamlFileName && <div className="text-xs text-gray-400">Loaded: {yamlFileName}</div>}
+        <textarea value={topologyYaml} onChange={(e) => setTopologyYaml(e.target.value)} placeholder="Or paste topology.yaml here" className="w-full h-28 rounded bg-[#151517] border border-[#26262B] p-2 text-white font-mono text-xs" />
         <button className="rounded bg-[#840032] px-4 py-2 text-white">Register application</button>
       </form>
       {message && <div className="rounded border border-amber-700 p-3 text-amber-200">{message}</div>}

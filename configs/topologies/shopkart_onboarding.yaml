@@ -1,0 +1,180 @@
+version: "1.0"
+system_name: "shopkart-mesh"
+description: "ShopKart application onboarding topology. Cart stays manual/recommend-only; all other services use low-risk automatic execution."
+
+# These are the real Aegis endpoints for the current Docker deployment.
+# Prometheus must be reachable at AEGIS_PROM_URL (currently http://host.docker.internal:9091).
+# OTLP HTTP ingestion is exposed by Aegis at http://localhost:4318/v1/metrics
+# and http://localhost:4318/v1/traces.
+telemetry:
+  prometheus_url: "http://host.docker.internal:9091"
+  otlp_http_endpoint: "http://localhost:4318"
+  otlp_metrics_path: "/v1/metrics"
+  otlp_traces_path: "/v1/traces"
+
+nodes:
+  - id: "edge-gateway"
+    name: "Edge API Gateway"
+    type: "gateway"
+    host: "edge-gateway"
+    port: 8080
+    environment: "docker"
+    region: "local"
+    provider: "docker-compose"
+    health_url: "/health"
+    dependencies: ["checkout", "cart", "catalog", "search", "reviews"]
+    mode: "auto_low"
+    allowed_actions: ["RESTART", "SCALE_UP", "REROUTE_TRAFFIC"]
+    recoveryBinding:
+      executor: "webhook"
+      baseUrl: "http://edge-gateway:8080"
+      allowedActions: ["RESTART", "SCALE_UP", "REROUTE_TRAFFIC"]
+
+  - id: "checkout"
+    name: "Checkout Orchestrator"
+    type: "service"
+    host: "checkout"
+    port: 8081
+    environment: "docker"
+    region: "local"
+    provider: "docker-compose"
+    health_url: "/health"
+    dependencies: ["cart", "catalog", "payments", "notifications", "inventory"]
+    mode: "auto_low"
+    allowed_actions: ["RESTART", "SCALE_UP"]
+    recoveryBinding:
+      executor: "webhook"
+      baseUrl: "http://checkout:8081"
+      allowedActions: ["RESTART", "SCALE_UP"]
+
+  - id: "payments"
+    name: "Payments Service"
+    type: "service"
+    host: "payments"
+    port: 8082
+    environment: "docker"
+    region: "local"
+    provider: "docker-compose"
+    health_url: "/health"
+    dependencies: ["external-bank-mock"]
+    mode: "auto_low"
+    allowed_actions: ["RESTART", "SCALE_UP"]
+    recoveryBinding:
+      executor: "webhook"
+      baseUrl: "http://payments:8082"
+      allowedActions: ["RESTART", "SCALE_UP"]
+
+  - id: "cart"
+    name: "Shopping Cart"
+    type: "service"
+    host: "cart"
+    port: 8083
+    environment: "docker"
+    region: "local"
+    provider: "docker-compose"
+    health_url: "/health"
+    dependencies: []
+    mode: "recommend"
+    allowed_actions: []
+
+  - id: "catalog"
+    name: "Product Catalog"
+    type: "service"
+    host: "catalog"
+    port: 8084
+    environment: "docker"
+    region: "local"
+    provider: "docker-compose"
+    health_url: "/health"
+    dependencies: []
+    mode: "auto_low"
+    allowed_actions: ["RESTART", "SCALE_UP", "FLUSH_CACHE"]
+    recoveryBinding:
+      executor: "webhook"
+      baseUrl: "http://catalog:8084"
+      allowedActions: ["RESTART", "SCALE_UP", "FLUSH_CACHE"]
+
+  - id: "inventory"
+    name: "Inventory Management"
+    type: "service"
+    host: "inventory"
+    port: 8085
+    environment: "docker"
+    region: "local"
+    provider: "docker-compose"
+    health_url: "/health"
+    dependencies: []
+    mode: "auto_low"
+    allowed_actions: ["RESTART", "SCALE_UP"]
+    recoveryBinding:
+      executor: "webhook"
+      baseUrl: "http://inventory:8085"
+      allowedActions: ["RESTART", "SCALE_UP"]
+
+  - id: "notifications"
+    name: "Notification Dispatcher"
+    type: "service"
+    host: "notifications"
+    port: 8086
+    environment: "docker"
+    region: "local"
+    provider: "docker-compose"
+    health_url: "/health"
+    dependencies: []
+    mode: "auto_low"
+    allowed_actions: ["RESTART", "SCALE_UP"]
+    recoveryBinding:
+      executor: "webhook"
+      baseUrl: "http://notifications:8086"
+      allowedActions: ["RESTART", "SCALE_UP"]
+
+  - id: "reviews"
+    name: "Customer Reviews"
+    type: "service"
+    host: "reviews"
+    port: 8087
+    environment: "docker"
+    region: "local"
+    provider: "docker-compose"
+    health_url: "/health"
+    dependencies: ["catalog"]
+    mode: "auto_low"
+    allowed_actions: ["RESTART", "SCALE_UP"]
+    recoveryBinding:
+      executor: "webhook"
+      baseUrl: "http://reviews:8087"
+      allowedActions: ["RESTART", "SCALE_UP"]
+
+  - id: "search"
+    name: "Catalog Search"
+    type: "service"
+    host: "search"
+    port: 8088
+    environment: "docker"
+    region: "local"
+    provider: "docker-compose"
+    health_url: "/health"
+    dependencies: ["catalog"]
+    mode: "auto_low"
+    allowed_actions: ["RESTART", "SCALE_UP", "FLUSH_CACHE"]
+    recoveryBinding:
+      executor: "webhook"
+      baseUrl: "http://search:8088"
+      allowedActions: ["RESTART", "SCALE_UP", "FLUSH_CACHE"]
+
+  - id: "external-bank-mock"
+    name: "External Bank Gateway Mock"
+    type: "service"
+    host: "external-bank-mock"
+    port: 8089
+    environment: "docker"
+    region: "local"
+    provider: "docker-compose"
+    health_url: "/health"
+    dependencies: []
+    mode: "auto_low"
+    allowed_actions: ["RESTART"]
+    recoveryBinding:
+      executor: "webhook"
+      baseUrl: "http://external-bank-mock:8089"
+      allowedActions: ["RESTART"]

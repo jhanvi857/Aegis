@@ -39,7 +39,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
 
   const prediction = getMLPrediction(services, activeFaults);
-  const isIncident = prediction.incident === true || prediction.state === 'incident';
+  const isIncident = prediction.incident === true && prediction.state === 'incident';
   const risk = isIncident ? calculateSystemRisk(services, activeFaults) : 0;
 
   const isCritical = isIncident && risk >= 80;

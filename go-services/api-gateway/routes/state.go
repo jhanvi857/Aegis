@@ -584,6 +584,42 @@ func (s *ControlPlaneState) runTicker() {
 							if healthResp.QueueDepth > 0 {
 								svc.QueueDepth = healthResp.QueueDepth
 							}
+							// Health responses are real telemetry. Record the
+							// observations so the prediction freshness gate can
+							// distinguish them from registration defaults.
+							observedAt := time.Now().UTC()
+							if svc.SignalLastSeen == nil {
+								svc.SignalLastSeen = make(map[string]time.Time)
+							}
+							if healthResp.CPU > 0 {
+								svc.SignalLastSeen["cpu"] = observedAt
+							}
+							if healthResp.Memory > 0 {
+								svc.SignalLastSeen["memory"] = observedAt
+							}
+							if healthResp.LatencyMs > 0 {
+								svc.SignalLastSeen["latency"] = observedAt
+							}
+							if healthResp.ErrorRate > 0 {
+								svc.SignalLastSeen["error_rate"] = observedAt
+							}
+							if healthResp.DBConnectionWaitMs > 0 {
+								svc.SignalLastSeen["db_wait"] = observedAt
+							}
+							if healthResp.CacheMissRate > 0 {
+								svc.SignalLastSeen["cache_miss_rate"] = observedAt
+							}
+							if healthResp.QueueDepth > 0 {
+								svc.SignalLastSeen["queue_depth"] = observedAt
+							}
+							if healthResp.PacketLossRate > 0 {
+								svc.SignalLastSeen["packet_loss"] = observedAt
+							}
+							if healthResp.ActiveThreads > 0 {
+								svc.SignalLastSeen["active_threads"] = observedAt
+							}
+							svc.LastIngestTime = observedAt
+							svc.DataStatus = "fresh"
 						}
 						_ = resp.Body.Close()
 						break
