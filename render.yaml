@@ -1,0 +1,54 @@
+services:
+  - type: web
+    name: aegis-api
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    envVars:
+      - key: AEGIS_ENV
+        value: production
+      - key: AEGIS_LOG_LEVEL
+        value: info
+      - key: PYTHON_GRPC_ADDR
+        value: 127.0.0.1:50051
+      - key: AEGIS_GRPC_PORT
+        value: "50051"
+      - key: AEGIS_ENGINE
+        value: trained
+      - key: AEGIS_ML_MODEL_PATH
+        value: /app/python-ml/artifacts/incident_models.joblib
+      - key: AEGIS_CORS_ALLOWED_ORIGINS
+        value: https://aegis-dashboard.onrender.com
+      - key: AEGIS_ENABLE_DOCKER_EXECUTOR
+        value: "false"
+      - key: CHAOS_ENABLED
+        value: "false"
+      - key: CHAOS_ALLOW_PRODUCTION
+        value: "false"
+      - key: AEGIS_AUTONOMOUS_RECOVERY
+        value: "false"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: aegis-db
+          property: connectionString
+      - key: AEGIS_BOOTSTRAP_ADMIN_EMAIL
+        sync: false
+      - key: AEGIS_BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
+      - key: AEGIS_AUTH_SECRET
+        generateValue: true
+
+  - type: static
+    name: aegis-dashboard
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://aegis-api.onrender.com/api
+
+databases:
+  - name: aegis-db
+    plan: starter
