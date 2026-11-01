@@ -369,5 +369,5 @@ def serve(port: int = 50051):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    port_env = os.getenv("PORT", "50051")
+    port_env = os.getenv("AEGIS_GRPC_PORT", os.getenv("PORT", "50051"))
     serve(port=int(port_env))

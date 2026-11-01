@@ -160,6 +160,14 @@ class PredictionEngine:
                 if not ml_predictions:
                     fallback_reason = "insufficient service metrics for trained model inference"
                 else:
+                    # The Random Forest was successfully loaded and evaluated.
+                    # Keep this engine identity even when no service crosses
+                    # the root-cause ranking threshold.
+                    engine_name = f"trained:{self.incident_models.model_type}"
+                    model_version = (
+                        f"root-{self.incident_models.model_names.get('root_cause', 'unknown')}-"
+                        f"fault-{self.incident_models.model_names.get('fault_family', 'unknown')}-v1"
+                    )
                     scored_services = sorted(
                         ml_predictions.items(),
                         key=lambda item: (-item[1]["root_score"], item[0]),
@@ -214,11 +222,6 @@ class PredictionEngine:
                              "confidence": 0.0, "estimated_time_to_failure_sec": 0}
                             for s_id, pred in sorted(ml_predictions.items())
                         ]
-                        engine_name = f"trained:{self.incident_models.model_type}"
-                        model_version = (
-                            f"root-{self.incident_models.model_names.get('root_cause', 'unknown')}-"
-                            f"fault-{self.incident_models.model_names.get('fault_family', 'unknown')}-v1"
-                        )
                         fallback_reason = ""
             except Exception as exc:
                 fallback_reason = f"inference fallback: {exc}"

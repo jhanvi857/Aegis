@@ -53,22 +53,67 @@ func CreateApplicationHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid application payload"}`, http.StatusBadRequest)
 		return
 	}
-	if strings.TrimSpace(req.Name) == "" {
-		http.Error(w, `{"error":"name is required"}`, http.StatusBadRequest)
-		return
-	}
 	if len(req.Services) == 0 && strings.TrimSpace(req.TopologyYAML) != "" {
 		var topology struct {
-			Nodes    []storage.ApplicationService `yaml:"nodes"`
+			SystemName string `yaml:"system_name"`
+			Nodes      []struct {
+				ID             string   `yaml:"id"`
+				Name           string   `yaml:"name"`
+				BaseURL        string   `yaml:"base_url"`
+				Host           string   `yaml:"host"`
+				Port           int      `yaml:"port"`
+				Environment    string   `yaml:"environment"`
+				DependsOn      []string `yaml:"depends_on"`
+				Dependencies   []string `yaml:"dependencies"`
+				HealthURL      string   `yaml:"health_url"`
+				HealthEndpoint string   `yaml:"health_endpoint"`
+				Region         string   `yaml:"region"`
+				Provider       string   `yaml:"provider"`
+				Mode           string   `yaml:"mode"`
+				Allowed        []string `yaml:"allowed_actions"`
+			} `yaml:"nodes"`
 			Services []storage.ApplicationService `yaml:"services"`
 		}
 		if err := yaml.Unmarshal([]byte(req.TopologyYAML), &topology); err != nil {
 			http.Error(w, `{"error":"invalid topology_yaml"}`, http.StatusBadRequest)
 			return
 		}
+		if strings.TrimSpace(req.Name) == "" {
+			req.Name = topology.SystemName
+		}
 		req.Services = topology.Services
 		if len(req.Services) == 0 {
-			req.Services = topology.Nodes
+			for _, node := range topology.Nodes {
+				baseURL := strings.TrimSpace(node.BaseURL)
+				if baseURL == "" && node.Host != "" {
+					baseURL = fmt.Sprintf("http://%s", node.Host)
+					if node.Port > 0 {
+						baseURL = fmt.Sprintf("%s:%d", baseURL, node.Port)
+					}
+				}
+				if strings.TrimSpace(req.Name) == "" {
+					http.Error(w, `{"error":"name is required (or provide system_name in topology_yaml)"}`, http.StatusBadRequest)
+					return
+				}
+				healthURL := strings.TrimSpace(node.HealthURL)
+				if healthURL == "" {
+					healthURL = strings.TrimSpace(node.HealthEndpoint)
+				}
+				dependsOn := node.DependsOn
+				if len(dependsOn) == 0 {
+					dependsOn = node.Dependencies
+				}
+				mode := node.Mode
+				if mode == "" {
+					mode = "recommend"
+				}
+				req.Services = append(req.Services, storage.ApplicationService{
+					ID: node.ID, Name: node.Name, BaseURL: baseURL, Host: node.Host,
+					Environment: node.Environment, DependsOn: dependsOn, HealthURL: healthURL,
+					Region: node.Region, Provider: node.Provider, Mode: mode,
+					AllowedActions: node.Allowed,
+				})
+			}
 		}
 	}
 	if len(req.Services) == 0 {

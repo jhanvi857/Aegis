@@ -221,6 +221,8 @@ services:
       dockerfile: playground/Dockerfile
       args:
         SERVICE_DIR: recovery-engine
+        INSTALL_DOCKER_CLI: "true"
+        INSTALL_WGET: "true"
     container_name: aegis-recovery-engine
     profiles: ["core", "full"]
     networks:
@@ -230,6 +232,12 @@ services:
     environment:
       PORT: "8092"
       PYTHON_GRPC_ADDR: "python-ml:50051"
+      AEGIS_ENABLE_DOCKER_EXECUTOR: ${AEGIS_ENABLE_DOCKER_EXECUTOR:-false}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8092/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
     depends_on:
       - python-ml
 
@@ -281,12 +289,17 @@ services:
       PYTHON_GRPC_ADDR: "python-ml:50051"
       CHAOS_ENGINE_URL: "http://chaos-engine:8091"
       RECOVERY_ENGINE_URL: "http://recovery-engine:8092"
+      AEGIS_ENABLE_DOCKER_EXECUTOR: ${AEGIS_ENABLE_DOCKER_EXECUTOR:-false}
       DATABASE_URL: postgresql://aegis:${POSTGRES_PASSWORD}@postgres:5432/aegis_db?sslmode=disable
       AEGIS_BOOTSTRAP_ADMIN_EMAIL: ${AEGIS_BOOTSTRAP_ADMIN_EMAIL:-admin@enterprise.io}
       AEGIS_BOOTSTRAP_ADMIN_PASSWORD: ${AEGIS_BOOTSTRAP_ADMIN_PASSWORD:?AEGIS_BOOTSTRAP_ADMIN_PASSWORD environment variable must be set in .env}
     depends_on:
-      - postgres
-      - python-ml
+      postgres:
+        condition: service_started
+      python-ml:
+        condition: service_started
+      recovery-engine:
+        condition: service_healthy
     mem_limit: 512m
     cpus: 1
     volumes:

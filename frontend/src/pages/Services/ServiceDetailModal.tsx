@@ -52,6 +52,7 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
 
   const isCritical = service.status === 'critical';
   const isDegraded = service.status === 'degraded';
+  const hasConfirmedIncident = latestPrediction?.incident === true && latestPrediction.state === 'incident';
 
   const upstreamServices = services.filter((s) => s.dependencies.includes(service.id));
   const downstreamServices = services.filter((s) => service.dependencies.includes(s.id));
@@ -59,7 +60,7 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
   // Check if Python Decision Engine prescribed an action for this specific workload
   const matchingRec =
     latestPrediction?.recommendedActions?.find((a) => a.targetServiceId === service.id) ||
-    (latestPrediction?.rootCauseServiceId === service.id && latestPrediction?.recommendedActionId !== 'act-none'
+    (hasConfirmedIncident && latestPrediction?.rootCauseServiceId === service.id && latestPrediction?.recommendedActionId !== 'act-none'
       ? {
           title: latestPrediction.recommendedAction,
           description: latestPrediction.rootCauseReason,
