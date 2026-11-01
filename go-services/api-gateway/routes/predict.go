@@ -73,16 +73,24 @@ func isMetricBreached(svc *Microservice, cfg IncidentGateConfig) bool {
 	if svc == nil {
 		return false
 	}
-	return svc.Status == "offline" || svc.Status == "failed" ||
-		svc.CPU >= cfg.CPUThreshold ||
-		svc.Latency >= cfg.LatencyThreshold ||
-		svc.ErrorRate >= cfg.ErrorThreshold ||
-		svc.DBWait >= cfg.DBWaitThreshold ||
-		svc.CacheMiss >= cfg.CacheMissThreshold ||
-		svc.QueueDepth >= cfg.QueueDepthThreshold ||
-		svc.PacketLoss >= cfg.PacketLossThreshold ||
-		svc.ActiveThreads >= cfg.ActiveThreadsThreshold ||
-		svc.Status == "critical"
+	// A status label alone is not telemetry evidence. It may be produced by
+	// registration or a health probe before any timestamped signal arrives.
+	// Only explicitly observed metrics can open the incident gate.
+	observed := func(signal string) bool {
+		if svc.SignalLastSeen == nil {
+			return false
+		}
+		lastSeen, ok := svc.SignalLastSeen[signal]
+		return ok && !lastSeen.IsZero()
+	}
+	return (observed("cpu") && svc.CPU >= cfg.CPUThreshold) ||
+		(observed("latency") && svc.Latency >= cfg.LatencyThreshold) ||
+		(observed("error_rate") && svc.ErrorRate >= cfg.ErrorThreshold) ||
+		(observed("db_wait") && svc.DBWait >= cfg.DBWaitThreshold) ||
+		(observed("cache_miss_rate") && svc.CacheMiss >= cfg.CacheMissThreshold) ||
+		(observed("queue_depth") && svc.QueueDepth >= cfg.QueueDepthThreshold) ||
+		(observed("packet_loss") && svc.PacketLoss >= cfg.PacketLossThreshold) ||
+		(observed("active_threads") && svc.ActiveThreads >= cfg.ActiveThreadsThreshold)
 }
 
 var CanonicalFaultFamilyActions = map[string][]struct {
@@ -163,6 +171,17 @@ var CanonicalFaultFamilyActions = map[string][]struct {
 }
 
 func GetLatestPredictionHandler(w http.ResponseWriter, r *http.Request) {
+	key := strings.TrimSpace(r.URL.Query().Get("app_id")) + "/" + strings.TrimSpace(r.URL.Query().Get("service_id"))
+	if strings.Trim(key, "/") != "" {
+		State.mu.RLock()
+		prediction, ok := State.LatestPredictions[key]
+		State.mu.RUnlock()
+		if ok {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(prediction)
+			return
+		}
+	}
 	pred := ComputePredictionOutput()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(pred)
@@ -487,8 +506,10 @@ func ComputePredictionOutput() PredictionOutput {
 			}
 			confLabel = "uncalibrated statistical ranking"
 
+			etaByNode := make(map[string]int64, len(resp.FailurePredictions))
 			for _, fp := range resp.FailurePredictions {
 				perNodeScores[fp.NodeId] = fp.FailureProbability
+				etaByNode[fp.NodeId] = fp.EstimatedTimeToFailureSec
 				if fp.FailureProbability > rawProb {
 					rawProb = fp.FailureProbability
 					rawConf = fp.Confidence
@@ -535,6 +556,7 @@ func ComputePredictionOutput() PredictionOutput {
 					WhyThisTarget:    fmt.Sprintf("Diagnosed root cause %s exhibiting %s fault signature", act.TargetNodeId, chosenFaultFamily),
 					ExpectedEffect:   fmt.Sprintf("Relieve %s symptoms and restore SLA", chosenFaultFamily),
 				})
+				chosenActions[len(chosenActions)-1].ETASeconds = etaByNode[act.TargetNodeId]
 			}
 			calibratedConf = resp.CalibratedConfidence
 		}

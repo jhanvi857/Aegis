@@ -63,6 +63,48 @@ type APIKey struct {
 	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
 	RevokedAt *time.Time `json:"revokedAt,omitempty"`
 	CreatedAt time.Time  `json:"createdAt"`
+	AppID     string     `json:"appId,omitempty"`
+}
+
+type ApplicationService struct {
+	ID             string   `json:"id" yaml:"id"`
+	Name           string   `json:"name" yaml:"name"`
+	BaseURL        string   `json:"base_url,omitempty" yaml:"base_url,omitempty"`
+	Host           string   `json:"host,omitempty" yaml:"host,omitempty"`
+	Environment    string   `json:"environment,omitempty" yaml:"environment,omitempty"`
+	DependsOn      []string `json:"depends_on,omitempty" yaml:"depends_on,omitempty"`
+	HealthURL      string   `json:"health_url,omitempty" yaml:"health_url,omitempty"`
+	Region         string   `json:"region,omitempty" yaml:"region,omitempty"`
+	Provider       string   `json:"provider,omitempty" yaml:"provider,omitempty"`
+	Mode           string   `json:"mode" yaml:"mode"`
+	AllowedActions []string `json:"allowed_actions" yaml:"allowed_actions"`
+}
+
+type Application struct {
+	ID        string               `json:"id"`
+	Name      string               `json:"name"`
+	Services  []ApplicationService `json:"services"`
+	CreatedBy string               `json:"createdBy"`
+	CreatedAt time.Time            `json:"createdAt"`
+}
+
+type QueuedAction struct {
+	ID             string                 `json:"id"`
+	AppID          string                 `json:"app_id"`
+	ServiceID      string                 `json:"service_id"`
+	Action         string                 `json:"action"`
+	RiskLevel      string                 `json:"risk_level"`
+	Evidence       map[string]interface{} `json:"evidence,omitempty"`
+	ExpectedEffect string                 `json:"expected_effect,omitempty"`
+	State          string                 `json:"state"`
+	ExpiresAt      time.Time              `json:"expires_at"`
+	ApprovedBy     string                 `json:"approved_by,omitempty"`
+	ApprovedAt     *time.Time             `json:"approved_at,omitempty"`
+	SignedToken    string                 `json:"signed_token"`
+	Parameters     map[string]string      `json:"parameters,omitempty"`
+	ETASeconds     int64                  `json:"eta_seconds,omitempty"`
+	CreatedAt      time.Time              `json:"created_at"`
+	ResultLogs     string                 `json:"result_logs,omitempty"`
 }
 
 func (k *APIKey) HasScope(scope string) bool {
@@ -145,42 +187,45 @@ type TelemetrySource struct {
 }
 
 type RecoveryBinding struct {
-	Runtime        string   `json:"runtime"`        // kubernetes | docker
-	Target         string   `json:"target"`         // namespace/deployment or container/project
-	AllowedActions []string `json:"allowedActions"` // scale, restart, increase_pool, flush_cache, reroute
+	Executor       string   `json:"executor,omitempty"` // webhook | docker
+	Runtime        string   `json:"runtime,omitempty"`  // legacy docker/kubernetes compatibility
+	Target         string   `json:"target,omitempty"`
+	BaseURL        string   `json:"baseUrl,omitempty"`
+	AuthToken      string   `json:"authToken,omitempty"`
+	AllowedActions []string `json:"allowedActions"`
 }
 
 type TopologyService struct {
-	ID                string           `json:"id"`
-	Name              string           `json:"name"`
-	Type              string           `json:"type"` // gateway, service, database, cache, queue
-	Namespace         string           `json:"namespace"`
-	ClusterID         string           `json:"clusterId"`
-	Tier              string           `json:"tier"` // tier-1-ingress, tier-1-storage, tier-2, tier-3
-	Capabilities      string           `json:"capabilities"`
-	Owner             string           `json:"owner"`
-	Version           string           `json:"version"`
-	Replicas          int              `json:"replicas"`
-	MaxReplicas       int              `json:"maxReplicas"`
-	Status            string           `json:"status"` // unconnected | healthy_data | no_data | stale
-	CPU               float64          `json:"cpu"`
-	Memory            float64          `json:"memory"`
-	Latency           float64          `json:"latency"`
-	RPS               float64          `json:"rps"`
-	ErrorRate         float64          `json:"errorRate"`
-	QueueDepth        int              `json:"queueDepth"`
-	MonitoringMode    string           `json:"monitoringMode"` // ignore | observe | recommend | auto_remediate
-	TelemetrySource   *TelemetrySource `json:"telemetrySource,omitempty"`
-	RecoveryBinding   *RecoveryBinding `json:"recoveryBinding,omitempty"`
-	Description       string           `json:"description,omitempty"`
-	Tags              []string         `json:"tags,omitempty"`
-	LastTelemetryTime *time.Time       `json:"lastTelemetryTime,omitempty"`
-	Source            string           `json:"source,omitempty"`
-	LastSeen          *time.Time       `json:"lastSeen,omitempty"`
-	DataStatus        string           `json:"dataStatus,omitempty"`
+	ID                 string            `json:"id"`
+	Name               string            `json:"name"`
+	Type               string            `json:"type"` // gateway, service, database, cache, queue
+	Namespace          string            `json:"namespace"`
+	ClusterID          string            `json:"clusterId"`
+	Tier               string            `json:"tier"` // tier-1-ingress, tier-1-storage, tier-2, tier-3
+	Capabilities       string            `json:"capabilities"`
+	Owner              string            `json:"owner"`
+	Version            string            `json:"version"`
+	Replicas           int               `json:"replicas"`
+	MaxReplicas        int               `json:"maxReplicas"`
+	Status             string            `json:"status"` // unconnected | healthy_data | no_data | stale
+	CPU                float64           `json:"cpu"`
+	Memory             float64           `json:"memory"`
+	Latency            float64           `json:"latency"`
+	RPS                float64           `json:"rps"`
+	ErrorRate          float64           `json:"errorRate"`
+	QueueDepth         int               `json:"queueDepth"`
+	MonitoringMode     string            `json:"monitoringMode"` // ignore | observe | recommend | auto_remediate
+	TelemetrySource    *TelemetrySource  `json:"telemetrySource,omitempty"`
+	RecoveryBinding    *RecoveryBinding  `json:"recoveryBinding,omitempty"`
+	Description        string            `json:"description,omitempty"`
+	Tags               []string          `json:"tags,omitempty"`
+	LastTelemetryTime  *time.Time        `json:"lastTelemetryTime,omitempty"`
+	Source             string            `json:"source,omitempty"`
+	LastSeen           *time.Time        `json:"lastSeen,omitempty"`
+	DataStatus         string            `json:"dataStatus,omitempty"`
 	ResourceAttributes map[string]string `json:"resourceAttributes,omitempty"`
-	CreatedAt         time.Time        `json:"createdAt"`
-	UpdatedAt         time.Time        `json:"updatedAt"`
+	CreatedAt          time.Time         `json:"createdAt"`
+	UpdatedAt          time.Time         `json:"updatedAt"`
 }
 
 func (s *TopologyService) UnmarshalJSON(data []byte) error {

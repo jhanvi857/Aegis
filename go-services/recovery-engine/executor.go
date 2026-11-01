@@ -47,9 +47,9 @@ func NewExecutor(adapter ...orchestrator.OrchestratorAdapter) *Executor {
 
 	restartAct := actions.NewRestartAction(orchAdapter)
 	scaleAct := actions.NewScaleAction(orchAdapter)
-	rerouteAct := &actions.RerouteTrafficAction{}
-	flushAct := &actions.FlushCacheAction{}
-	poolAct := &actions.IncreasePoolAction{}
+	rerouteAct := actions.NewRerouteTrafficAction(orchAdapter)
+	flushAct := actions.NewFlushCacheAction(orchAdapter)
+	poolAct := actions.NewIncreasePoolAction(orchAdapter)
 
 	// Register canonical lower-case and uppercase names
 	e.RegisterAction("restart", restartAct)

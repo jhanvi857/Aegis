@@ -32,6 +32,8 @@ export interface Microservice {
   signalLastSeen?: Record<string, string>;
   resourceAttributes?: Record<string, string>;
   dataStatus?: 'fresh' | 'stale' | 'unknown' | string;
+  monitoringMode?: 'ignore' | 'observe' | 'recommend' | 'auto_remediate';
+  recoveryBinding?: import('../api/registry').RecoveryBinding;
 }
 
 export interface LiveAlert {
@@ -135,7 +137,8 @@ export interface RecoveryAction {
   riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
   requiresApproval?: boolean;
   faultFamily?: string;
-  evidence?: Record<string, number>;
+  evidence?: Array<{ metric: string; value: number; threshold?: number; unit?: string }>;
+  etaSeconds?: number;
   expectedEffect?: string;
   whyThisTarget?: string;
   parameters?: Record<string, string>;

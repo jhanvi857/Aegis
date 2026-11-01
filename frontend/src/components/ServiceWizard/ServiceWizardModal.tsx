@@ -81,7 +81,10 @@ export const ServiceWizardModal: React.FC<ServiceWizardModalProps> = ({
 
   // Recovery Binding
   const [hasRecovery, setHasRecovery] = useState<boolean>(false);
-  const [recoveryRuntime, setRecoveryRuntime] = useState<'kubernetes' | 'docker'>('kubernetes');
+  const [recoveryExecutor, setRecoveryExecutor] = useState<'webhook' | 'docker'>('webhook');
+  const [recoveryBaseUrl, setRecoveryBaseUrl] = useState<string>('');
+  const [recoveryAuthToken, setRecoveryAuthToken] = useState<string>('');
+  const [recoveryRuntime, setRecoveryRuntime] = useState<'kubernetes' | 'docker'>('docker');
   const [recoveryTarget, setRecoveryTarget] = useState<string>('');
   const [allowedActions, setAllowedActions] = useState<string[]>(['scale', 'restart']);
 
@@ -120,8 +123,10 @@ export const ServiceWizardModal: React.FC<ServiceWizardModalProps> = ({
 
       if (editService.recoveryBinding) {
         setHasRecovery(true);
-        setRecoveryRuntime((editService.recoveryBinding.runtime as any) || 'kubernetes');
-        setRecoveryTarget(editService.recoveryBinding.target);
+        setRecoveryExecutor((editService.recoveryBinding.executor as any) || 'webhook');
+        setRecoveryRuntime((editService.recoveryBinding.runtime as any) || 'docker');
+        setRecoveryBaseUrl(editService.recoveryBinding.baseUrl || '');
+        setRecoveryTarget(editService.recoveryBinding.target || '');
         setAllowedActions(editService.recoveryBinding.allowedActions || []);
       } else {
         setHasRecovery(false);
@@ -225,6 +230,9 @@ export const ServiceWizardModal: React.FC<ServiceWizardModalProps> = ({
         ? {
             runtime: recoveryRuntime,
             target: recoveryTarget.trim() || `${namespace}/${id}`,
+            executor: recoveryExecutor,
+            baseUrl: recoveryBaseUrl.trim(),
+            authToken: recoveryAuthToken.trim() || undefined,
             allowedActions,
           }
         : undefined;
@@ -700,7 +708,7 @@ docker run -d \\
           {step === 3 && (
             <div className="space-y-4">
               <div className="p-3 bg-[#0B0B0C] border border-[#26262B] rounded-lg text-gray-400">
-                <span className="font-semibold text-white">Optional Recovery Binding:</span> Connect this service to a container or Kubernetes orchestrator so Aegis can recommend or autonomously execute self-healing actions.
+                <span className="font-semibold text-white">Optional Recovery Binding:</span> Configure a public customer webhook. Aegis calls it server-side only after the approval gate.
                 Services without a recovery binding remain strictly <span className="text-amber-400 font-medium">Observe-Only</span>.
               </div>
 
@@ -720,12 +728,12 @@ docker run -d \\
                     <div>
                       <label className="block text-gray-300 font-semibold mb-1">Target Runtime</label>
                       <select
-                        value={recoveryRuntime}
-                        onChange={(e) => setRecoveryRuntime(e.target.value as any)}
+                        value={recoveryExecutor}
+                        onChange={(e) => setRecoveryExecutor(e.target.value as any)}
                         className="w-full bg-[#151517] border border-[#26262B] rounded-md px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#840032]"
                       >
-                        <option value="kubernetes">Kubernetes Adapter</option>
-                        <option value="docker">Docker Adapter</option>
+                        <option value="webhook">Customer Webhook</option>
+                        <option value="docker">Docker (explicit opt-in)</option>
                       </select>
                     </div>
                     <div>
@@ -734,11 +742,37 @@ docker run -d \\
                         type="text"
                         value={recoveryTarget}
                         onChange={(e) => setRecoveryTarget(e.target.value)}
-                        placeholder={recoveryRuntime === 'kubernetes' ? 'default/order-service' : 'order-container'}
+                        placeholder="optional workload label"
                         className="w-full bg-[#151517] border border-[#26262B] rounded-md px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-[#840032]"
                       />
                     </div>
                   </div>
+                  {recoveryExecutor === 'webhook' && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-gray-300 font-semibold mb-1">Public service URL *</label>
+                        <input type="url" value={recoveryBaseUrl} onChange={(e) => setRecoveryBaseUrl(e.target.value)} placeholder="https://shopkart.example.com" className="w-full bg-[#151517] border border-[#26262B] rounded-md px-3 py-1.5 text-xs text-white font-mono" />
+                      </div>
+                      <div>
+                        <label className="block text-gray-300 font-semibold mb-1">Admin token (stored server-side)</label>
+                        <input type="password" value={recoveryAuthToken} onChange={(e) => setRecoveryAuthToken(e.target.value)} placeholder="X-Admin-Token" className="w-full bg-[#151517] border border-[#26262B] rounded-md px-3 py-1.5 text-xs text-white font-mono" />
+                      </div>
+                    </div>
+                  )}
+                  {recoveryExecutor === 'webhook' && (
+                    <button type="button" disabled={testing || !recoveryBaseUrl} onClick={async () => {
+                      setTesting(true); setErrorMsg(null);
+                      try {
+                        const result = await registryApi.testRecoveryConnection(id || 'test', { executor: recoveryExecutor, baseUrl: recoveryBaseUrl, authToken: recoveryAuthToken, allowedActions });
+                        if (!result.success) setErrorMsg(result.error || 'Recovery endpoint is unreachable');
+                        else setTestResult({ success: true, errors: [] });
+                      } catch (err) {
+                        setErrorMsg(err instanceof Error ? err.message : 'Recovery endpoint is unreachable');
+                      } finally { setTesting(false); }
+                    }} className="px-3 py-1.5 rounded-md bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-semibold">
+                      {testing ? 'Testing…' : 'Test connection'}
+                    </button>
+                  )}
 
                   <div>
                     <label className="block text-gray-300 font-semibold mb-1.5">Permitted Recovery Actions</label>

@@ -37,10 +37,13 @@ type Config struct {
 	ScrapeFileSD         string
 	BootstrapAdminEmail  string
 	BootstrapAdminPass   string
+	DBPath               string
+	UseKafka             bool
+	PublicURL            string
 }
 
 func LoadConfig() (*Config, error) {
-	port := getEnv("API_GATEWAY_PORT", "8000")
+	port := getEnv("PORT", getEnv("API_GATEWAY_PORT", "8000"))
 	env := strings.ToLower(getEnv("AEGIS_ENV", "development"))
 	logLevel := strings.ToLower(getEnv("AEGIS_LOG_LEVEL", "info"))
 
@@ -138,6 +141,9 @@ func LoadConfig() (*Config, error) {
 		ScrapeFileSD:         getEnv("AEGIS_SCRAPE_FILE_SD", ""),
 		BootstrapAdminEmail:  adminEmail,
 		BootstrapAdminPass:   adminPass,
+		DBPath:               getEnv("DB_PATH", ""),
+		UseKafka:             parseBool(getEnv("USE_KAFKA", "false")),
+		PublicURL:            getEnv("AEGIS_PUBLIC_URL", ""),
 	}
 
 	if err := cfg.Validate(); err != nil {

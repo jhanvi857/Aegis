@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -71,9 +73,24 @@ func validateServiceInput(svc *storage.TopologyService) error {
 		}
 	}
 
-	if svc.RecoveryBinding != nil && svc.RecoveryBinding.Runtime != "" {
+	if svc.RecoveryBinding != nil {
+		executor := strings.ToLower(strings.TrimSpace(svc.RecoveryBinding.Executor))
+		if executor != "" && executor != "webhook" && executor != "docker" {
+			return fmt.Errorf("invalid recovery executor '%s': must be webhook or docker", svc.RecoveryBinding.Executor)
+		}
+		if executor == "webhook" {
+			if strings.TrimSpace(svc.RecoveryBinding.BaseURL) == "" {
+				return errors.New("webhook recovery executor requires baseUrl")
+			}
+			if err := ValidateSafeURL(svc.RecoveryBinding.BaseURL); err != nil {
+				return err
+			}
+		}
+		if executor == "docker" && os.Getenv("AEGIS_ENABLE_DOCKER_EXECUTOR") != "true" {
+			return errors.New("docker recovery executor is disabled")
+		}
 		rt := strings.ToLower(strings.TrimSpace(svc.RecoveryBinding.Runtime))
-		if rt != "kubernetes" && rt != "docker" {
+		if rt != "" && rt != "kubernetes" && rt != "docker" {
 			return fmt.Errorf("invalid recovery binding runtime '%s': must be kubernetes or docker", svc.RecoveryBinding.Runtime)
 		}
 		if len(svc.RecoveryBinding.Target) > 255 {
@@ -123,6 +140,11 @@ func redactService(s *storage.TopologyService) *storage.TopologyService {
 		return nil
 	}
 	cp := *s
+	if cp.RecoveryBinding != nil {
+		binding := *cp.RecoveryBinding
+		binding.AuthToken = ""
+		cp.RecoveryBinding = &binding
+	}
 	if cp.TelemetrySource != nil {
 		cp.TelemetrySource = storage.RedactTelemetrySource(cp.TelemetrySource)
 	}
@@ -199,6 +221,11 @@ func CreateRegistryServiceHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"Invalid request payload"}`, http.StatusBadRequest)
 		return
 	}
+	caller := GetCaller(r)
+	if os.Getenv("AEGIS_STRICT_RBAC") == "true" && caller != nil && caller.Role != storage.RoleAdmin && svc.RecoveryBinding != nil {
+		http.Error(w, `{"error":"Forbidden: only administrators can configure recovery bindings"}`, http.StatusForbidden)
+		return
+	}
 
 	if err := validateServiceInput(&svc); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusBadRequest)
@@ -211,9 +238,8 @@ func CreateRegistryServiceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	caller := GetCaller(r)
 	// RBAC checks: operator cannot configure recovery_binding or credentials
-	if caller != nil && caller.Role != storage.RoleAdmin {
+	if os.Getenv("AEGIS_STRICT_RBAC") == "true" && caller != nil && caller.Role != storage.RoleAdmin {
 		if svc.RecoveryBinding != nil {
 			http.Error(w, `{"error":"Forbidden: only administrators can configure recovery bindings"}`, http.StatusForbidden)
 			return
@@ -308,18 +334,48 @@ func UpdateRegistryServiceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var update storage.TopologyService
-	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
 		http.Error(w, `{"error":"Invalid request payload"}`, http.StatusBadRequest)
 		return
+	}
+	var update storage.TopologyService
+	if err := json.Unmarshal(bodyBytes, &update); err != nil {
+		http.Error(w, `{"error":"Invalid request payload"}`, http.StatusBadRequest)
+		return
+	}
+	var rawMap map[string]interface{}
+	_ = json.Unmarshal(bodyBytes, &rawMap)
+	modeSpecified := false
+	if rawMap != nil {
+		if _, ok := rawMap["monitoringMode"]; ok {
+			modeSpecified = true
+		}
+		if mm, ok := rawMap["monitoring_mode"].(string); ok && mm != "" {
+			update.MonitoringMode = mm
+			modeSpecified = true
+		}
+		if update.RecoveryBinding == nil {
+			if rbRaw, ok := rawMap["recovery_binding"]; ok && rbRaw != nil {
+				if rbBytes, err := json.Marshal(rbRaw); err == nil {
+					var rb storage.RecoveryBinding
+					if err := json.Unmarshal(rbBytes, &rb); err == nil {
+						update.RecoveryBinding = &rb
+					}
+				}
+			}
+		}
 	}
 	if update.ID == "" {
 		update.ID = id
 	}
+	if !modeSpecified {
+		update.MonitoringMode = existing.MonitoringMode
+	}
 
 	caller := GetCaller(r)
 	// RBAC validations
-	if caller != nil && caller.Role != storage.RoleAdmin {
+	if os.Getenv("AEGIS_STRICT_RBAC") == "true" && caller != nil && caller.Role != storage.RoleAdmin {
 		if update.MonitoringMode == "auto_remediate" {
 			http.Error(w, `{"error":"Forbidden: only administrators can set auto_remediate mode"}`, http.StatusForbidden)
 			return
@@ -383,6 +439,9 @@ func UpdateRegistryServiceHandler(w http.ResponseWriter, r *http.Request) {
 		existing.TelemetrySource = update.TelemetrySource
 	}
 	if update.RecoveryBinding != nil && (caller == nil || caller.Role == storage.RoleAdmin) {
+		if update.RecoveryBinding.AuthToken == "" && existing.RecoveryBinding != nil {
+			update.RecoveryBinding.AuthToken = existing.RecoveryBinding.AuthToken
+		}
 		existing.RecoveryBinding = update.RecoveryBinding
 	}
 	if update.Replicas > 0 {
@@ -410,6 +469,9 @@ func UpdateRegistryServiceHandler(w http.ResponseWriter, r *http.Request) {
 		s.Status = existing.Status
 		s.Replicas = existing.Replicas
 		s.MaxReplicas = existing.MaxReplicas
+		s.MonitoringMode = existing.MonitoringMode
+		s.RecoveryBinding = existing.RecoveryBinding
+		s.TelemetrySource = existing.TelemetrySource
 	}
 	State.mu.Unlock()
 
@@ -421,6 +483,41 @@ func UpdateRegistryServiceHandler(w http.ResponseWriter, r *http.Request) {
 	LogAudit(r, "service.update", id, "LOW", "", fmt.Sprintf("before: [%s], after: [mode: %s, tier: %s]", beforeDesc, existing.MonitoringMode, existing.Tier), "SUCCESS", "")
 
 	_ = json.NewEncoder(w).Encode(redactService(existing))
+}
+
+func TestRecoveryConnectionHandler(w http.ResponseWriter, r *http.Request) {
+	var binding storage.RecoveryBinding
+	if err := json.NewDecoder(r.Body).Decode(&binding); err != nil {
+		http.Error(w, `{"success":false,"error":"invalid recovery binding"}`, http.StatusBadRequest)
+		return
+	}
+	if !strings.EqualFold(binding.Executor, "webhook") {
+		http.Error(w, `{"success":false,"error":"connection testing is available for webhook executors only"}`, http.StatusBadRequest)
+		return
+	}
+	base, err := url.Parse(strings.TrimRight(strings.TrimSpace(binding.BaseURL), "/"))
+	if err != nil || base.Scheme == "" || base.Host == "" {
+		http.Error(w, `{"success":false,"error":"invalid webhook base URL"}`, http.StatusBadRequest)
+		return
+	}
+	base.Path = strings.TrimRight(base.Path, "/") + "/admin/state"
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, base.String(), nil)
+	if err != nil {
+		http.Error(w, `{"success":false,"error":"invalid webhook URL"}`, http.StatusBadRequest)
+		return
+	}
+	req.Header.Set("X-Admin-Token", binding.AuthToken)
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"success":false,"error":%q}`, fmt.Sprintf("unreachable: %v", err)), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		http.Error(w, fmt.Sprintf(`{"success":false,"status":%d,"error":%q}`, resp.StatusCode, fmt.Sprintf("target returned HTTP %d", resp.StatusCode)), resp.StatusCode)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "status": resp.StatusCode})
 }
 
 func DeleteRegistryServiceHandler(w http.ResponseWriter, r *http.Request) {
@@ -876,21 +973,23 @@ type TopologyImportPayload struct {
 	Description string                    `json:"description,omitempty"`
 	Owner       string                    `json:"owner,omitempty"`
 	Services    []storage.TopologyService `json:"services,omitempty"`
-	Nodes []struct {
-		ID              string                   `json:"id" yaml:"id"`
-		Name            string                   `json:"name" yaml:"name"`
-		Type            string                   `json:"type" yaml:"type"`
-		Host            string                   `json:"host" yaml:"host"`
-		Port            int                      `json:"port" yaml:"port"`
-		Tier            string                   `json:"tier" yaml:"tier"`
-		Dependencies    []string                 `json:"dependencies" yaml:"dependencies"`
-		Metadata        struct {
+	Nodes       []struct {
+		ID           string   `json:"id" yaml:"id"`
+		Name         string   `json:"name" yaml:"name"`
+		Type         string   `json:"type" yaml:"type"`
+		Host         string   `json:"host" yaml:"host"`
+		Port         int      `json:"port" yaml:"port"`
+		Tier         string   `json:"tier" yaml:"tier"`
+		Dependencies []string `json:"dependencies" yaml:"dependencies"`
+		Metadata     struct {
 			Role string `json:"role" yaml:"role"`
 			Tier string `json:"tier" yaml:"tier"`
 		} `json:"metadata" yaml:"metadata"`
-		MonitoringMode  string                   `json:"monitoringMode" yaml:"monitoringMode"`
-		RecoveryBinding *storage.RecoveryBinding `json:"recoveryBinding" yaml:"recoveryBinding"`
-		TelemetrySource *storage.TelemetrySource `json:"telemetrySource" yaml:"telemetrySource"`
+		MonitoringMode     string                   `json:"monitoringMode" yaml:"monitoringMode"`
+		MonitoringModeAlt  string                   `json:"monitoring_mode" yaml:"monitoring_mode"`
+		RecoveryBinding    *storage.RecoveryBinding `json:"recoveryBinding" yaml:"recoveryBinding"`
+		RecoveryBindingAlt *storage.RecoveryBinding `json:"recovery_binding" yaml:"recovery_binding"`
+		TelemetrySource    *storage.TelemetrySource `json:"telemetrySource" yaml:"telemetrySource"`
 	} `json:"nodes,omitempty" yaml:"nodes,omitempty"`
 	Edges []storage.TopologyEdge `json:"edges,omitempty"`
 }
@@ -981,12 +1080,20 @@ func ImportTopologyHandler(w http.ResponseWriter, r *http.Request) {
 	if len(payload.Services) == 0 && len(payload.Nodes) > 0 {
 		payload.Services = make([]storage.TopologyService, 0, len(payload.Nodes))
 		for _, n := range payload.Nodes {
+			mode := strings.TrimSpace(n.MonitoringMode)
+			if mode == "" {
+				mode = strings.TrimSpace(n.MonitoringModeAlt)
+			}
+			rec := n.RecoveryBinding
+			if rec == nil {
+				rec = n.RecoveryBindingAlt
+			}
 			svc := storage.TopologyService{
 				ID:              strings.TrimSpace(n.ID),
 				Name:            strings.TrimSpace(n.Name),
 				Type:            strings.TrimSpace(n.Type),
-				MonitoringMode:  strings.TrimSpace(n.MonitoringMode),
-				RecoveryBinding: n.RecoveryBinding,
+				MonitoringMode:  mode,
+				RecoveryBinding: rec,
 				TelemetrySource: n.TelemetrySource,
 			}
 			if svc.Name == "" {
@@ -1080,7 +1187,7 @@ func ImportTopologyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// RBAC check for apply
 	caller := GetCaller(r)
-	if caller != nil && caller.Role != storage.RoleAdmin {
+	if os.Getenv("AEGIS_STRICT_RBAC") == "true" && caller != nil && caller.Role != storage.RoleAdmin {
 		for _, s := range payload.Services {
 			if s.MonitoringMode == "auto_remediate" || s.RecoveryBinding != nil {
 				http.Error(w, `{"error":"Forbidden: only administrators can import services with auto_remediate mode or recovery bindings"}`, http.StatusForbidden)

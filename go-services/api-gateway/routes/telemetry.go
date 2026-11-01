@@ -8,8 +8,19 @@ import (
 )
 
 func GetServicesHandler(w http.ResponseWriter, r *http.Request) {
-	// Dynamically sync edge dependencies from database store if edges exist
+	// Dynamically sync edge dependencies and registry configurations from database store
 	if store := GetAuthStore(); store != nil {
+		if dbServices, err := store.ListServices(r.Context(), "", ""); err == nil && len(dbServices) > 0 {
+			State.mu.Lock()
+			for _, dbs := range dbServices {
+				if svc, ok := State.Services[dbs.ID]; ok {
+					svc.MonitoringMode = dbs.MonitoringMode
+					svc.RecoveryBinding = dbs.RecoveryBinding
+					svc.TelemetrySource = dbs.TelemetrySource
+				}
+			}
+			State.mu.Unlock()
+		}
 		if dbEdges, err := store.ListEdges(r.Context(), "", ""); err == nil && len(dbEdges) > 0 {
 			edgeMap := make(map[string][]string)
 			for _, e := range dbEdges {

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTelemetryStore, getMLPrediction, calculateSystemRisk } from '../../store/useTelemetryStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { recoveryApi } from '../../api/recovery';
+import { appsApi } from '../../api/apps';
 import type { RecoveryAction } from '../../types/telemetry';
 import {
   ShieldCheck,
@@ -33,6 +34,7 @@ export const Recovery: React.FC = () => {
   const [approvedActionIds, setApprovedActionIds] = useState<Set<string>>(new Set());
   const [loadingApprovalId, setLoadingApprovalId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [applicationPredictions, setApplicationPredictions] = useState<Record<string, { engine?: string; failureProbability: number; state?: string }>>({});
 
   // Default target service to root cause service or first non-healthy / first service
   const targetServiceId =
@@ -49,6 +51,16 @@ export const Recovery: React.FC = () => {
       ]);
       if (Array.isArray(recs)) {
         setApiRecommendations(recs);
+        const predictions = await Promise.all(recs.filter((action) => action.targetServiceId.includes('/')).map(async (action) => {
+          const [appId, serviceId] = action.targetServiceId.split('/');
+          try {
+            return [action.targetServiceId, await appsApi.getServicePrediction(appId, serviceId)] as const;
+          } catch {
+            return null;
+          }
+        }));
+        const validPredictions = predictions.filter((item): item is readonly [string, import('../../types/telemetry').PredictionOutput] => item !== null);
+        setApplicationPredictions(Object.fromEntries(validPredictions));
       }
       if (Array.isArray(pending)) {
         setPendingApprovals(pending);
@@ -75,7 +87,11 @@ export const Recovery: React.FC = () => {
     setLoadingApprovalId(actionId);
     const approverIdentity = user?.email || 'Authorized Operator';
     try {
-      await approveAction(actionId, svcId, actionType, approverIdentity);
+      if (svcId.includes('/')) {
+        await recoveryApi.approveApplicationAction(svcId.split('/')[0], actionId);
+      } else {
+        await approveAction(actionId, svcId, actionType, approverIdentity);
+      }
       setApprovedActionIds((prev) => new Set(prev).add(actionId));
       setStatusMessage({ type: 'success', text: `Approval granted by ${approverIdentity} for ${actionType || 'action'} on ${svcId}. Ready for dispatch.` });
       await refreshActions();
@@ -112,6 +128,14 @@ export const Recovery: React.FC = () => {
     _requiresApproval?: boolean
   ) => {
     const finalServiceId = serviceId || targetServiceId;
+    if (finalServiceId.includes('/')) {
+      setStatusMessage({ type: 'error', text: 'Application actions use the customer agent pull model; execution is dispatched after agent polling.' });
+      return;
+    }
+    if (!prediction.incident) {
+      setStatusMessage({ type: 'error', text: 'Watch state only: recovery is blocked until fresh telemetry shows a sustained incident.' });
+      return;
+    }
     setExecutingActionId(actionId || title);
     setStatusMessage(null);
 
@@ -126,8 +150,7 @@ export const Recovery: React.FC = () => {
         return;
       }
 
-      const isApproved = approvedActionIds.has(actionId);
-      await executeRecoveryAction(actionType, finalServiceId, actionId || title, isApproved);
+      await executeRecoveryAction(actionType, finalServiceId, actionId || title, true);
       setStatusMessage({
         type: 'success',
         text: `Dispatched ${title}. Telemetry verification active (recovery state monitored until confirmed).`,
@@ -438,6 +461,7 @@ export const Recovery: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {activeRecommendations.map((act) => {
               const requiresApproval = Boolean(act.requiresApproval);
+              const isApplicationAction = act.targetServiceId.includes('/');
               const isApproved = approvedActionIds.has(act.id);
               const riskColor =
                 act.riskLevel === 'HIGH'
@@ -465,6 +489,30 @@ export const Recovery: React.FC = () => {
                     <p className="text-[11px] text-gray-400 font-normal leading-[16px]">
                       {act.description}
                     </p>
+                    {act.evidence && act.evidence.length > 0 && (
+                      <div className="text-[10px] text-gray-400 space-y-0.5">
+                        <div className="font-semibold text-gray-300">Evidence</div>
+                        {act.evidence.map((item) => (
+                          <div key={`${act.id}-${item.metric}`}>
+                            {item.metric}: <span className="text-white">{item.value}{item.unit ? ` ${item.unit}` : ''}</span>
+                            {item.threshold !== undefined ? ` (threshold ${item.threshold})` : ''}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {act.expectedEffect && (
+                      <div className="text-[10px] text-gray-400">
+                        Expected effect: <span className="text-gray-200">{act.expectedEffect}</span>
+                      </div>
+                    )}
+                    {isApplicationAction && applicationPredictions[act.targetServiceId] && (
+                      <div className="text-[10px] text-cyan-300">
+                        Prediction: {applicationPredictions[act.targetServiceId].state || 'unknown'} · risk {applicationPredictions[act.targetServiceId].failureProbability.toFixed(1)}% · engine {applicationPredictions[act.targetServiceId].engine || 'baseline'}
+                      </div>
+                    )}
+                    <div className="text-[10px] text-gray-400">
+                      ETA: <span className="text-gray-200">{act.etaSeconds || 30}s</span>
+                    </div>
 
                     <div className="flex items-center justify-between text-[10px] text-gray-400 pt-1 border-t border-[#26262B]">
                       <span>Workload: <span className="font-mono text-white">{act.targetServiceId}</span></span>
@@ -487,6 +535,10 @@ export const Recovery: React.FC = () => {
                         <Lock className="w-3 h-3" />
                         <span>APPROVE FIRST</span>
                       </button>
+                    ) : isApplicationAction ? (
+                      <div className="w-full py-1.5 rounded-md text-center text-[10px] font-semibold text-cyan-300 border border-cyan-700/60">
+                        AGENT DISPATCH: POLL TO EXECUTE
+                      </div>
                     ) : (
                       <button
                         onClick={() =>

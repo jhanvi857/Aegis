@@ -1,0 +1,7 @@
+actions:
+  RESTART: /admin/restart
+  SCALE_UP: /admin/scale
+  FLUSH_CACHE: /admin/flush-cache
+  INCREASE_POOL: /admin/pool-size
+timeout_seconds: 5
+retries: 2

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aegis/go-services/api-gateway/storage"
 	"gopkg.in/yaml.v3"
 )
 
@@ -29,38 +30,41 @@ type ServiceMetric struct {
 }
 
 type Microservice struct {
-	ID                 string               `json:"id"`
-	Name               string               `json:"name"`
-	Type               string               `json:"type"`
-	Status             string               `json:"status"` // healthy, degraded, critical
-	Replicas           int                  `json:"replicas"`
-	MaxReplicas        int                  `json:"maxReplicas"`
-	CPU                float64              `json:"cpu"`
-	Memory             float64              `json:"memory"`
-	Latency            float64              `json:"latency"`
-	RPS                float64              `json:"rps"`
-	ErrorRate          float64              `json:"errorRate"`
-	QueueDepth         int                  `json:"queueDepth"`
-	DBWait             float64              `json:"dbConnectionWaitMs"`
-	CacheMiss          float64              `json:"cacheMissRate"`
-	PacketLoss         float64              `json:"packetLossRate"`
-	ActiveThreads      int                  `json:"activeThreads"`
-	Version            string               `json:"version"`
-	Uptime             string               `json:"uptime"`
-	Dependencies       []string             `json:"dependencies"`
-	Namespace          string               `json:"namespace,omitempty"`
-	ClusterID          string               `json:"clusterId,omitempty"`
-	ResourceAttributes map[string]string    `json:"resourceAttributes,omitempty"`
-	History            []ServiceMetric      `json:"history"`
-	Host               string               `json:"-"`
-	Port               int                  `json:"-"`
-	LastIngestTime     time.Time            `json:"-"`
-	Source             string               `json:"source,omitempty"`
-	LastSeen           time.Time            `json:"lastSeen,omitempty"`
-	DataStatus         string               `json:"dataStatus,omitempty"` // fresh, stale, unknown
-	ObservedSignals    []string             `json:"observedSignals,omitempty"`
-	SignalLastSeen     map[string]time.Time `json:"signalLastSeen,omitempty"`
-	BreachCount        int                  `json:"breachCount,omitempty"`
+	ID                 string                   `json:"id"`
+	Name               string                   `json:"name"`
+	Type               string                   `json:"type"`
+	Status             string                   `json:"status"` // healthy, degraded, critical
+	Replicas           int                      `json:"replicas"`
+	MaxReplicas        int                      `json:"maxReplicas"`
+	CPU                float64                  `json:"cpu"`
+	Memory             float64                  `json:"memory"`
+	Latency            float64                  `json:"latency"`
+	RPS                float64                  `json:"rps"`
+	ErrorRate          float64                  `json:"errorRate"`
+	QueueDepth         int                      `json:"queueDepth"`
+	DBWait             float64                  `json:"dbConnectionWaitMs"`
+	CacheMiss          float64                  `json:"cacheMissRate"`
+	PacketLoss         float64                  `json:"packetLossRate"`
+	ActiveThreads      int                      `json:"activeThreads"`
+	Version            string                   `json:"version"`
+	Uptime             string                   `json:"uptime"`
+	Dependencies       []string                 `json:"dependencies"`
+	Namespace          string                   `json:"namespace,omitempty"`
+	ClusterID          string                   `json:"clusterId,omitempty"`
+	ResourceAttributes map[string]string        `json:"resourceAttributes,omitempty"`
+	History            []ServiceMetric          `json:"history"`
+	Host               string                   `json:"-"`
+	Port               int                      `json:"-"`
+	LastIngestTime     time.Time                `json:"-"`
+	Source             string                   `json:"source,omitempty"`
+	LastSeen           time.Time                `json:"lastSeen,omitempty"`
+	DataStatus         string                   `json:"dataStatus,omitempty"` // fresh, stale, unknown
+	ObservedSignals    []string                 `json:"observedSignals,omitempty"`
+	SignalLastSeen     map[string]time.Time     `json:"signalLastSeen,omitempty"`
+	BreachCount        int                      `json:"breachCount,omitempty"`
+	MonitoringMode     string                   `json:"monitoringMode,omitempty"`
+	RecoveryBinding    *storage.RecoveryBinding `json:"recoveryBinding,omitempty"`
+	TelemetrySource    *storage.TelemetrySource `json:"telemetrySource,omitempty"`
 }
 
 type ChaosInjection struct {
@@ -141,6 +145,7 @@ type RecoveryAction struct {
 	RequiresApproval bool             `json:"requiresApproval,omitempty"`
 	FaultFamily      string           `json:"fault_family,omitempty"`
 	Evidence         []ActionEvidence `json:"evidence,omitempty"`
+	ETASeconds       int64            `json:"etaSeconds,omitempty"`
 	ExpectedEffect   string           `json:"expected_effect,omitempty"`
 	WhyThisTarget    string           `json:"why_this_target,omitempty"`
 }
@@ -243,6 +248,7 @@ type ControlPlaneState struct {
 	Experiments           []Experiment
 	RawTopologyYAML       []byte
 	LatestRecommendations []RecoveryAction
+	LatestPredictions     map[string]PredictionOutput
 	ApprovedPlans         map[string]bool
 	ApprovedRecords       map[string]ApprovalRecord
 	NodeBreachCounts      map[string]int
@@ -262,6 +268,7 @@ func newControlPlaneState() *ControlPlaneState {
 		RecoveryHistory:       make([]RecoveryHistoryItem, 0),
 		Experiments:           make([]Experiment, 0),
 		LatestRecommendations: make([]RecoveryAction, 0),
+		LatestPredictions:     make(map[string]PredictionOutput),
 		ApprovedPlans:         make(map[string]bool),
 		ApprovedRecords:       make(map[string]ApprovalRecord),
 		NodeBreachCounts:      make(map[string]int),
@@ -310,6 +317,7 @@ func InitState() {
 	State.RecoveryHistory = make([]RecoveryHistoryItem, 0)
 	State.Experiments = make([]Experiment, 0)
 	State.LatestRecommendations = make([]RecoveryAction, 0)
+	State.LatestPredictions = make(map[string]PredictionOutput)
 	State.ApprovedPlans = make(map[string]bool)
 	State.ApprovedRecords = make(map[string]ApprovalRecord)
 	State.DemoMode = demoMode
@@ -672,6 +680,12 @@ func (s *ControlPlaneState) runTicker() {
 
 			if needsHealing {
 				pred := ComputePredictionOutput()
+				// A high/watch score alone is not authorization to execute.
+				// Autonomous recovery requires the incident gate: fresh data,
+				// a sustained breach, and the configured probability threshold.
+				if !pred.Incident {
+					continue
+				}
 				if len(pred.RecommendedActions) > 0 {
 					for _, rec := range pred.RecommendedActions {
 						if !rec.RequiresApproval && !Safety.IsInCooldown(rec.TargetServiceID) {

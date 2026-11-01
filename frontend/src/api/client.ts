@@ -34,10 +34,17 @@ export async function apiFetch<T>(endpoint: string, options?: RequestInit): Prom
     let errorDetail = res.statusText;
     let data: any = null;
     try {
-      data = await res.json();
-      errorDetail = data.error || data.message || errorDetail;
+      const text = await res.text();
+      try {
+        data = JSON.parse(text);
+        errorDetail = data.error || data.message || errorDetail;
+      } catch {
+        if (text && text.trim()) {
+          errorDetail = text.trim();
+        }
+      }
     } catch {
-      // Body not JSON
+      // Body reading failed
     }
     throw new ApiError(res.status, res.statusText, errorDetail || `HTTP error ${res.status}: ${res.statusText}`, data);
   }

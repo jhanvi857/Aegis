@@ -13,6 +13,8 @@ import { Recovery } from './pages/Recovery/Recovery';
 import { Experiments } from './pages/Experiments/Experiments';
 import { Settings } from './pages/Settings/Settings';
 import { Connect } from './pages/Connect/Connect';
+import { Onboarding } from './pages/Onboarding/Onboarding';
+import { Permissions } from './pages/Permissions/Permissions';
 
 import { useAuthStore } from './store/useAuthStore';
 import { AuthPage } from './pages/Auth/AuthPage';
@@ -61,6 +63,8 @@ export function App() {
           {activeTab === 'dashboard' && <Dashboard setActiveTab={setActiveTab} />}
           {activeTab === 'services' && <Services />}
           {activeTab === 'connect' && <Connect />}
+          {activeTab === 'onboarding' && <Onboarding />}
+          {activeTab === 'permissions' && <Permissions />}
           {activeTab === 'graph' && <DependencyGraph />}
           {activeTab === 'predictions' && <Predictions />}
           {activeTab === 'chaos' && <Chaos />}

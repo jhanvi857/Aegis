@@ -9,6 +9,9 @@ import (
 type fakeOrchestrator struct {
 	restarted string
 	scaled    string
+	rerouted  string
+	flushed   string
+	pooled    string
 	replicas  int
 	err       error
 }
@@ -19,6 +22,18 @@ func (f *fakeOrchestrator) RestartContainer(_ context.Context, target string) er
 }
 func (f *fakeOrchestrator) ScaleService(_ context.Context, service string, replicas int) error {
 	f.scaled, f.replicas = service, replicas
+	return f.err
+}
+func (f *fakeOrchestrator) RerouteTraffic(_ context.Context, service string, target string) error {
+	f.rerouted = service
+	return f.err
+}
+func (f *fakeOrchestrator) FlushCache(_ context.Context, service string) error {
+	f.flushed = service
+	return f.err
+}
+func (f *fakeOrchestrator) IncreasePool(_ context.Context, service string) error {
+	f.pooled = service
 	return f.err
 }
 
@@ -59,6 +74,20 @@ func TestUnintegratedActionsFailClosed(t *testing.T) {
 	for _, action := range []RecoveryAction{&RerouteTrafficAction{}, &FlushCacheAction{}, &IncreasePoolAction{}} {
 		if err := action.Execute(context.Background(), "worker", nil); err == nil {
 			t.Errorf("%s must not report success without an integration", action.Name())
+		}
+	}
+}
+
+func TestIntegratedActionsSucceed(t *testing.T) {
+	t.Parallel()
+	adapter := &fakeOrchestrator{}
+	for _, action := range []RecoveryAction{
+		NewRerouteTrafficAction(adapter),
+		NewFlushCacheAction(adapter),
+		NewIncreasePoolAction(adapter),
+	} {
+		if err := action.Execute(context.Background(), "worker", nil); err != nil {
+			t.Errorf("%s failed with valid adapter: %v", action.Name(), err)
 		}
 	}
 }
