@@ -276,6 +276,7 @@ python -m pytest tests/python-ml/ -q
 ```
 
 ### 5. Demo Walkthrough: ShopKart Mesh
+Github repo : https://github.com/jhanvi857/ShopKart
 
 ShopKart is an onboarding fixture modeling a 10-node e-commerce microservices mesh (`configs/topologies/shopkart_onboarding.yaml`):
 
